@@ -90,7 +90,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	testContext = logger.SetLoggerInContext(testContext, log.ComponentLogger("TestSuite"))
 
 	suite.testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd")},
 		ErrorIfCRDPathMissing: true,
 		BinaryAssetsDirectory: filepath.Join(
 			"..", "..", "bin", "k8s", fmt.Sprintf("1.29.0-%s-%s", runtime.GOOS, runtime.GOARCH)),

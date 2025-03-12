@@ -131,6 +131,18 @@ spec:
                   - type
                   type: object
                 type: array
+              kcpWorkspaces:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    phase:
+                      type: string
+                  required:
+                  - name
+                  - phase
+                  type: object
+                type: array
               nextReconcileTime:
                 format: date-time
                 type: string
