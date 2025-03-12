@@ -91,7 +91,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 					suite.logger.Error().Err(err).Msg("Error building config from kubeconfig string")
 					return false
 				}
-				helper := &subroutines.KcpHelper{}
+				helper := &subroutines.Helper{}
 				kcpClient, err := helper.NewKcpClient(config, pc.Path)
 				if err != nil {
 					suite.logger.Error().Err(err).Msg("Error creating kcp client")

@@ -97,18 +97,23 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	}
 
 	// mocks
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"kubeconfig": secretKubeconfigData,
+		},
+	}
 	s.clientMock.EXPECT().Get(
 		mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
-			*o.(*corev1.Secret) = corev1.Secret{
-				Data: map[string][]byte{
-					"kubeconfig": secretKubeconfigData,
-				},
-			}
+			*o.(*corev1.Secret) = secret
 			return nil
-		}).Once()
-	s.clientMock.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+		}).Twice()
+	s.clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	scheme := runtime.NewScheme()
 	err := corev1alpha1.AddToScheme(scheme)
 	s.Assert().NoError(err)
@@ -189,6 +194,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	}
 
 	// mocks
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	s.clientMock.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	scheme := runtime.NewScheme()
 	err := corev1.AddToScheme(scheme)
@@ -274,8 +280,23 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	}
 
 	// mocks
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"kubeconfig": secretKubeconfigData,
+		},
+	}
 	s.clientMock.EXPECT().Create(
 		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error creating secret")).Once()
+	s.clientMock.EXPECT().Get(
+		mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+	) error {
+		*o.(*corev1.Secret) = secret
+		return errors.New("error getting secret")
+	}).Once()
 
 	slice := &kcpapiv1alpha.APIExportEndpointSlice{
 		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
@@ -299,10 +320,14 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
 	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
 		Return(&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-secret",
+				Namespace: "default",
+			},
 			Data: map[string][]byte{
 				"kubeconfig": secretKubeconfigData,
 			},
-		}, nil).Once()
+		}, nil)
 
 	s.testObj.kcpHelper = mockedKcpHelper
 
@@ -532,7 +557,7 @@ func (suite *ProvidersecretTestSuite) TestConstructor() {
 
 	// create new mock client
 	suite.clientMock = new(mocks.Client)
-	helper := &KcpHelper{}
+	helper := &Helper{}
 
 	// create new test object
 	suite.testObj = NewProvidersecretSubroutine(suite.clientMock, helper)

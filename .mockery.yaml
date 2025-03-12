@@ -6,7 +6,7 @@ packages:
       dir: pkg/subroutines/mocks
       outpkg: mocks
     interfaces:
-      KcpHelperInterface:
+      KcpHelper:
         config:
           mockname: KcpHelper
 

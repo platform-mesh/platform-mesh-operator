@@ -187,7 +187,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err := s.testObj.getAPIExportHashInventory(&rest.Config{})
+	inventory, err := s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "hash1",
@@ -208,7 +208,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err = s.testObj.getAPIExportHashInventory(&rest.Config{})
+	inventory, err = s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "hash1",
@@ -222,7 +222,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err = s.testObj.getAPIExportHashInventory(&rest.Config{})
+	inventory, err = s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "",
@@ -231,7 +231,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	// test error 4
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(nil, errors.New("Error")).Once()
-	inventory, err = s.testObj.getAPIExportHashInventory(&rest.Config{})
+	inventory, err = s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "",
@@ -244,7 +244,7 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 
 	// create new mock client
 	s.clientMock = new(mocks.Client)
-	helper := &KcpHelper{}
+	helper := &Helper{}
 
 	// create new test object
 	s.testObj = NewKcpsetupSubroutine(s.clientMock, helper)
@@ -270,21 +270,21 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 
 	client := new(mocks.Client)
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.applyManifestFromFile("../../test/setup/workspace-openmfp-system.yaml", client, APIExportInventory{})
+	err := s.testObj.applyManifestFromFile(context.TODO(), "../../test/setup/workspace-openmfp-system.yaml", client, APIExportInventory{})
 	s.Assert().Nil(err)
 
-	err = s.testObj.applyManifestFromFile("invalid", nil, APIExportInventory{})
+	err = s.testObj.applyManifestFromFile(context.TODO(), "invalid", nil, APIExportInventory{})
 	s.Assert().Error(err)
 
-	err = s.testObj.applyManifestFromFile("./kcpsetup.go", nil, APIExportInventory{})
+	err = s.testObj.applyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, APIExportInventory{})
 	s.Assert().Error(err)
 
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.applyManifestFromFile("../../test/setup/workspace-openmfp-system.yaml", client, APIExportInventory{})
+	err = s.testObj.applyManifestFromFile(context.TODO(), "../../test/setup/workspace-openmfp-system.yaml", client, APIExportInventory{})
 	s.Assert().Error(err)
 
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.applyManifestFromFile("../../test/setup/workspace-orgs.yaml", client, APIExportInventory{})
+	err = s.testObj.applyManifestFromFile(context.TODO(), "../../test/setup/workspace-orgs.yaml", client, APIExportInventory{})
 	s.Assert().Nil(err)
 
 }

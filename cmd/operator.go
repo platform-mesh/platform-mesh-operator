@@ -107,8 +107,8 @@ func RunController(cmd *cobra.Command, args []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
 
-	contentConfigurationReconciler := controller.NewOpenmfpReconciler(log, mgr, cfg)
-	if err := contentConfigurationReconciler.SetupWithManager(mgr, cfg, log); err != nil {
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, cfg)
+	if err := openmfpReconciler.SetupWithManager(mgr, cfg, log); err != nil {
 		log.Fatal().Err(err).Str("controller", "ContentConfiguration").Msg("unable to create controller")
 	}
 

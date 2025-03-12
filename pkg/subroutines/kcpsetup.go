@@ -31,7 +31,7 @@ import (
 
 type KcpsetupSubroutine struct {
 	client    client.Client
-	kcpHelper KcpHelperInterface
+	kcpHelper KcpHelper
 }
 
 const (
@@ -39,12 +39,12 @@ const (
 	KcpsetupSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelperInterface) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper) *KcpsetupSubroutine {
 	sub := &KcpsetupSubroutine{
 		client: client,
 	}
 	if helper == nil {
-		sub.kcpHelper = &KcpHelper{}
+		sub.kcpHelper = &Helper{}
 	} else {
 		sub.kcpHelper = helper
 	}
@@ -124,7 +124,7 @@ func (r *KcpsetupSubroutine) createKcpWorkspaces(ctx context.Context, secret cor
 		return errors.Wrap(err, "Failed to build config from kubeconfig string")
 	}
 
-	inventory, err := r.getAPIExportHashInventory(config)
+	inventory, err := r.getAPIExportHashInventory(ctx, config)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport hash inventory")
 		return errors.Wrap(err, "Failed to get APIExport hash inventory")
@@ -141,7 +141,7 @@ func (r *KcpsetupSubroutine) createKcpWorkspaces(ctx context.Context, secret cor
 
 }
 
-func (r *KcpsetupSubroutine) getAPIExportHashInventory(config *rest.Config) (APIExportInventory, error) {
+func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, config *rest.Config) (APIExportInventory, error) {
 	inventory := APIExportInventory{}
 
 	cs, err := r.kcpHelper.NewKcpClient(config, "root")
@@ -150,19 +150,19 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(config *rest.Config) (API
 	}
 
 	apiExport := kcpapiv1alpha.APIExport{}
-	err = cs.Get(context.Background(), types.NamespacedName{Name: "tenancy.kcp.io"}, &apiExport)
+	err = cs.Get(ctx, types.NamespacedName{Name: "tenancy.kcp.io"}, &apiExport)
 	if err != nil {
 		return inventory, err
 	}
 	inventory.ApiExportRootTenancyKcpIoIdentityHash = apiExport.Status.IdentityHash
 
-	err = cs.Get(context.Background(), types.NamespacedName{Name: "shards.core.kcp.io"}, &apiExport)
+	err = cs.Get(ctx, types.NamespacedName{Name: "shards.core.kcp.io"}, &apiExport)
 	if err != nil {
 		return inventory, err
 	}
 	inventory.ApiExportRootShardsKcpIoIdentityHash = apiExport.Status.IdentityHash
 
-	err = cs.Get(context.Background(), types.NamespacedName{Name: "topology.kcp.io"}, &apiExport)
+	err = cs.Get(ctx, types.NamespacedName{Name: "topology.kcp.io"}, &apiExport)
 	if err != nil {
 		return inventory, err
 	}
@@ -178,7 +178,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	for _, workspace := range dir.Workspaces {
 		if workspace.Name != "root" {
 			wsName, _ := strings.CutPrefix(workspace.Name, "root:")
-			err := r.waitForWorkspace(config, wsName, log)
+			err := r.waitForWorkspace(ctx, config, wsName, log)
 			if err != nil {
 				return err
 			}
@@ -189,7 +189,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 			return err
 		}
 		for _, file := range workspace.Files {
-			err := r.applyManifestFromFile(file, k8sClient, hashes)
+			err := r.applyManifestFromFile(ctx, file, k8sClient, hashes)
 			if err != nil {
 				return err
 			}
@@ -199,7 +199,10 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 
 }
 
-func (r *KcpsetupSubroutine) waitForWorkspace(config *rest.Config, name string, log *logger.Logger) error {
+func (r *KcpsetupSubroutine) waitForWorkspace(
+	ctx context.Context,
+	config *rest.Config, name string, log *logger.Logger,
+) error {
 	client, err := r.kcpHelper.NewKcpClient(config, "root")
 	if err != nil {
 		return err
@@ -207,7 +210,7 @@ func (r *KcpsetupSubroutine) waitForWorkspace(config *rest.Config, name string, 
 
 	// It shouldn't take longer than 5s for the default namespace to be brought up in etcd
 	err = wait.PollUntilContextTimeout(
-		context.TODO(), time.Millisecond*500, time.Second*15, true,
+		ctx, time.Millisecond*500, time.Second*15, true,
 		func(ctx context.Context) (bool, error) {
 			ws := &kcptenancyv1alpha.Workspace{}
 			if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
@@ -225,6 +228,7 @@ func (r *KcpsetupSubroutine) waitForWorkspace(config *rest.Config, name string, 
 }
 
 func (r *KcpsetupSubroutine) applyManifestFromFile(
+	ctx context.Context,
 	path string, k8sClient client.Client, hashes APIExportInventory,
 ) error {
 	manifestBytes, err := os.ReadFile(path)
@@ -248,7 +252,7 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 	}
 
 	obj := unstructured.Unstructured{Object: objMap}
-	err = k8sClient.Patch(context.Background(), &obj, client.Apply, client.FieldOwner("controller-runtime"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("controller-runtime"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest")
 	}

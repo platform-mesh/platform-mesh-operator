@@ -18,13 +18,13 @@ import (
 
 func NewProvidersecretSubroutine(
 	client client.Client,
-	helper KcpHelperInterface,
+	helper KcpHelper,
 ) *ProvidersecretSubroutine {
 	sub := &ProvidersecretSubroutine{
 		client: client,
 	}
 	if helper == nil {
-		sub.kcpHelper = &KcpHelper{}
+		sub.kcpHelper = &Helper{}
 	} else {
 		sub.kcpHelper = helper
 	}
@@ -33,7 +33,7 @@ func NewProvidersecretSubroutine(
 
 type ProvidersecretSubroutine struct {
 	client    client.Client
-	kcpHelper KcpHelperInterface
+	kcpHelper KcpHelper
 }
 
 const (
@@ -92,13 +92,12 @@ func (r *ProvidersecretSubroutine) Process(
 				"kubeconfig": kcpConfigBytes,
 			},
 		}
-		err = r.client.Create(ctx, providerSecret)
+		_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
+			err = controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme())
+			return err
+		})
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to create secret")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
-		if err := controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme()); err != nil {
-			log.Error().Err(err).Msg("Failed to set owner reference")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 	}

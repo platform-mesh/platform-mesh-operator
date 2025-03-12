@@ -61,15 +61,15 @@ var manifestStructure = DirectoryStructure{
 	},
 }
 
-type KcpHelperInterface interface {
+type KcpHelper interface {
 	NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error)
 	GetSecret(client client.Client, name string, namespace string) (*corev1.Secret, error)
 }
 
-type KcpHelper struct {
+type Helper struct {
 }
 
-func (h *KcpHelper) NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error) {
+func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error) {
 	config.QPS = 1000.0
 	config.Burst = 2000.0
 	u, err := url.Parse(config.Host)
@@ -84,7 +84,7 @@ func (h *KcpHelper) NewKcpClient(config *rest.Config, workspacePath string) (cli
 	return client, nil
 }
 
-func (h *KcpHelper) GetSecret(client client.Client, name string, namespace string) (*corev1.Secret, error) {
+func (h *Helper) GetSecret(client client.Client, name string, namespace string) (*corev1.Secret, error) {
 	secret := corev1.Secret{}
 	err := client.Get(context.Background(), types.NamespacedName{
 		Name:      name,

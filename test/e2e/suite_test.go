@@ -115,8 +115,8 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	})
 	suite.Nil(err)
 
-	contentConfigurationReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig)
-	err = contentConfigurationReconciler.SetupWithManager(suite.kubernetesManager, appConfig, log)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig)
+	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, appConfig, log)
 	suite.Nil(err)
 
 	// setup KCP test environment
