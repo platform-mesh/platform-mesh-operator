@@ -1,0 +1,21 @@
+with-expecter: true
+packages:
+  # internal
+  github.com/openmfp/openmfp-operator/pkg/subroutines:
+    config:
+      dir: pkg/subroutines/mocks
+      outpkg: mocks
+    interfaces:
+      KcpHelperInterface:
+        config:
+          mockname: KcpHelper
+
+  # external
+  sigs.k8s.io/controller-runtime/pkg/client:
+    config:
+      dir: pkg/subroutines/mocks
+      outpkg: mocks
+    interfaces:
+      Client:
+        config:
+          mockname: Client

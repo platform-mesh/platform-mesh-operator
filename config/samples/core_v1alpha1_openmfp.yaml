@@ -1,0 +1,16 @@
+apiVersion: core.openmfp.org/v1alpha1
+kind: OpenMFP
+metadata:
+  labels:
+    app.kubernetes.io/name: openmfp-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: openmfp-sample
+  namespace: openmfp-system
+spec:
+  kcp:
+    adminSecretRef:
+      name: openmfp-kcp-internal-admin-kubeconfig
+    providerConnections:
+    - endpointSliceName: core.openmfp.org
+      path: root:openmfp-system
+      secret: openmfp-operator-kubeconfig

@@ -1,0 +1,7 @@
+apiVersion: core.openmfp.org/v1alpha1
+kind: Account
+metadata:
+  name: openmfp
+spec:
+  type: org
+  displayName: OpenMFP Org
