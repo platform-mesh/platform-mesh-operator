@@ -30,6 +30,7 @@ import (
 
 	"github.com/openmfp/openmfp-operator/internal/config"
 	"github.com/openmfp/openmfp-operator/internal/controller"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 )
 
 var operatorCmd = &cobra.Command{
@@ -107,7 +108,7 @@ func RunController(cmd *cobra.Command, args []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, cfg)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, cfg, subroutines.DirManifestStructure)
 	if err := openmfpReconciler.SetupWithManager(mgr, cfg, log); err != nil {
 		log.Fatal().Err(err).Str("controller", "ContentConfiguration").Msg("unable to create controller")
 	}

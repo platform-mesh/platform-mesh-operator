@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"net/url"
 
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/openmfp/golang-commons/errors"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -28,34 +32,34 @@ type WorkspaceDirectory struct {
 }
 
 // apply manifests for folder dir to KCP
-var manifestStructure = DirectoryStructure{
+var DirManifestStructure = DirectoryStructure{
 	Workspaces: []WorkspaceDirectory{
 		{
 			Name: "root",
 			Files: []string{
-				"../../test/setup/workspace-openmfp-system.yaml",
-				"../../test/setup/workspacetype-org.yaml",
-				"../../test/setup/workspace-type-orgs.yaml",
-				"../../test/setup/workspace-type-account.yaml",
-				"../../test/setup/workspace-orgs.yaml",
+				"test/setup/workspace-openmfp-system.yaml",
+				"test/setup/workspacetype-org.yaml",
+				"test/setup/workspace-type-orgs.yaml",
+				"test/setup/workspace-type-account.yaml",
+				"test/setup/workspace-orgs.yaml",
 			},
 		},
 		{
 			Name: "root:openmfp-system",
 			Files: []string{
-				"../../test/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
+				"test/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"test/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"test/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
+				"test/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
+				"test/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
+				"test/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
 			},
 		},
 		{
 			Name: "root:orgs",
 			Files: []string{
-				"../../test/setup/02-orgs/account-root-org.yaml",
-				"../../test/setup/02-orgs/workspace-root-org.yaml",
+				"test/setup/02-orgs/account-root-org.yaml",
+				"test/setup/02-orgs/workspace-root-org.yaml",
 			},
 		},
 	},
@@ -77,7 +81,13 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 		return nil, fmt.Errorf("Unable to parse KCP host: %w", err)
 	}
 	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
-	client, err := client.New(config, client.Options{})
+	scheme := runtime.NewScheme()
+	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	client, err := client.New(config, client.Options{
+		Scheme: scheme,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("Unable to create KCP client: %w", err)
 	}
@@ -95,3 +105,5 @@ func (h *Helper) GetSecret(client client.Client, name string, namespace string) 
 	}
 	return &secret, nil
 }
+
+var DEFAULT_KCP_SECRET_KEY = "kubeconfig"

@@ -121,6 +121,5 @@ tasks:
     cmds:
       - "{{.KUSTOMIZE}} build config/crd | {{.KUBECTL}} apply -f -"
   run:
-    deps: [install]
     cmds:
       - source .env && go run ./main.go operator

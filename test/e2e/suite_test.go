@@ -34,6 +34,7 @@ import (
 	cachev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/openmfp/openmfp-operator/internal/config"
 	"github.com/openmfp/openmfp-operator/internal/controller"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 	"github.com/openmfp/openmfp-operator/pkg/testing/kcpenvtest"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/suite"
@@ -57,6 +58,39 @@ const (
 	defaultTickInterval = 250 * time.Millisecond
 	defaultNamespace    = "default"
 )
+
+var testDirs = subroutines.DirectoryStructure{
+	Workspaces: []subroutines.WorkspaceDirectory{
+		{
+			Name: "root",
+			Files: []string{
+				"../../test/setup/workspace-openmfp-system.yaml",
+				"../../test/setup/workspacetype-org.yaml",
+				"../../test/setup/workspace-type-orgs.yaml",
+				"../../test/setup/workspace-type-account.yaml",
+				"../../test/setup/workspace-orgs.yaml",
+			},
+		},
+		{
+			Name: "root:openmfp-system",
+			Files: []string{
+				"../../test/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
+			},
+		},
+		{
+			Name: "root:orgs",
+			Files: []string{
+				"../../test/setup/02-orgs/account-root-org.yaml",
+				"../../test/setup/02-orgs/workspace-root-org.yaml",
+			},
+		},
+	},
+}
 
 type OpenmfpTestSuite struct {
 	suite.Suite
@@ -115,7 +149,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	})
 	suite.Nil(err)
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, testDirs)
 	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, appConfig, log)
 	suite.Nil(err)
 

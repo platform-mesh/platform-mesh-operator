@@ -39,7 +39,8 @@ type Kcp struct {
 }
 
 type AdminSecretRef struct {
-	Name string `json:"name"`
+	Name string  `json:"name"`
+	Key  *string `json:"key,omitempty"`
 }
 
 type ProviderConnection struct {

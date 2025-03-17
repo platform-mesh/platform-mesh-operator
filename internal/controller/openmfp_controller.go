@@ -66,10 +66,10 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg config.Config
 	return builder.Complete(r)
 }
 
-func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Config) *OpenMFPReconciler {
+func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Config, dir subroutines.DirectoryStructure) *OpenMFPReconciler {
 	var subs []lifecycle.Subroutine
 	if cfg.Subroutines.Kcpsetup.Enabled {
-		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), nil))
+		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), nil, dir))
 	}
 	if cfg.Subroutines.Providersecret.Enabled {
 		subs = append(subs, subroutines.NewProvidersecretSubroutine(mgr.GetClient(), nil))

@@ -30,8 +30,9 @@ import (
 )
 
 type KcpsetupSubroutine struct {
-	client    client.Client
-	kcpHelper KcpHelper
+	client       client.Client
+	kcpHelper    KcpHelper
+	kcpDirectory DirectoryStructure
 }
 
 const (
@@ -39,9 +40,10 @@ const (
 	KcpsetupSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir DirectoryStructure) *KcpsetupSubroutine {
 	sub := &KcpsetupSubroutine{
-		client: client,
+		client:       client,
+		kcpDirectory: kcpdir,
 	}
 	if helper == nil {
 		sub.kcpHelper = &Helper{}
@@ -91,7 +93,11 @@ func (r *KcpsetupSubroutine) Process(
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
-	err = r.createKcpWorkspaces(ctx, *secret)
+	secretKey := DEFAULT_KCP_SECRET_KEY
+	if instance.Spec.Kcp.AdminSecretRef.Key != nil {
+		secretKey = *instance.Spec.Kcp.AdminSecretRef.Key
+	}
+	err = r.createKcpWorkspaces(ctx, *secret, secretKey, r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -115,10 +121,10 @@ func (r *KcpsetupSubroutine) Process(
 
 }
 
-func (r *KcpsetupSubroutine) createKcpWorkspaces(ctx context.Context, secret corev1.Secret) error {
+func (r *KcpsetupSubroutine) createKcpWorkspaces(ctx context.Context, secret corev1.Secret, secretKey string, dir DirectoryStructure) error {
 
 	// kcp kubernetes client
-	config, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])
+	config, err := clientcmd.RESTConfigFromKubeConfig(secret.Data[secretKey])
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build config from kubeconfig string")
 		return errors.Wrap(err, "Failed to build config from kubeconfig string")
@@ -131,7 +137,7 @@ func (r *KcpsetupSubroutine) createKcpWorkspaces(ctx context.Context, secret cor
 	}
 
 	// TODO: check if already applied
-	err = r.applyDirStructure(ctx, manifestStructure, config, inventory)
+	err = r.applyDirStructure(ctx, dir, config, inventory)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
 		return errors.Wrap(err, "Failed to apply dir structure")

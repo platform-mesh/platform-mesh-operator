@@ -46,6 +46,8 @@ spec:
                 properties:
                   adminSecretRef:
                     properties:
+                      key:
+                        type: string
                       name:
                         type: string
                     required:

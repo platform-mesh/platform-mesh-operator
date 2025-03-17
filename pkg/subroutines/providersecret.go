@@ -66,17 +66,24 @@ func (r *ProvidersecretSubroutine) Process(
 
 	for _, pc := range instance.Spec.Kcp.ProviderConnections {
 
-		kcpConfig, err := clientcmd.Load(secret.Data["kubeconfig"])
+		secretKey := DEFAULT_KCP_SECRET_KEY
+		if instance.Spec.Kcp.AdminSecretRef.Key != nil {
+			secretKey = *instance.Spec.Kcp.AdminSecretRef.Key
+		}
+		kcpConfig, err := clientcmd.Load(secret.Data[secretKey])
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to load kubeconfig")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
-		u, err := url.Parse(kcpConfig.Clusters["root"].Server)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse KCP host")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		for _, cluster := range kcpConfig.Clusters {
+			u, err := url.Parse(cluster.Server)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to parse KCP host")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
+			cluster.Server = u.Scheme + "://" + u.Host + "/clusters/" + pc.Path
+			break
 		}
-		kcpConfig.Clusters["root"].Server = u.Scheme + "://" + u.Host + "/clusters/" + pc.Path
 
 		kcpConfigBytes, err := clientcmd.Write(*kcpConfig)
 		if err != nil {

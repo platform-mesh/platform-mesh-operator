@@ -23,6 +23,39 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var ManifestStructureTest = DirectoryStructure{
+	Workspaces: []WorkspaceDirectory{
+		{
+			Name: "root",
+			Files: []string{
+				"../../test/setup/workspace-openmfp-system.yaml",
+				"../../test/setup/workspacetype-org.yaml",
+				"../../test/setup/workspace-type-orgs.yaml",
+				"../../test/setup/workspace-type-account.yaml",
+				"../../test/setup/workspace-orgs.yaml",
+			},
+		},
+		{
+			Name: "root:openmfp-system",
+			Files: []string{
+				"../../test/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
+				"../../test/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
+			},
+		},
+		{
+			Name: "root:orgs",
+			Files: []string{
+				"../../test/setup/02-orgs/account-root-org.yaml",
+				"../../test/setup/02-orgs/workspace-root-org.yaml",
+			},
+		},
+	},
+}
+
 type KcpsetupTestSuite struct {
 	suite.Suite
 
@@ -46,7 +79,7 @@ func (suite *KcpsetupTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 
 	// create new test object
-	suite.testObj = NewKcpsetupSubroutine(suite.clientMock, nil)
+	suite.testObj = NewKcpsetupSubroutine(suite.clientMock, nil, ManifestStructureTest)
 }
 
 func (suite *KcpsetupTestSuite) TearDownTest() {
@@ -247,7 +280,7 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 	helper := &Helper{}
 
 	// create new test object
-	s.testObj = NewKcpsetupSubroutine(s.clientMock, helper)
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, helper, ManifestStructureTest)
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
@@ -296,7 +329,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
-	})
+	}, "kubeconfig", ManifestStructureTest)
 	s.Assert().Error(err)
 
 	// test OK
@@ -335,7 +368,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
-	})
+	}, "kubeconfig", ManifestStructureTest)
 	s.Assert().Nil(err)
 
 	// test err2
@@ -343,6 +376,6 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invaliddata"),
 		},
-	})
+	}, "kubeconfig", ManifestStructureTest)
 	s.Assert().Error(err)
 }
