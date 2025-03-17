@@ -1,8 +1,9 @@
-package subroutines
+package subroutines_test
 
 import (
 	"testing"
 
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 	"github.com/stretchr/testify/suite"
 	"k8s.io/client-go/rest"
 )
@@ -10,7 +11,7 @@ import (
 type HelperTestSuite struct {
 	suite.Suite
 
-	KcpHelper
+	subroutines.KcpHelper
 }
 
 func TestHelperTestSuite(t *testing.T) {
@@ -18,7 +19,7 @@ func TestHelperTestSuite(t *testing.T) {
 }
 
 func (suite *HelperTestSuite) SetupTest() {
-	suite.KcpHelper = &Helper{}
+	suite.KcpHelper = &subroutines.Helper{}
 }
 
 func (s *HelperTestSuite) TestConstructorError() {

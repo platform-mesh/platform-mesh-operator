@@ -64,29 +64,29 @@ var testDirs = subroutines.DirectoryStructure{
 		{
 			Name: "root",
 			Files: []string{
-				"../../test/setup/workspace-openmfp-system.yaml",
-				"../../test/setup/workspacetype-org.yaml",
-				"../../test/setup/workspace-type-orgs.yaml",
-				"../../test/setup/workspace-type-account.yaml",
-				"../../test/setup/workspace-orgs.yaml",
+				"../../setup/workspace-openmfp-system.yaml",
+				"../../setup/workspacetype-org.yaml",
+				"../../setup/workspace-type-orgs.yaml",
+				"../../setup/workspace-type-account.yaml",
+				"../../setup/workspace-orgs.yaml",
 			},
 		},
 		{
 			Name: "root:openmfp-system",
 			Files: []string{
-				"../../test/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
 			},
 		},
 		{
 			Name: "root:orgs",
 			Files: []string{
-				"../../test/setup/02-orgs/account-root-org.yaml",
-				"../../test/setup/02-orgs/workspace-root-org.yaml",
+				"../../setup/02-orgs/account-root-org.yaml",
+				"../../setup/02-orgs/workspace-root-org.yaml",
 			},
 		},
 	},
@@ -161,7 +161,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 		useExistingCluster = envValue
 	}
 	suite.kcpTestenv = kcpenvtest.NewEnvironment(
-		"openmfp.org", "openmfp-system", "../../", "bin", "test/setup", useExistingCluster, testEnvLogger)
+		"openmfp.org", "openmfp-system", "../../", "bin", "setup", useExistingCluster, testEnvLogger)
 	k8sCfg, _, err := suite.kcpTestenv.Start()
 	suite.Require().NoError(err)
 	if err != nil {

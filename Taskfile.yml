@@ -7,7 +7,7 @@ vars:
   ENVTEST_K8S_VERSION: "1.29.0"
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
-  TEST_SETUP_DIRECTORY: test/setup/01-openmfp-system
+  TEST_SETUP_DIRECTORY: setup/01-openmfp-system
   KCP_APIGEN_VERSION: v0.21.0
   KCP_VERSION: 0.26.1
   GOMPLATE_VERSION: v4.3.0

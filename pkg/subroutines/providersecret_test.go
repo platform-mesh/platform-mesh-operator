@@ -1,4 +1,4 @@
-package subroutines
+package subroutines_test
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"github.com/openmfp/golang-commons/context/keys"
 	"github.com/openmfp/golang-commons/logger"
 	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -27,7 +28,7 @@ var secretKubeconfigData, _ = os.ReadFile("test/kubeconfig.yaml")
 type ProvidersecretTestSuite struct {
 	suite.Suite
 
-	testObj *ProvidersecretSubroutine
+	testObj *subroutines.ProvidersecretSubroutine
 
 	// mocks
 	clientMock *mocks.Client
@@ -47,7 +48,7 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 
 	// create new test object
-	suite.testObj = NewProvidersecretSubroutine(suite.clientMock, nil)
+	suite.testObj = subroutines.NewProvidersecretSubroutine(suite.clientMock, nil)
 }
 
 func (suite *ProvidersecretTestSuite) TearDownTest() {
@@ -145,7 +146,8 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			},
 		}, nil).Once()
 
-	s.testObj.kcpHelper = mockedKcpHelper
+	// s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -194,12 +196,13 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	}
 
 	// mocks
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.clientMock.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	mocClient := new(mocks.Client)
+	mocClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	mocClient.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	scheme := runtime.NewScheme()
 	err := corev1.AddToScheme(scheme)
 	s.Assert().NoError(err)
-	s.clientMock.EXPECT().Scheme().Return(scheme).Once()
+	mocClient.EXPECT().Scheme().Return(scheme).Once()
 
 	slice := &kcpapiv1alpha.APIExportEndpointSlice{
 		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
@@ -211,8 +214,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		},
 	}
 
-	mockKcpClient := new(mocks.Client)
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+	mocClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
@@ -221,7 +223,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockKcpClient, nil).Once()
+		Return(mocClient, nil).Once()
 	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
 		Return(&corev1.Secret{
 			Data: map[string][]byte{
@@ -229,7 +231,8 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 			},
 		}, nil).Once()
 
-	s.testObj.kcpHelper = mockedKcpHelper
+	// s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewProvidersecretSubroutine(mocClient, mockedKcpHelper)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -289,9 +292,10 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			"kubeconfig": secretKubeconfigData,
 		},
 	}
-	s.clientMock.EXPECT().Create(
+	mockClient := new(mocks.Client)
+	mockClient.EXPECT().Create(
 		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error creating secret")).Once()
-	s.clientMock.EXPECT().Get(
+	mockClient.EXPECT().Get(
 		mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 	) error {
 		*o.(*corev1.Secret) = secret
@@ -308,8 +312,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		},
 	}
 
-	mockKcpClient := new(mocks.Client)
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+	mockClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
@@ -317,7 +320,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		}).Once()
 
 	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
+	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockClient, nil).Once()
 	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
 		Return(&corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -329,7 +332,8 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			},
 		}, nil)
 
-	s.testObj.kcpHelper = mockedKcpHelper
+	// s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewProvidersecretSubroutine(mockClient, mockedKcpHelper)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -406,7 +410,8 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 			},
 		}, nil).Once()
 
-	s.testObj.kcpHelper = mockedKcpHelper
+	// s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewProvidersecretSubroutine(mockKcpClient, mockedKcpHelper)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -543,12 +548,12 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 
 func (s *ProvidersecretTestSuite) TestFinalizers() {
 	res := s.testObj.Finalizers()
-	s.Assert().Equal(res, []string{ProvidersecretSubroutineFinalizer})
+	s.Assert().Equal(res, []string{subroutines.ProvidersecretSubroutineFinalizer})
 }
 
 func (s *ProvidersecretTestSuite) TestGetName() {
 	res := s.testObj.GetName()
-	s.Assert().Equal(res, KcpsetupSubroutineName)
+	s.Assert().Equal(res, subroutines.KcpsetupSubroutineName)
 }
 
 func (suite *ProvidersecretTestSuite) TestConstructor() {
@@ -557,10 +562,10 @@ func (suite *ProvidersecretTestSuite) TestConstructor() {
 
 	// create new mock client
 	suite.clientMock = new(mocks.Client)
-	helper := &Helper{}
+	helper := &subroutines.Helper{}
 
 	// create new test object
-	suite.testObj = NewProvidersecretSubroutine(suite.clientMock, helper)
+	suite.testObj = subroutines.NewProvidersecretSubroutine(suite.clientMock, helper)
 }
 
 func (s *ProvidersecretTestSuite) TestFinalize() {

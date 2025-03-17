@@ -1,4 +1,4 @@
-package subroutines
+package subroutines_test
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"github.com/openmfp/golang-commons/context/keys"
 	"github.com/openmfp/golang-commons/logger"
 	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -23,34 +24,34 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var ManifestStructureTest = DirectoryStructure{
-	Workspaces: []WorkspaceDirectory{
+var ManifestStructureTest = subroutines.DirectoryStructure{
+	Workspaces: []subroutines.WorkspaceDirectory{
 		{
 			Name: "root",
 			Files: []string{
-				"../../test/setup/workspace-openmfp-system.yaml",
-				"../../test/setup/workspacetype-org.yaml",
-				"../../test/setup/workspace-type-orgs.yaml",
-				"../../test/setup/workspace-type-account.yaml",
-				"../../test/setup/workspace-orgs.yaml",
+				"../../setup/workspace-openmfp-system.yaml",
+				"../../setup/workspacetype-org.yaml",
+				"../../setup/workspace-type-orgs.yaml",
+				"../../setup/workspace-type-account.yaml",
+				"../../setup/workspace-orgs.yaml",
 			},
 		},
 		{
 			Name: "root:openmfp-system",
 			Files: []string{
-				"../../test/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
-				"../../test/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
 			},
 		},
 		{
 			Name: "root:orgs",
 			Files: []string{
-				"../../test/setup/02-orgs/account-root-org.yaml",
-				"../../test/setup/02-orgs/workspace-root-org.yaml",
+				"../../setup/02-orgs/account-root-org.yaml",
+				"../../setup/02-orgs/workspace-root-org.yaml",
 			},
 		},
 	},
@@ -59,7 +60,7 @@ var ManifestStructureTest = DirectoryStructure{
 type KcpsetupTestSuite struct {
 	suite.Suite
 
-	testObj *KcpsetupSubroutine
+	testObj *subroutines.KcpsetupSubroutine
 
 	// mocks
 	clientMock *mocks.Client
@@ -79,7 +80,7 @@ func (suite *KcpsetupTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 
 	// create new test object
-	suite.testObj = NewKcpsetupSubroutine(suite.clientMock, nil, ManifestStructureTest)
+	suite.testObj = subroutines.NewKcpsetupSubroutine(suite.clientMock, nil, ManifestStructureTest)
 }
 
 func (suite *KcpsetupTestSuite) TearDownTest() {
@@ -184,7 +185,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	}).Once()
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient2, nil)
 
-	s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -199,7 +200,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Times(3)
-	s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest)
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -220,9 +221,9 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err := s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err := s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(APIExportInventory{
+	s.Assert().Equal(subroutines.APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "hash1",
 		ApiExportRootShardsKcpIoIdentityHash:  "hash1",
 	}, inventory)
@@ -241,9 +242,9 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err = s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(APIExportInventory{
+	s.Assert().Equal(subroutines.APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "hash1",
 	}, inventory)
 
@@ -255,18 +256,18 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err = s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(APIExportInventory{
+	s.Assert().Equal(subroutines.APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "",
 	}, inventory)
 
 	// test error 4
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(nil, errors.New("Error")).Once()
-	inventory, err = s.testObj.getAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(APIExportInventory{
+	s.Assert().Equal(subroutines.APIExportInventory{
 		ApiExportRootTenancyKcpIoIdentityHash: "",
 	}, inventory)
 }
@@ -277,20 +278,20 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 
 	// create new mock client
 	s.clientMock = new(mocks.Client)
-	helper := &Helper{}
+	helper := &subroutines.Helper{}
 
 	// create new test object
-	s.testObj = NewKcpsetupSubroutine(s.clientMock, helper, ManifestStructureTest)
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, ManifestStructureTest)
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
 	res := s.testObj.Finalizers()
-	s.Assert().Equal(res, []string{ProvidersecretSubroutineFinalizer})
+	s.Assert().Equal(res, []string{subroutines.ProvidersecretSubroutineFinalizer})
 }
 
 func (s *KcpsetupTestSuite) TestGetName() {
 	res := s.testObj.GetName()
-	s.Assert().Equal(res, KcpsetupSubroutineName)
+	s.Assert().Equal(res, subroutines.KcpsetupSubroutineName)
 }
 
 func (s *KcpsetupTestSuite) TestFinalize() {
@@ -303,21 +304,21 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 
 	client := new(mocks.Client)
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.applyManifestFromFile(context.TODO(), "../../test/setup/workspace-openmfp-system.yaml", client, APIExportInventory{})
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", client, subroutines.APIExportInventory{})
 	s.Assert().Nil(err)
 
-	err = s.testObj.applyManifestFromFile(context.TODO(), "invalid", nil, APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, subroutines.APIExportInventory{})
 	s.Assert().Error(err)
 
-	err = s.testObj.applyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, subroutines.APIExportInventory{})
 	s.Assert().Error(err)
 
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.applyManifestFromFile(context.TODO(), "../../test/setup/workspace-openmfp-system.yaml", client, APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", client, subroutines.APIExportInventory{})
 	s.Assert().Error(err)
 
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.applyManifestFromFile(context.TODO(), "../../test/setup/workspace-orgs.yaml", client, APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-orgs.yaml", client, subroutines.APIExportInventory{})
 	s.Assert().Nil(err)
 
 }
@@ -325,7 +326,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// test err1
-	err := s.testObj.createKcpWorkspaces(context.Background(), corev1.Secret{
+	err := s.testObj.CreateKcpWorkspaces(context.Background(), corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
@@ -336,7 +337,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj.kcpHelper = mockedKcpHelper
+	s.testObj = subroutines.NewKcpsetupSubroutine(mockKcpClient, mockedKcpHelper, ManifestStructureTest)
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -364,7 +365,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			return nil
 		})
 	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	err = s.testObj.createKcpWorkspaces(context.Background(), corev1.Secret{
+	err = s.testObj.CreateKcpWorkspaces(context.Background(), corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
@@ -372,7 +373,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	s.Assert().Nil(err)
 
 	// test err2
-	err = s.testObj.createKcpWorkspaces(context.Background(), corev1.Secret{
+	err = s.testObj.CreateKcpWorkspaces(context.Background(), corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invaliddata"),
 		},

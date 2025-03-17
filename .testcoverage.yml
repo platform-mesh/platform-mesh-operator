@@ -6,4 +6,6 @@ exclude:
     - ^cmd # skip covering cmd directory
     - ^pkg/testing # skip covering kcpenvtest
     - ^test/
+    - ^setup/
+    - .*_testexports.go
 
