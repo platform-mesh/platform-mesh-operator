@@ -79,8 +79,6 @@ func (r *KcpsetupSubroutine) Process(
 	log := logger.LoadLoggerFromContext(ctx)
 
 	instance := runtimeObj.(*corev1alpha1.OpenMFP)
-	log.Debug().Str("name", instance.Name).Msg("Processing OpenMFP instance")
-
 	log.Debug().Str("name", instance.Name).Str(
 		"kcp-secret-name", instance.Spec.Kcp.AdminSecretRef.Name).Msg("Processing kcp secrect")
 
@@ -90,7 +88,7 @@ func (r *KcpsetupSubroutine) Process(
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), false, false)
 	}
 
 	secretKey := DEFAULT_KCP_SECRET_KEY
@@ -100,7 +98,7 @@ func (r *KcpsetupSubroutine) Process(
 	err = r.createKcpWorkspaces(ctx, *secret, secretKey, r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), false, false)
 	}
 
 	// update workspace status
@@ -239,7 +237,8 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 ) error {
 	manifestBytes, err := os.ReadFile(path)
 	if err != nil {
-		return errors.Wrap(err, "Failed to read file")
+		pwdir, _ := os.Getwd()
+		return errors.Wrap(err, fmt.Sprintf("Failed to read file, pwd: %s", pwdir))
 	}
 
 	tmpl, err := template.New("manifest").Parse(string(manifestBytes))
