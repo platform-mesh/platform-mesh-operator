@@ -4,4 +4,4 @@ metadata:
   name: openmfp
 spec:
   type: org
-  displayName: OpenMFP Org
+  displayName: OpenMFP Root Organization
