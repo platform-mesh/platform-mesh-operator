@@ -79,22 +79,26 @@ func (r *KcpsetupSubroutine) Process(
 	log := logger.LoadLoggerFromContext(ctx)
 
 	instance := runtimeObj.(*corev1alpha1.OpenMFP)
-	log.Debug().Str("name", instance.Name).Str(
-		"kcp-secret-name", instance.Spec.Kcp.AdminSecretRef.Name).Msg("Processing kcp secrect")
+	log.Debug().Str("name", instance.Name).Msg("Processing OpenMFP resource")
+
+	secretKey := DEFAULT_KCP_SECRET_KEY
+	secretName := DEFAULT_KCP_SECRET_NAME
+	secretNamespace := instance.Namespace
+	if instance.Spec.Kcp.AdminSecretRef != nil {
+		secretKey = instance.Spec.Kcp.AdminSecretRef.Key
+		secretName = instance.Spec.Kcp.AdminSecretRef.SecretRef.Name
+		secretNamespace = instance.Spec.Kcp.AdminSecretRef.SecretRef.Namespace
+	}
 
 	// Get the secret
 	secret, err := r.kcpHelper.GetSecret(
-		r.client, instance.Spec.Kcp.AdminSecretRef.Name, instance.Namespace,
+		r.client, secretName, secretNamespace,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get secret")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), false, false)
 	}
 
-	secretKey := DEFAULT_KCP_SECRET_KEY
-	if instance.Spec.Kcp.AdminSecretRef.Key != nil {
-		secretKey = *instance.Spec.Kcp.AdminSecretRef.Key
-	}
 	err = r.createKcpWorkspaces(ctx, *secret, secretKey, r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")

@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,13 +35,14 @@ type OpenMFPSpec struct {
 }
 
 type Kcp struct {
-	AdminSecretRef      AdminSecretRef       `json:"adminSecretRef"`
-	ProviderConnections []ProviderConnection `json:"providerConnections"`
+	AdminSecretRef           *AdminSecretRef      `json:"adminSecretRef,omitempty"`
+	ProviderConnections      []ProviderConnection `json:"providerConnections,omitempty"`
+	ExtraProviderConnections []ProviderConnection `json:"extraProviderConnections,omitempty"`
 }
 
 type AdminSecretRef struct {
-	Name string  `json:"name"`
-	Key  *string `json:"key,omitempty"`
+	SecretRef v1.SecretReference `json:"secret,omitempty"`
+	Key       string             `json:"key,omitempty"`
 }
 
 type ProviderConnection struct {

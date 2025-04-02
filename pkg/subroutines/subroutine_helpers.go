@@ -107,3 +107,4 @@ func (h *Helper) GetSecret(client client.Client, name string, namespace string) 
 }
 
 var DEFAULT_KCP_SECRET_KEY = "kubeconfig"
+var DEFAULT_KCP_SECRET_NAME = "openmfp-operator-kubeconfig"

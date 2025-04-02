@@ -71,8 +71,12 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
-				AdminSecretRef: corev1alpha1.AdminSecretRef{
-					Name: "test-secret",
+				AdminSecretRef: &corev1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "test-secret",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
@@ -169,8 +173,12 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		},
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
-				AdminSecretRef: corev1alpha1.AdminSecretRef{
-					Name: "test-secret",
+				AdminSecretRef: &corev1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "test-secret",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
@@ -256,8 +264,12 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		},
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
-				AdminSecretRef: corev1alpha1.AdminSecretRef{
-					Name: "test-secret",
+				AdminSecretRef: &corev1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "test-secret",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
@@ -357,8 +369,12 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 		},
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
-				AdminSecretRef: corev1alpha1.AdminSecretRef{
-					Name: "test-secret",
+				AdminSecretRef: &corev1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "test-secret",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
@@ -435,8 +451,12 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 		},
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
-				AdminSecretRef: corev1alpha1.AdminSecretRef{
-					Name: "test-secret",
+				AdminSecretRef: &corev1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "test-secret",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
@@ -498,8 +518,12 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 		},
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
-				AdminSecretRef: corev1alpha1.AdminSecretRef{
-					Name: "test-secret",
+				AdminSecretRef: &corev1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "test-secret",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{

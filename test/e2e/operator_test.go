@@ -47,14 +47,18 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 		},
 		Spec: v1alpha1.OpenMFPSpec{
 			Kcp: v1alpha1.Kcp{
-				AdminSecretRef: v1alpha1.AdminSecretRef{
-					Name: "kcp-admin",
+				AdminSecretRef: &v1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Name:      "kcp-admin",
+						Namespace: "default",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []v1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "openmfp.org",
 						Path:              "root:openmfp-system",
-						Secret:            "core-openmfp-system-kubeconfig",
+						Secret:            "openmfp-system-kubeconfig",
 					},
 				},
 			},
@@ -139,8 +143,12 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 		},
 		Spec: v1alpha1.OpenMFPSpec{
 			Kcp: v1alpha1.Kcp{
-				AdminSecretRef: v1alpha1.AdminSecretRef{
-					Name: "kcp-admin",
+				AdminSecretRef: &v1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Namespace: "default",
+						Name:      "kcp-admin",
+					},
+					Key: "kubeconfig",
 				},
 				ProviderConnections: []v1alpha1.ProviderConnection{
 					{
