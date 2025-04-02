@@ -27,3 +27,4 @@ bin/*
 .kcp/
 kcp.log
 .vscode/*
+.idea
