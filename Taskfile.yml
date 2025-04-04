@@ -8,8 +8,7 @@ vars:
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
   TEST_SETUP_DIRECTORY: setup/01-openmfp-system
-  KCP_APIGEN_VERSION: v0.21.0
-  KCP_VERSION: 0.26.1
+  KCP_VERSION: 0.27.1
   GOMPLATE_VERSION: v4.3.0
   KUSTOMIZE_VERSION: v5.4.3
   KUBECTL: kubectl
@@ -23,7 +22,7 @@ tasks:
   setup:mockery:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/mockery || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vektra/mockery/v2@v2.43.2
+      - test -s {{.LOCAL_BIN}}/mockery || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vektra/mockery/v2@v2.53.3
   setup:go-test-coverage:
     internal: true
     cmds:
@@ -31,8 +30,7 @@ tasks:
   setup:kcp:
     internal: true
     cmds:
-      - mkdir -p {{.LOCAL_BIN}}/kcpdownload
-      - test -s {{.LOCAL_BIN}}/kcpdownload/bin/kcp || wget https://github.com/kcp-dev/kcp/releases/download/v{{.KCP_VERSION}}/kcp_{{.KCP_VERSION}}_{{.GOOS}}_{{.GOARCH}}.tar.gz -O - | tar -xz -C $(pwd)/{{.LOCAL_BIN}}/kcpdownload/
+      - test -s {{.LOCAL_BIN}}/kcp || GOBIN=$(pwd)/{{.LOCAL_BIN}} ./hack/download-tool.sh https://github.com/kcp-dev/kcp/releases/download/v{{ .KCP_VERSION }}/kcp_{{ .KCP_VERSION }}_{{ .GOOS }}_{{ .GOARCH }}.tar.gz kcp {{.KCP_VERSION}}
   setup:envtest:
     internal: true
     deps: [setup:kcp]

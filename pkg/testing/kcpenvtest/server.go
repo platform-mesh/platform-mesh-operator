@@ -69,7 +69,7 @@ func NewEnvironment(
 	relativeSetupDirectory string,
 	useExistingCluster bool,
 	log *logger.Logger) *Environment {
-	kcpBinary := filepath.Join(relativeAssetDirectory, "kcpdownload/bin/kcp")
+	kcpBinary := filepath.Join(relativeAssetDirectory, "kcp")
 	kcpServ := NewKCPServer(pathToRoot, kcpBinary, pathToRoot, log)
 
 	// kcpServ.Out = os.Stdout

@@ -27,15 +27,10 @@ import (
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	openmfpconfig "github.com/openmfp/golang-commons/config"
 
 	openmfpcontext "github.com/openmfp/golang-commons/context"
 	"github.com/openmfp/golang-commons/logger"
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
-	cachev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
-	"github.com/openmfp/openmfp-operator/internal/controller"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	"github.com/openmfp/openmfp-operator/pkg/testing/kcpenvtest"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/suite"
 	v1 "k8s.io/api/apps/v1"
@@ -46,6 +41,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+
+	"github.com/openmfp/openmfp-operator/api/v1alpha1"
+	cachev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/internal/config"
+	"github.com/openmfp/openmfp-operator/internal/controller"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	"github.com/openmfp/openmfp-operator/pkg/testing/kcpenvtest"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -116,10 +118,11 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	// Disable color logging as vs-code does not support color logging in the test output
 	log = logger.NewFromZerolog(log.Output(&zerolog.ConsoleWriter{Out: os.Stdout, NoColor: true}))
 
-	appConfig, err := config.NewFromEnv()
-	suite.Nil(err)
-
-	testContext, _, _ := openmfpcontext.StartContext(log, appConfig, appConfig.ShutdownTimeout)
+	defaultConfig := &openmfpconfig.CommonServiceConfig{}
+	appConfig := &config.OperatorConfig{}
+	appConfig.Subroutines.KcpSetup.Enabled = true
+	appConfig.Subroutines.ProviderSecret.Enabled = true
+	testContext, _, _ := openmfpcontext.StartContext(log, appConfig, defaultConfig.ShutdownTimeout)
 
 	testContext = logger.SetLoggerInContext(testContext, log.ComponentLogger("TestSuite"))
 
@@ -150,7 +153,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	suite.Nil(err)
 
 	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, testDirs)
-	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, appConfig, log)
+	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, defaultConfig, log)
 	suite.Nil(err)
 
 	// setup KCP test environment

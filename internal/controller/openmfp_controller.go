@@ -19,13 +19,15 @@ package controller
 import (
 	"context"
 
+	openmfpconfig "github.com/openmfp/golang-commons/config"
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/logger"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
 	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/openmfp/openmfp-operator/internal/config"
 	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 var (
@@ -56,7 +58,7 @@ func (r *OpenMFPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg config.Config,
+func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfig.CommonServiceConfig,
 	log *logger.Logger, eventPredicates ...predicate.Predicate) error {
 	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, openmfpReconcilerName, &corev1alpha1.OpenMFP{},
 		cfg.DebugLabelValue, log, eventPredicates...)
@@ -66,12 +68,12 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg config.Config
 	return builder.Complete(r)
 }
 
-func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Config, dir subroutines.DirectoryStructure) *OpenMFPReconciler {
+func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, dir subroutines.DirectoryStructure) *OpenMFPReconciler {
 	var subs []lifecycle.Subroutine
-	if cfg.Subroutines.Kcpsetup.Enabled {
+	if cfg.Subroutines.KcpSetup.Enabled {
 		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), nil, dir))
 	}
-	if cfg.Subroutines.Providersecret.Enabled {
+	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProvidersecretSubroutine(mgr.GetClient(), nil))
 	}
 	return &OpenMFPReconciler{

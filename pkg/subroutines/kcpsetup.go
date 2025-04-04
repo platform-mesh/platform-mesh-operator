@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/errors"
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,12 +21,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-
-	"text/template"
 )
 
 type KcpsetupSubroutine struct {
@@ -242,7 +242,7 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 	manifestBytes, err := os.ReadFile(path)
 	if err != nil {
 		pwdir, _ := os.Getwd()
-		return errors.Wrap(err, fmt.Sprintf("Failed to read file, pwd: %s", pwdir))
+		return errors.Wrap(err, "Failed to read file, pwd: %s", pwdir)
 	}
 
 	tmpl, err := template.New("manifest").Parse(string(manifestBytes))
