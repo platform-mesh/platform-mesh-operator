@@ -92,7 +92,6 @@ tasks:
       - "{{.LOCAL_BIN}}/golangci-lint run --timeout 15m ./..."
   cover:
     deps:
-      - task: setup:envtest
       - task: setup:go-test-coverage
       - task: test
         vars:
