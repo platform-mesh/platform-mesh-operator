@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
+	"os"
 
 	openmfpcontext "github.com/openmfp/golang-commons/context"
 	"github.com/spf13/cobra"
@@ -67,22 +68,26 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to start manager")
+		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
 	}
 
 	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, subroutines.DirManifestStructure)
 	if err := openmfpReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
-		log.Fatal().Err(err).Str("controller", "ContentConfiguration").Msg("unable to create controller")
+		setupLog.Error(err, "unable to create controller", "controller", "OpenMFP")
+		os.Exit(1)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		log.Fatal().Err(err).Msg("unable to set up health check")
+		setupLog.Error(err, "unable to set up health check")
+		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		log.Fatal().Err(err).Msg("unable to set up ready check")
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
 	}
 
-	log.Info().Msg("starting manager")
+	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
