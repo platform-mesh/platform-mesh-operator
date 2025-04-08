@@ -37,8 +37,6 @@ func init() {
 
 	rootCmd.AddCommand(operatorCmd)
 
-	cobra.OnInitialize(initConfig, initLog)
-
 	var err error
 	v, defaultCfg, err = openmfpconfig.NewDefaultConfig(rootCmd)
 	if err != nil {
@@ -49,11 +47,12 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	cobra.OnInitialize(initConfig, initLog)
 }
 func initConfig() {
 	v.SetDefault("subroutines-provider-secret-enabled", true)
 	v.SetDefault("subroutines-kcp-setup-enabled", true)
-	v.SetDefault("log-level", "info")
 }
 
 func initLog() { // coverage-ignore
