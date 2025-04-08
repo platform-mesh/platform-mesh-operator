@@ -41,6 +41,9 @@ var operatorCmd = &cobra.Command{
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
 
+	log.Info().Msg("Starting OpenMFP Operator")
+	defer log.Info().Msg("Shutting down OpenMFP Operator")
+
 	ctx, _, shutdown := openmfpcontext.StartContext(log, operatorCfg, defaultCfg.ShutdownTimeout)
 	defer shutdown()
 
@@ -53,6 +56,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if !defaultCfg.EnableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
+
+	log.Info().Msg("Starting manager")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -71,6 +76,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+
+	log.Info().Msg("Manager successfully started")
 
 	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, subroutines.DirManifestStructure)
 	if err := openmfpReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
