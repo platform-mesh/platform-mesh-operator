@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-
 	openmfpconfig "github.com/openmfp/golang-commons/config"
 	"github.com/openmfp/golang-commons/logger"
 	"github.com/spf13/cobra"
@@ -44,14 +42,12 @@ func init() { // coverage-ignore
 	var err error
 	v, defaultCfg, err = openmfpconfig.NewDefaultConfig(rootCmd)
 	if err != nil {
-		setupLog.Error(err, "Failed to create config")
-		os.Exit(1)
+		panic(err)
 	}
 
 	err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
 	if err != nil {
-		setupLog.Error(err, "Failed to bind config to flags")
-		os.Exit(1)
+		panic(err)
 	}
 
 }
@@ -68,8 +64,7 @@ func initLog() { // coverage-ignore
 	var err error
 	log, err = logger.New(logcfg)
 	if err != nil {
-		setupLog.Error(err, "unable to create logger")
-		os.Exit(1)
+		panic(err)
 	}
 }
 
