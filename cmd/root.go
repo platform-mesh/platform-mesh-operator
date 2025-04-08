@@ -43,13 +43,16 @@ func init() {
 		panic(err)
 	}
 
+	cobra.OnInitialize(initConfig)
+
 	err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
 	if err != nil {
 		panic(err)
 	}
 
-	cobra.OnInitialize(initConfig, initLog)
+	cobra.OnInitialize(initLog)
 }
+
 func initConfig() {
 	v.SetDefault("subroutines-provider-secret-enabled", true)
 	v.SetDefault("subroutines-kcp-setup-enabled", true)
