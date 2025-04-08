@@ -10,6 +10,8 @@ spec:
       path: root
     - export: topology.kcp.io
       path: root
+    - export: kubernetes.graphql.gateway
+      path: root
   defaultChildWorkspaceType:
     name: account
     path: root

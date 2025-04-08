@@ -19,6 +19,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/rest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -71,6 +72,7 @@ var testDirs = subroutines.DirectoryStructure{
 				"../../setup/workspace-type-orgs.yaml",
 				"../../setup/workspace-type-account.yaml",
 				"../../setup/workspace-orgs.yaml",
+				"../../setup/apiexport-kcp.io.yaml",
 			},
 		},
 		{
@@ -103,6 +105,7 @@ type OpenmfpTestSuite struct {
 	testEnv             *envtest.Environment
 	logger              *logger.Logger
 	kcpTestenv          *kcpenvtest.Environment
+	config              *rest.Config
 
 	cancel context.CancelFunc
 }
@@ -215,6 +218,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 		return
 	}
 	suite.kcpKubernetesClient = client
+	suite.config = config
 
 	go suite.startController()
 }

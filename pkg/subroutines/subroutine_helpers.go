@@ -42,6 +42,7 @@ var DirManifestStructure = DirectoryStructure{
 				"/operator/setup/workspace-type-orgs.yaml",
 				"/operator/setup/workspace-type-account.yaml",
 				"/operator/setup/workspace-orgs.yaml",
+				"/operator/setup/apiexport-kcp.io.yaml",
 			},
 		},
 		{

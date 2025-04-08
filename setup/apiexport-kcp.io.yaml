@@ -1,0 +1,14 @@
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIExport
+metadata:
+  name: kubernetes.graphql.gateway
+spec:
+  permissionClaims:
+    - resource: apibindings
+      group: apis.kcp.io
+      all: true
+      identityHash: ""
+    - resource: workspaces
+      group: tenancy.kcp.io
+      all: true
+      identityHash: '{{ .ApiExportRootTenancyKcpIoIdentityHash }}'

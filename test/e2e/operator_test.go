@@ -18,21 +18,24 @@ package e2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	kcpapisv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/stretchr/testify/suite"
-
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	"github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 )
+
+const KubernetesGraphqlGateway = "kubernetes.graphql.gateway"
 
 func TestOpenmfpSuite(t *testing.T) {
 	suite.Run(t, new(OpenmfpTestSuite))
@@ -101,7 +104,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 					suite.logger.Error().Err(err).Msg("Error creating kcp client")
 					return false
 				}
-				list := &kcpcorev1alpha.APIExportList{}
+				list := &kcpapisv1alpha.APIExportList{}
 				err = kcpClient.List(context.Background(), list)
 				if err != nil {
 					suite.logger.Error().Err(err).Msg("Error listing APIExports")
@@ -180,4 +183,191 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 	)
 
 	suite.logger.Info().Msg("Workspace created")
+}
+
+func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
+	// Create openmfp instance
+	instance := &v1alpha1.OpenMFP{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-kubernetes-graphql-gateway-apiexport",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.OpenMFPSpec{
+			Kcp: v1alpha1.Kcp{
+				AdminSecretRef: &v1alpha1.AdminSecretRef{
+					SecretRef: corev1.SecretReference{
+						Namespace: "default",
+						Name:      "kcp-admin",
+					},
+					Key: "kubeconfig",
+				},
+				ProviderConnections: []v1alpha1.ProviderConnection{
+					{
+						EndpointSliceName: "test-endpoint-slice",
+						Path:              "root",
+						Secret:            "test-secret",
+					},
+				},
+			},
+		},
+	}
+
+	// When
+	testContext := context.Background()
+	err := suite.kubernetesClient.Create(testContext, instance)
+	suite.Nil(err)
+
+	// Then
+	apiexport := &kcpapisv1alpha.APIExport{}
+	suite.Assert().Eventually(
+		func() bool {
+			err = suite.kcpKubernetesClient.Get(
+				testContext, types.NamespacedName{Name: KubernetesGraphqlGateway, Namespace: "default"}, apiexport)
+
+			return err == nil
+		},
+		2*time.Minute,
+		5*time.Second,
+	)
+
+	// Check API binding in root:orgs workspace
+	kcpHelper := &subroutines.Helper{}
+	orgsClient, err := kcpHelper.NewKcpClient(suite.config, "root:orgs")
+	suite.Nil(err)
+
+	orgsBindingList := &kcpapisv1alpha.APIBindingList{}
+	suite.Assert().Eventually(
+		func() bool {
+			err = orgsClient.List(testContext, orgsBindingList)
+			if err != nil {
+				return false
+			}
+
+			for _, binding := range orgsBindingList.Items {
+				if strings.HasPrefix(binding.Name, KubernetesGraphqlGateway) {
+					return true
+				}
+			}
+
+			return false
+		},
+		2*time.Minute,
+		5*time.Second,
+	)
+
+	testOrgName := "test-org"
+
+	// Create test org workspace under orgs
+	testOrg := &kcptenancyv1alpha.Workspace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testOrgName,
+		},
+		Spec: kcptenancyv1alpha.WorkspaceSpec{
+			Type: kcptenancyv1alpha.WorkspaceTypeReference{
+				Name: "org",
+				Path: "root",
+			},
+		},
+	}
+	err = orgsClient.Create(testContext, testOrg)
+	suite.Nil(err)
+
+	// Wait for org workspace to be ready
+	suite.Assert().Eventually(
+		func() bool {
+			err = orgsClient.Get(testContext, types.NamespacedName{Name: testOrgName}, testOrg)
+			if err != nil {
+				return false
+			}
+
+			return testOrg.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
+		},
+		2*time.Minute,
+		5*time.Second,
+	)
+
+	// Create client for the org workspace
+	orgClient, err := kcpHelper.NewKcpClient(suite.config, "root:orgs:test-org")
+	suite.Nil(err)
+
+	// Check API binding in root:orgs:test-org workspace
+	testOrgBindingList := &kcpapisv1alpha.APIBindingList{}
+	suite.Assert().Eventually(
+		func() bool {
+			err = orgClient.List(testContext, testOrgBindingList)
+			if err != nil {
+				suite.logger.Error().Err(err).Msg("Error listing APIBindings in account workspace")
+				return false
+			}
+
+			for _, binding := range testOrgBindingList.Items {
+				if strings.HasPrefix(binding.Name, KubernetesGraphqlGateway) {
+					suite.logger.Info().Str("binding", binding.Name).Msg("Found API binding in account workspace")
+					return true
+				}
+			}
+
+			suite.logger.Info().Int("count", len(testOrgBindingList.Items)).Msg("No matching API bindings found")
+			return false
+		},
+		2*time.Minute,
+		5*time.Second,
+	)
+
+	// Create test account workspace under the org
+	testAccount := &kcptenancyv1alpha.Workspace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-account",
+		},
+		Spec: kcptenancyv1alpha.WorkspaceSpec{
+			Type: kcptenancyv1alpha.WorkspaceTypeReference{
+				Name: "account",
+				Path: "root",
+			},
+		},
+	}
+	err = orgClient.Create(testContext, testAccount)
+	suite.Nil(err)
+
+	// Wait for account workspace to be ready
+	suite.Assert().Eventually(
+		func() bool {
+			err = orgClient.Get(testContext, types.NamespacedName{Name: "test-account"}, testAccount)
+			if err != nil {
+				return false
+			}
+			return testAccount.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
+		},
+		2*time.Minute,
+		5*time.Second,
+	)
+
+	// Check API binding in account workspace
+	accountClient, err := kcpHelper.NewKcpClient(suite.config, "root:orgs:test-org:test-account")
+	suite.Nil(err)
+
+	accountBindingList := &kcpapisv1alpha.APIBindingList{}
+	suite.Assert().Eventually(
+		func() bool {
+			err = accountClient.List(testContext, accountBindingList)
+			if err != nil {
+				suite.logger.Error().Err(err).Msg("Error listing APIBindings in account workspace")
+				return false
+			}
+
+			for _, binding := range accountBindingList.Items {
+				if strings.HasPrefix(binding.Name, KubernetesGraphqlGateway) {
+					suite.logger.Info().Str("binding", binding.Name).Msg("Found API binding in account workspace")
+					return true
+				}
+			}
+
+			suite.logger.Info().Int("count", len(accountBindingList.Items)).Msg("No matching API bindings found")
+			return false
+		},
+		2*time.Minute,
+		5*time.Second,
+	)
+
+	suite.logger.Info().Msg("APIExport propagated through the entire workspace hierarchy")
 }

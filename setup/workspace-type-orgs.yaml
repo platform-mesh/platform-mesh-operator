@@ -6,6 +6,8 @@ spec:
   defaultAPIBindings:
     - export: openmfp.org
       path: root:openmfp-system
+    - export: kubernetes.graphql.gateway
+      path: root
   defaultChildWorkspaceType:
     name: org
     path: root
