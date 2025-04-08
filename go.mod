@@ -4,7 +4,6 @@ go 1.24.0
 
 require (
 	github.com/go-logr/logr v1.4.2
-	github.com/go-logr/zapr v1.3.0
 	github.com/kcp-dev/kcp/sdk v0.27.1
 	github.com/openmfp/golang-commons v0.146.0
 	github.com/otiai10/copy v1.14.1
@@ -12,7 +11,6 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
-	go.uber.org/zap v1.27.0
 	golang.org/x/sys v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.32.3

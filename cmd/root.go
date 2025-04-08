@@ -2,12 +2,10 @@ package cmd
 
 import (
 	"github.com/go-logr/logr"
-	"github.com/go-logr/zapr"
 	openmfpconfig "github.com/openmfp/golang-commons/config"
 	"github.com/openmfp/golang-commons/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -32,32 +30,30 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	zc := zap.NewProductionConfig()
-	z, err := zc.Build()
-	if err != nil {
-		panic(err)
-	}
-	ctrl.SetLogger(zapr.NewLogger(z))
-	setupLog = ctrl.Log.WithName("setup") // coverage-ignore
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 
-	setupLog.Info("init")
 	rootCmd.AddCommand(operatorCmd)
 
-	cobra.OnInitialize(initConfig, initLog)
+	cobra.OnInitialize(initConfig)
 
+	var err error
 	v, defaultCfg, err = openmfpconfig.NewDefaultConfig(rootCmd)
 	if err != nil {
 		panic(err)
 	}
-	//
-	//err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
-	//if err != nil {
-	//	panic(err)
-	//}
+
+	err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
+	if err != nil {
+		panic(err)
+	}
+
+	initLog()
+
+	ctrl.SetLogger(log.Logr())
+	setupLog = ctrl.Log.WithName("setup") // coverage-ignore
 
 }
 func initConfig() {
