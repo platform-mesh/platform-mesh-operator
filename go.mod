@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/kcp-dev/kcp/sdk v0.27.1
-	github.com/openmfp/golang-commons v0.146.0
+	github.com/openmfp/golang-commons v0.146.1
 	github.com/otiai10/copy v1.14.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.9.1
