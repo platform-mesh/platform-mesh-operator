@@ -7,7 +7,6 @@ import (
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/errors"
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +14,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 func NewProvidersecretSubroutine(
@@ -96,7 +97,7 @@ func (r *ProvidersecretSubroutine) Finalizers() []string { // coverage-ignore
 }
 
 func (r *ProvidersecretSubroutine) GetName() string {
-	return KcpsetupSubroutineName
+	return ProvidersecretSubroutineName
 }
 
 func (r *ProvidersecretSubroutine) handleProviderConnection(
