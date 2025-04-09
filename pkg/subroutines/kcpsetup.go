@@ -216,9 +216,8 @@ func (r *KcpsetupSubroutine) waitForWorkspace(
 		return err
 	}
 
-	// It shouldn't take longer than 5s for the default namespace to be brought up in etcd
 	err = wait.PollUntilContextTimeout(
-		ctx, time.Millisecond*500, time.Second*15, true,
+		ctx, time.Second, time.Second*15, true,
 		func(ctx context.Context) (bool, error) {
 			ws := &kcptenancyv1alpha.Workspace{}
 			if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
