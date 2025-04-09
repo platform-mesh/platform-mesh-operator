@@ -4,10 +4,10 @@ metadata:
   name: orgs
 spec:
   defaultAPIBindings:
-    - export: openmfp.org
+    - export: core.openmfp.org
       path: root:openmfp-system
-    - export: kubernetes.graphql.gateway
-      path: root
+    - export: kcp.io
+      path: root:openmfp-system
   defaultChildWorkspaceType:
     name: org
     path: root

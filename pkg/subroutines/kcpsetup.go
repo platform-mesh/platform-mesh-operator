@@ -99,7 +99,7 @@ func (r *KcpsetupSubroutine) Process(
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), false, false)
 	}
 
-	err = r.createKcpWorkspaces(ctx, *secret, secretKey, r.kcpDirectory)
+	err = r.createKcpResources(ctx, *secret, secretKey, r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
@@ -123,7 +123,7 @@ func (r *KcpsetupSubroutine) Process(
 
 }
 
-func (r *KcpsetupSubroutine) createKcpWorkspaces(ctx context.Context, secret corev1.Secret, secretKey string, dir DirectoryStructure) error {
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, secret corev1.Secret, secretKey string, dir DirectoryStructure) error {
 
 	// kcp kubernetes client
 	config, err := clientcmd.RESTConfigFromKubeConfig(secret.Data[secretKey])
@@ -238,6 +238,7 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 	ctx context.Context,
 	path string, k8sClient client.Client, hashes APIExportInventory,
 ) error {
+	log := logger.LoadLoggerFromContext(ctx)
 	manifestBytes, err := os.ReadFile(path)
 	if err != nil {
 		pwdir, _ := os.Getwd()
@@ -260,6 +261,7 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 	}
 
 	obj := unstructured.Unstructured{Object: objMap}
+	log.Debug().Str("file", path).Msg("Applying manifest")
 	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("controller-runtime"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest")

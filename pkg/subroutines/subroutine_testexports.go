@@ -12,7 +12,7 @@ import (
 // these are needed to allow testing private functions in the subroutines_test namespace
 
 func (r *KcpsetupSubroutine) CreateKcpWorkspaces(ctx context.Context, secret corev1.Secret, secretKey string, dir DirectoryStructure) error {
-	return r.createKcpWorkspaces(ctx, secret, secretKey, dir)
+	return r.createKcpResources(ctx, secret, secretKey, dir)
 }
 
 func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, config *rest.Config) (APIExportInventory, error) {

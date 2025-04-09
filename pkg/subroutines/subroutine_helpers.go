@@ -38,22 +38,31 @@ var DirManifestStructure = DirectoryStructure{
 			Name: "root",
 			Files: []string{
 				"/operator/setup/workspace-openmfp-system.yaml",
-				"/operator/setup/workspacetype-org.yaml",
+				"/operator/setup/workspace-type-provider.yaml",
+				"/operator/setup/workspace-type-providers.yaml",
+				"/operator/setup/workspace-type-org.yaml",
 				"/operator/setup/workspace-type-orgs.yaml",
 				"/operator/setup/workspace-type-account.yaml",
-				"/operator/setup/workspace-orgs.yaml",
-				"/operator/setup/apiexport-kcp.io.yaml",
 			},
 		},
 		{
 			Name: "root:openmfp-system",
 			Files: []string{
 				"/operator/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"/operator/setup/01-openmfp-system/apiexport-fga.openmfp.org.yaml",
+				"/operator/setup/01-openmfp-system/apiexport-kcp.io.yaml",
 				"/operator/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"/operator/setup/01-openmfp-system/apiexportendpointslice-fga.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
+			},
+		},
+		{
+			Name: "root",
+			Files: []string{
+				"/operator/setup/workspace-orgs.yaml",
 			},
 		},
 		{

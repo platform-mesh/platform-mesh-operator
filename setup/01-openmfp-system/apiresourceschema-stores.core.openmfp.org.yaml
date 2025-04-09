@@ -2,15 +2,15 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250227-f9250b3.stores.core.openmfp.org
+  name: v250401-5769f6b.stores.fga.openmfp.org
 spec:
-  group: core.openmfp.org
+  group: fga.openmfp.org
   names:
     kind: Store
     listKind: StoreList
     plural: stores
     singular: store
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:

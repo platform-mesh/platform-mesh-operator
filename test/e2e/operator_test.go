@@ -35,7 +35,7 @@ import (
 	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 )
 
-const KubernetesGraphqlGateway = "kubernetes.graphql.gateway"
+const kcpIoApiExport = "kcp.io"
 
 func TestOpenmfpSuite(t *testing.T) {
 	suite.Run(t, new(OpenmfpTestSuite))
@@ -59,7 +59,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 				},
 				ProviderConnections: []v1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "openmfp.org",
+						EndpointSliceName: "core.openmfp.org",
 						Path:              "root:openmfp-system",
 						Secret:            "openmfp-system-kubeconfig",
 					},
@@ -155,8 +155,8 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 				},
 				ProviderConnections: []v1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint-slice",
-						Path:              "root",
+						EndpointSliceName: "core.openmfp.org",
+						Path:              "root:openmfp-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -178,7 +178,7 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 
 			return err == nil
 		},
-		2*time.Minute, // timeout
+		1*time.Minute, // timeout
 		5*time.Second, // polling interval
 	)
 
@@ -203,8 +203,8 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 				},
 				ProviderConnections: []v1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint-slice",
-						Path:              "root",
+						EndpointSliceName: "core.openmfp.org",
+						Path:              "root:openmfp-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -217,21 +217,25 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 	err := suite.kubernetesClient.Create(testContext, instance)
 	suite.Nil(err)
 
+	kcpHelper := &subroutines.Helper{}
+	openmfpSystemClient, cerr := kcpHelper.NewKcpClient(suite.config, "root:openmfp-system")
+	suite.Require().Nil(cerr)
+
 	// Then
 	apiexport := &kcpapisv1alpha.APIExport{}
 	suite.Assert().Eventually(
 		func() bool {
-			err = suite.kcpKubernetesClient.Get(
-				testContext, types.NamespacedName{Name: KubernetesGraphqlGateway, Namespace: "default"}, apiexport)
+			err = openmfpSystemClient.Get(
+				testContext, types.NamespacedName{Name: kcpIoApiExport}, apiexport)
 
 			return err == nil
 		},
-		2*time.Minute,
+		1*time.Minute,
 		5*time.Second,
 	)
 
 	// Check API binding in root:orgs workspace
-	kcpHelper := &subroutines.Helper{}
+
 	orgsClient, err := kcpHelper.NewKcpClient(suite.config, "root:orgs")
 	suite.Nil(err)
 
@@ -244,14 +248,14 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 			}
 
 			for _, binding := range orgsBindingList.Items {
-				if strings.HasPrefix(binding.Name, KubernetesGraphqlGateway) {
+				if strings.HasPrefix(binding.Name, kcpIoApiExport) {
 					return true
 				}
 			}
 
 			return false
 		},
-		2*time.Minute,
+		1*time.Minute,
 		5*time.Second,
 	)
 
@@ -282,7 +286,7 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 
 			return testOrg.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
 		},
-		2*time.Minute,
+		1*time.Minute,
 		5*time.Second,
 	)
 
@@ -301,7 +305,7 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 			}
 
 			for _, binding := range testOrgBindingList.Items {
-				if strings.HasPrefix(binding.Name, KubernetesGraphqlGateway) {
+				if strings.HasPrefix(binding.Name, kcpIoApiExport) {
 					suite.logger.Info().Str("binding", binding.Name).Msg("Found API binding in account workspace")
 					return true
 				}
@@ -356,7 +360,7 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 			}
 
 			for _, binding := range accountBindingList.Items {
-				if strings.HasPrefix(binding.Name, KubernetesGraphqlGateway) {
+				if strings.HasPrefix(binding.Name, kcpIoApiExport) {
 					suite.logger.Info().Str("binding", binding.Name).Msg("Found API binding in account workspace")
 					return true
 				}

@@ -23,8 +23,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"time"
+	"strings"
 
+	"github.com/mohae/deepcopy"
 	"k8s.io/client-go/rest"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
@@ -58,44 +59,8 @@ import (
 // +kubebuilder:scaffold:imports
 
 const (
-	defaultTestTimeout  = 10 * time.Second
-	defaultTickInterval = 250 * time.Millisecond
-	defaultNamespace    = "default"
+	defaultNamespace = "default"
 )
-
-var testDirs = subroutines.DirectoryStructure{
-	Workspaces: []subroutines.WorkspaceDirectory{
-		{
-			Name: "root",
-			Files: []string{
-				"../../setup/workspace-openmfp-system.yaml",
-				"../../setup/workspacetype-org.yaml",
-				"../../setup/workspace-type-orgs.yaml",
-				"../../setup/workspace-type-account.yaml",
-				"../../setup/workspace-orgs.yaml",
-				"../../setup/apiexport-kcp.io.yaml",
-			},
-		},
-		{
-			Name: "root:openmfp-system",
-			Files: []string{
-				"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
-			},
-		},
-		{
-			Name: "root:orgs",
-			Files: []string{
-				"../../setup/02-orgs/account-root-org.yaml",
-				"../../setup/02-orgs/workspace-root-org.yaml",
-			},
-		},
-	},
-}
 
 type OpenmfpTestSuite struct {
 	suite.Suite
@@ -175,7 +140,14 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	})
 	suite.Nil(err)
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, testDirs)
+	dirs := deepcopy.Copy(subroutines.DirManifestStructure).(subroutines.DirectoryStructure)
+	for _, w := range dirs.Workspaces {
+		for i, f := range w.Files {
+			w.Files[i] = strings.Replace(f, "/operator/setup/", "../../setup/", -1)
+		}
+	}
+
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, dirs)
 	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, defaultConfig, log)
 	suite.Nil(err)
 

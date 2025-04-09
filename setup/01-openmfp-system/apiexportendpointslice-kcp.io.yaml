@@ -1,8 +1,8 @@
 kind: APIExportEndpointSlice
 apiVersion: apis.kcp.io/v1alpha1
 metadata:
-  name: core.openmfp.org
+  name: kcp.io
 spec:
   export:
     path: root:openmfp-system
-    name: core.openmfp.org
+    name: kcp.io

@@ -2,15 +2,15 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250227-f9250b3.authorizationmodels.core.openmfp.org
+  name: v250401-5769f6b.authorizationmodels.fga.openmfp.org
 spec:
-  group: core.openmfp.org
+  group: fga.openmfp.org
   names:
     kind: AuthorizationModel
     listKind: AuthorizationModelList
     plural: authorizationmodels
     singular: authorizationmodel
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
@@ -38,6 +38,16 @@ spec:
           properties:
             model:
               type: string
+            storeRef:
+              properties:
+                name:
+                  type: string
+                path:
+                  type: string
+              required:
+              - name
+              - path
+              type: object
             tuples:
               items:
                 properties:
@@ -55,6 +65,7 @@ spec:
               type: array
           required:
           - model
+          - storeRef
           type: object
         status:
           description: AuthorizationModelStatus defines the observed state of AuthorizationModel.

@@ -30,7 +30,7 @@ var ManifestStructureTest = subroutines.DirectoryStructure{
 			Name: "root",
 			Files: []string{
 				"../../setup/workspace-openmfp-system.yaml",
-				"../../setup/workspacetype-org.yaml",
+				"../../setup/workspace-type-org.yaml",
 				"../../setup/workspace-type-orgs.yaml",
 				"../../setup/workspace-type-account.yaml",
 				"../../setup/workspace-orgs.yaml",
