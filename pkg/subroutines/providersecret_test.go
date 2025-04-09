@@ -577,7 +577,7 @@ func (s *ProvidersecretTestSuite) TestFinalizers() {
 
 func (s *ProvidersecretTestSuite) TestGetName() {
 	res := s.testObj.GetName()
-	s.Assert().Equal(res, subroutines.KcpsetupSubroutineName)
+	s.Assert().Equal(res, subroutines.ProvidersecretSubroutineName)
 }
 
 func (suite *ProvidersecretTestSuite) TestConstructor() {

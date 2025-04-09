@@ -19,12 +19,13 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/rest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
+
+	"k8s.io/client-go/rest"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -118,6 +119,25 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	log, err := logger.New(logConfig)
 	suite.logger = log
 	suite.Nil(err)
+
+	// setup KCP test environment
+	testEnvLogger := log.ComponentLogger("kcpenvtest")
+	ctrl.SetLogger(testEnvLogger.Logr())
+
+	useExistingCluster := true
+	if envValue, err := strconv.ParseBool(os.Getenv("USE_EXISTING_CLUSTER")); err != nil {
+		useExistingCluster = envValue
+	}
+	suite.kcpTestenv = kcpenvtest.NewEnvironment(
+		"openmfp.org", "openmfp-system", "../../", "bin", "setup", useExistingCluster, testEnvLogger)
+	k8sCfg, _, err := suite.kcpTestenv.Start()
+	suite.Require().NoError(err)
+	if err != nil {
+		stopErr := suite.kcpTestenv.Stop(useExistingCluster)
+		suite.Require().NoError(stopErr)
+	}
+	suite.Require().NotNil(k8sCfg)
+
 	// Disable color logging as vs-code does not support color logging in the test output
 	log = logger.NewFromZerolog(log.Output(&zerolog.ConsoleWriter{Out: os.Stdout, NoColor: true}))
 
@@ -158,23 +178,6 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, testDirs)
 	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, defaultConfig, log)
 	suite.Nil(err)
-
-	// setup KCP test environment
-	testEnvLogger := log.ComponentLogger("kcpenvtest")
-
-	useExistingCluster := true
-	if envValue, err := strconv.ParseBool(os.Getenv("USE_EXISTING_CLUSTER")); err != nil {
-		useExistingCluster = envValue
-	}
-	suite.kcpTestenv = kcpenvtest.NewEnvironment(
-		"openmfp.org", "openmfp-system", "../../", "bin", "setup", useExistingCluster, testEnvLogger)
-	k8sCfg, _, err := suite.kcpTestenv.Start()
-	suite.Require().NoError(err)
-	if err != nil {
-		stopErr := suite.kcpTestenv.Stop(useExistingCluster)
-		suite.Require().NoError(stopErr)
-	}
-	suite.Require().NotNil(k8sCfg)
 
 	scheme := k8sruntime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
