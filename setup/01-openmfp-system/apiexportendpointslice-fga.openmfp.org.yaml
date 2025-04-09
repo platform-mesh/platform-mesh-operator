@@ -1,0 +1,8 @@
+kind: APIExportEndpointSlice
+apiVersion: apis.kcp.io/v1alpha1
+metadata:
+  name: fga.openmfp.org
+spec:
+  export:
+    path: root:openmfp-system
+    name: fga.openmfp.org

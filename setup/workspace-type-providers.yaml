@@ -1,0 +1,14 @@
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: WorkspaceType
+metadata:
+  name: providers
+spec:
+  defaultAPIBindings:
+      - export: tenancy.kcp.io
+        path: root
+      - export: topology.kcp.io
+        path: root
+  limitAllowedChildren:
+    types:
+      - name: provider
+        path: root
