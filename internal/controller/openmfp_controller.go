@@ -78,7 +78,6 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 	}
 	return &OpenMFPReconciler{
 		lifecycle: lifecycle.NewLifecycleManager(log, operatorName,
-			openmfpReconcilerName, mgr.GetClient(), subs).
-			WithSpreadingReconciles().WithConditionManagement(),
+			openmfpReconcilerName, mgr.GetClient(), subs).WithConditionManagement(),
 	}
 }

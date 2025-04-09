@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -41,8 +40,17 @@ type Kcp struct {
 }
 
 type AdminSecretRef struct {
-	SecretRef v1.SecretReference `json:"secret,omitempty"`
-	Key       string             `json:"key,omitempty"`
+	SecretRef SecretReference `json:"secret,omitempty"`
+	Key       string          `json:"key,omitempty"`
+}
+
+type SecretReference struct {
+	// name is unique within a namespace to reference a secret resource.
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+	// namespace defines the space within which the secret name must be unique.
+	// +optional
+	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
 
 type ProviderConnection struct {
@@ -89,9 +97,5 @@ func init() {
 	SchemeBuilder.Register(&OpenMFP{}, &OpenMFPList{})
 }
 
-func (i *OpenMFP) GetObservedGeneration() int64                { return i.Status.ObservedGeneration }
-func (i *OpenMFP) SetObservedGeneration(g int64)               { i.Status.ObservedGeneration = g }
-func (i *OpenMFP) GetNextReconcileTime() metav1.Time           { return i.Status.NextReconcileTime }
-func (i *OpenMFP) SetNextReconcileTime(time metav1.Time)       { i.Status.NextReconcileTime = time }
 func (i *OpenMFP) GetConditions() []metav1.Condition           { return i.Status.Conditions }
 func (i *OpenMFP) SetConditions(conditions []metav1.Condition) { i.Status.Conditions = conditions }
