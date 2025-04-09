@@ -38,8 +38,6 @@ var DirManifestStructure = DirectoryStructure{
 			Name: "root",
 			Files: []string{
 				"/operator/setup/workspace-openmfp-system.yaml",
-				"/operator/setup/workspace-type-provider.yaml",
-				"/operator/setup/workspace-type-providers.yaml",
 				"/operator/setup/workspacetype-org.yaml",
 				"/operator/setup/workspace-type-orgs.yaml",
 				"/operator/setup/workspace-type-account.yaml",
@@ -51,9 +49,7 @@ var DirManifestStructure = DirectoryStructure{
 			Name: "root:openmfp-system",
 			Files: []string{
 				"/operator/setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"/operator/setup/01-openmfp-system/apiexport-fga.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"/operator/setup/01-openmfp-system/apiexportendpointslice-fga.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",

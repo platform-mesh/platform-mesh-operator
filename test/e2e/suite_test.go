@@ -71,8 +71,6 @@ var testDirs = subroutines.DirectoryStructure{
 				"../../setup/workspace-openmfp-system.yaml",
 				"../../setup/workspacetype-org.yaml",
 				"../../setup/workspace-type-orgs.yaml",
-				"../../setup/workspace-type-provider.yaml",
-				"../../setup/workspace-type-providers.yaml",
 				"../../setup/workspace-type-account.yaml",
 				"../../setup/workspace-orgs.yaml",
 				"../../setup/apiexport-kcp.io.yaml",
@@ -82,9 +80,7 @@ var testDirs = subroutines.DirectoryStructure{
 			Name: "root:openmfp-system",
 			Files: []string{
 				"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiexport-fga.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiexportendpointslice-fga.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
