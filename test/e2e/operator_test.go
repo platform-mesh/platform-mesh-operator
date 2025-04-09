@@ -51,7 +51,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 		Spec: v1alpha1.OpenMFPSpec{
 			Kcp: v1alpha1.Kcp{
 				AdminSecretRef: &v1alpha1.AdminSecretRef{
-					SecretRef: corev1.SecretReference{
+					SecretRef: v1alpha1.SecretReference{
 						Name:      "kcp-admin",
 						Namespace: "default",
 					},
@@ -147,7 +147,7 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 		Spec: v1alpha1.OpenMFPSpec{
 			Kcp: v1alpha1.Kcp{
 				AdminSecretRef: &v1alpha1.AdminSecretRef{
-					SecretRef: corev1.SecretReference{
+					SecretRef: v1alpha1.SecretReference{
 						Namespace: "default",
 						Name:      "kcp-admin",
 					},
@@ -195,7 +195,7 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 		Spec: v1alpha1.OpenMFPSpec{
 			Kcp: v1alpha1.Kcp{
 				AdminSecretRef: &v1alpha1.AdminSecretRef{
-					SecretRef: corev1.SecretReference{
+					SecretRef: v1alpha1.SecretReference{
 						Namespace: "default",
 						Name:      "kcp-admin",
 					},

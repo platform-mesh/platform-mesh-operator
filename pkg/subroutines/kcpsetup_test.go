@@ -1,18 +1,14 @@
 package subroutines_test
 
 import (
+	"context"
 	"errors"
 	"testing"
-
-	"context"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/openmfp/golang-commons/context/keys"
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +18,10 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 )
 
 var ManifestStructureTest = subroutines.DirectoryStructure{
@@ -104,7 +104,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		Spec: corev1alpha1.OpenMFPSpec{
 			Kcp: corev1alpha1.Kcp{
 				AdminSecretRef: &corev1alpha1.AdminSecretRef{
-					SecretRef: corev1.SecretReference{
+					SecretRef: corev1alpha1.SecretReference{
 						Name:      "test-secret",
 						Namespace: "default",
 					},
