@@ -102,7 +102,7 @@ func (r *KcpsetupSubroutine) Process(
 	err = r.createKcpWorkspaces(ctx, *secret, secretKey, r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), false, false)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
 	}
 
 	// update workspace status
