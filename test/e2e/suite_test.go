@@ -89,8 +89,8 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	testEnvLogger := log.ComponentLogger("kcpenvtest")
 	ctrl.SetLogger(testEnvLogger.Logr())
 
-	useExistingCluster := true
-	if envValue, err := strconv.ParseBool(os.Getenv("USE_EXISTING_CLUSTER")); err != nil {
+	useExistingCluster := false
+	if envValue, err := strconv.ParseBool(os.Getenv("USE_EXISTING_CLUSTER")); err == nil {
 		useExistingCluster = envValue
 	}
 	suite.kcpTestenv = kcpenvtest.NewEnvironment(

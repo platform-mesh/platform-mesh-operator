@@ -73,9 +73,7 @@ func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 }
 
 // TODO: Implement the following methods
-func (r *KcpsetupSubroutine) Process(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
-) (ctrl.Result, errors.OperatorError) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
 	instance := runtimeObj.(*corev1alpha1.OpenMFP)

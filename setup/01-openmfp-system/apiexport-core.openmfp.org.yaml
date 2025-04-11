@@ -6,8 +6,6 @@ spec:
   latestResourceSchemas:
     - v250226-290f38d.accountinfos.core.openmfp.org
     - v250226-290f38d.accounts.core.openmfp.org
-    - v250401-5769f6b.authorizationmodels.fga.openmfp.org
-    - v250401-5769f6b.stores.fga.openmfp.org
   permissionClaims:
     - all: true
       resource: namespaces

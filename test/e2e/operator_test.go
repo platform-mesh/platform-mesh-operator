@@ -89,13 +89,13 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 				err := suite.kubernetesClient.Get(
 					testContext, types.NamespacedName{Name: pc.Secret, Namespace: instance.Namespace}, secret)
 				if err != nil {
-					suite.logger.Error().Err(err).Msg("Error getting secret")
+					suite.logger.Debug().Msg("Secret does not exist yet")
 					return false
 				}
 				// connect to kcp with secret
 				config, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])
 				if err != nil {
-					suite.logger.Error().Err(err).Msg("Error building config from kubeconfig string")
+					suite.logger.Debug().Err(err).Msg("Error building config from kubeconfig string")
 					return false
 				}
 				helper := &subroutines.Helper{}
@@ -107,7 +107,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 				list := &kcpapisv1alpha.APIExportList{}
 				err = kcpClient.List(context.Background(), list)
 				if err != nil {
-					suite.logger.Error().Err(err).Msg("Error listing APIExports")
+					suite.logger.Debug().Err(err).Msg("Error listing APIExports")
 					return false
 				}
 			}
