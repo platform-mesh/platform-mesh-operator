@@ -3,6 +3,10 @@ kind: WorkspaceType
 metadata:
   name: org
 spec:
+  extend:
+    with:
+    - name: fga
+      path: root
   defaultAPIBindings:
     - export: core.openmfp.org
       path: root:openmfp-system

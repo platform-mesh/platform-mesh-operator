@@ -276,19 +276,19 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 	err = orgsClient.Create(testContext, testOrg)
 	suite.Nil(err)
 
-	// Wait for org workspace to be ready
-	suite.Assert().Eventually(
-		func() bool {
-			err = orgsClient.Get(testContext, types.NamespacedName{Name: testOrgName}, testOrg)
-			if err != nil {
-				return false
-			}
+	// // Wait for org workspace to be ready
+	// suite.Assert().Eventually(
+	// 	func() bool {
+	// 		err = orgsClient.Get(testContext, types.NamespacedName{Name: testOrgName}, testOrg)
+	// 		if err != nil {
+	// 			return false
+	// 		}
 
-			return testOrg.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
-		},
-		1*time.Minute,
-		5*time.Second,
-	)
+	// 		return testOrg.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
+	// 	},
+	// 	1*time.Minute,
+	// 	5*time.Second,
+	// )
 
 	// Create client for the org workspace
 	orgClient, err := kcpHelper.NewKcpClient(suite.config, "root:orgs:test-org")

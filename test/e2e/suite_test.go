@@ -46,7 +46,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	"github.com/openmfp/openmfp-operator/api/v1alpha1"
-	cachev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/openmfp/openmfp-operator/internal/config"
 	"github.com/openmfp/openmfp-operator/internal/controller"
 	"github.com/openmfp/openmfp-operator/pkg/subroutines"
@@ -124,7 +123,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	cfg, err := suite.testEnv.Start()
 	suite.Nil(err)
 
-	utilruntime.Must(cachev1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(v1.AddToScheme(scheme.Scheme))
 
 	// +kubebuilder:scaffold:scheme

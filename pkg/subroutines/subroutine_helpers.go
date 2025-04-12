@@ -40,6 +40,7 @@ var DirManifestStructure = DirectoryStructure{
 				"/operator/setup/workspace-openmfp-system.yaml",
 				"/operator/setup/workspace-type-provider.yaml",
 				"/operator/setup/workspace-type-providers.yaml",
+				"/operator/setup/workspace-type-fga.yaml",
 				"/operator/setup/workspace-type-org.yaml",
 				"/operator/setup/workspace-type-orgs.yaml",
 				"/operator/setup/workspace-type-account.yaml",
