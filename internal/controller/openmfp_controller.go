@@ -76,6 +76,9 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProvidersecretSubroutine(mgr.GetClient(), nil))
 	}
+	if cfg.Subroutines.Webhook.Enabled {
+		subs = append(subs, subroutines.NewWebhooksSubroutine(mgr.GetClient(), nil))
+	}
 	return &OpenMFPReconciler{
 		lifecycle: lifecycle.NewLifecycleManager(log, operatorName,
 			openmfpReconcilerName, mgr.GetClient(), subs).WithConditionManagement(),

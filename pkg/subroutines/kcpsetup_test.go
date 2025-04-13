@@ -30,6 +30,8 @@ var ManifestStructureTest = subroutines.DirectoryStructure{
 			Name: "root",
 			Files: []string{
 				"../../setup/workspace-openmfp-system.yaml",
+				"../../setup/workspace-type-provider.yaml",
+				"../../setup/workspace-type-providers.yaml",
 				"../../setup/workspace-type-org.yaml",
 				"../../setup/workspace-type-orgs.yaml",
 				"../../setup/workspace-type-account.yaml",
@@ -40,7 +42,10 @@ var ManifestStructureTest = subroutines.DirectoryStructure{
 			Name: "root:openmfp-system",
 			Files: []string{
 				"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexport-fga.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexport-kcp.io.yaml",
 				"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
+				"../../setup/01-openmfp-system/apiexportendpointslice-fga.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
 				"../../setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
@@ -330,7 +335,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// test err1
-	err := s.testObj.CreateKcpWorkspaces(context.Background(), corev1.Secret{
+	err := s.testObj.CreateKcpResources(context.Background(), corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
@@ -369,7 +374,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			return nil
 		})
 	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	err = s.testObj.CreateKcpWorkspaces(context.Background(), corev1.Secret{
+	err = s.testObj.CreateKcpResources(context.Background(), corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
@@ -377,7 +382,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	s.Assert().Nil(err)
 
 	// test err2
-	err = s.testObj.CreateKcpWorkspaces(context.Background(), corev1.Secret{
+	err = s.testObj.CreateKcpResources(context.Background(), corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invaliddata"),
 		},

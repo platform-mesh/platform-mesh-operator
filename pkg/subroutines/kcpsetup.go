@@ -79,25 +79,16 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 	instance := runtimeObj.(*corev1alpha1.OpenMFP)
 	log.Debug().Str("name", instance.Name).Msg("Processing OpenMFP resource")
 
-	secretKey := DEFAULT_KCP_SECRET_KEY
-	secretName := DEFAULT_KCP_SECRET_NAME
-	secretNamespace := instance.Namespace
-	if instance.Spec.Kcp.AdminSecretRef != nil {
-		secretKey = instance.Spec.Kcp.AdminSecretRef.Key
-		secretName = instance.Spec.Kcp.AdminSecretRef.SecretRef.Name
-		secretNamespace = instance.Spec.Kcp.AdminSecretRef.SecretRef.Namespace
-	}
-
 	// Get the secret
 	secret, err := r.kcpHelper.GetSecret(
-		r.client, secretName, secretNamespace,
+		r.client, instance.GetAdminSecretName(), instance.GetAdminSecretNamespace(),
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get secret")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), false, false)
 	}
 
-	err = r.createKcpResources(ctx, *secret, secretKey, r.kcpDirectory)
+	err = r.createKcpResources(ctx, *secret, instance.GetAdminSecretKey(), r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
@@ -262,7 +253,7 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 	log.Debug().Str("file", path).Msg("Applying manifest")
 	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("controller-runtime"))
 	if err != nil {
-		return errors.Wrap(err, "Failed to apply manifest")
+		return errors.Wrap(err, "Failed to apply manifest file: %s", path)
 	}
 
 	return nil

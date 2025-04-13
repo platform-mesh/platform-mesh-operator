@@ -140,10 +140,14 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	suite.Nil(err)
 
 	dirs := deepcopy.Copy(subroutines.DirManifestStructure).(subroutines.DirectoryStructure)
-	for _, w := range dirs.Workspaces {
-		for i, f := range w.Files {
-			w.Files[i] = strings.Replace(f, "/operator/setup/", "../../setup/", -1)
+	for wi, w := range dirs.Workspaces {
+		filteredFiles := []string{}
+		for _, f := range w.Files {
+			if !strings.Contains(f, "mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml") {
+				filteredFiles = append(filteredFiles, strings.Replace(f, "/operator/setup/", "../../setup/", -1))
+			}
 		}
+		dirs.Workspaces[wi].Files = filteredFiles
 	}
 
 	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, dirs)
@@ -164,7 +168,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	}
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "kcp-admin",
+			Name:      "openmfp-operator-kubeconfig",
 			Namespace: defaultNamespace,
 		},
 		Data: map[string][]byte{

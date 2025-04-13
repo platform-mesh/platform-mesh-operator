@@ -58,19 +58,22 @@ func (r *ProvidersecretSubroutine) Process(
 
 	log := logger.LoadLoggerFromContext(ctx)
 
-	secretName := DEFAULT_KCP_SECRET_NAME
-	secretNamespace := instance.Namespace
-	if instance.Spec.Kcp.AdminSecretRef != nil {
-		secretName = instance.Spec.Kcp.AdminSecretRef.SecretRef.Name
-		secretNamespace = instance.Spec.Kcp.AdminSecretRef.SecretRef.Namespace
-	}
-
 	secret, err := r.kcpHelper.GetSecret(
-		r.client, secretName, secretNamespace,
+		r.client, instance.GetAdminSecretName(), instance.GetAdminSecretNamespace(),
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	if len(instance.Spec.Kcp.ProviderConnections) == 0 {
+		log.Info().Msg("Applying default provider connection")
+		defaultProviderConnection := DEFAULT_PROVIDER_CONNECTION
+		_, errOp := r.handleProviderConnection(ctx, instance, defaultProviderConnection, secret)
+		if errOp != nil {
+			log.Error().Err(errOp.Err()).Msg("Failed to handle default provider-connection")
+			return ctrl.Result{}, errOp
+		}
 	}
 
 	for _, pc := range instance.Spec.Kcp.ProviderConnections {
@@ -103,11 +106,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 func (r *ProvidersecretSubroutine) handleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.OpenMFP, pc corev1alpha1.ProviderConnection, secret *corev1.Secret,
 ) (ctrl.Result, errors.OperatorError) {
-	secretKey := DEFAULT_KCP_SECRET_KEY
-	if instance.Spec.Kcp.AdminSecretRef != nil && instance.Spec.Kcp.AdminSecretRef.Key != "" {
-		secretKey = instance.Spec.Kcp.AdminSecretRef.Key
-	}
-	kcpConfig, err := clientcmd.Load(secret.Data[secretKey])
+	kcpConfig, err := clientcmd.Load(secret.Data[instance.GetAdminSecretKey()])
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)

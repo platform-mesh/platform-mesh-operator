@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/stretchr/testify/suite"
+	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -52,7 +54,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 			Kcp: v1alpha1.Kcp{
 				AdminSecretRef: &v1alpha1.AdminSecretRef{
 					SecretRef: v1alpha1.SecretReference{
-						Name:      "kcp-admin",
+						Name:      "openmfp-operator-kubeconfig",
 						Namespace: "default",
 					},
 					Key: "kubeconfig",
@@ -113,8 +115,8 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 			}
 			return true
 		},
-		2*time.Minute, // timeout
-		5*time.Second, // polling interval
+		15*time.Second, // timeout
+		5*time.Second,  // polling interval
 	)
 
 	suite.logger.Info().Msg("Workspace created")
@@ -149,7 +151,7 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 				AdminSecretRef: &v1alpha1.AdminSecretRef{
 					SecretRef: v1alpha1.SecretReference{
 						Namespace: "default",
-						Name:      "kcp-admin",
+						Name:      "openmfp-operator-kubeconfig",
 					},
 					Key: "kubeconfig",
 				},
@@ -178,37 +180,22 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 
 			return err == nil
 		},
-		1*time.Minute, // timeout
-		5*time.Second, // polling interval
+		30*time.Second, // timeout
+		5*time.Second,  // polling interval
 	)
 
 	suite.logger.Info().Msg("Workspace created")
 }
 
-func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
-	// Create openmfp instance
+func (suite *OpenmfpTestSuite) TestWorkspaceCreationDefaults() {
+	// Given
 	instance := &v1alpha1.OpenMFP{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-kubernetes-graphql-gateway-apiexport",
+			Name:      "test-openmfp-defaults",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.OpenMFPSpec{
-			Kcp: v1alpha1.Kcp{
-				AdminSecretRef: &v1alpha1.AdminSecretRef{
-					SecretRef: v1alpha1.SecretReference{
-						Namespace: "default",
-						Name:      "kcp-admin",
-					},
-					Key: "kubeconfig",
-				},
-				ProviderConnections: []v1alpha1.ProviderConnection{
-					{
-						EndpointSliceName: "core.openmfp.org",
-						Path:              "root:openmfp-system",
-						Secret:            "test-secret",
-					},
-				},
-			},
+			Kcp: v1alpha1.Kcp{},
 		},
 	}
 
@@ -374,4 +361,109 @@ func (suite *OpenmfpTestSuite) TestRootApiexportCreation() {
 	)
 
 	suite.logger.Info().Msg("APIExport propagated through the entire workspace hierarchy")
+
+}
+
+func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
+	// Given
+	instance := &v1alpha1.OpenMFP{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-openmfp-webhooks",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.OpenMFPSpec{
+			Kcp: v1alpha1.Kcp{},
+		},
+	}
+	caSecret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAME,
+			Namespace: subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE,
+		},
+		Data: map[string][]byte{
+			subroutines.WEBHOOK_DEFAULT_K8S_SECRET_DATA: []byte("test"),
+		},
+	}
+	sideEffectNone := v1.SideEffectClassNone // Create a variable to hold the value
+	kcpWebhook := v1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: subroutines.WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
+		},
+		Webhooks: []v1.MutatingWebhook{
+			{
+				Name: subroutines.WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
+				ClientConfig: v1.WebhookClientConfig{
+					Service: &v1.ServiceReference{
+						Name:      "service",
+						Namespace: "default",
+					},
+				},
+				Rules: []v1.RuleWithOperations{
+					{
+						Operations: []v1.OperationType{
+							v1.Create,
+							v1.Update,
+						},
+					},
+				},
+				SideEffects: &sideEffectNone, // Use the address of the variable
+			},
+		},
+	}
+
+	// When
+	testContext := context.Background()
+	kcpHelper := &subroutines.Helper{}
+	kcpWebhookClient, err := kcpHelper.NewKcpClient(suite.config, subroutines.WEBHOOK_DEFAULT_KCP_PATH)
+	suite.Nil(err)
+	err = kcpWebhookClient.Create(testContext, &kcpWebhook)
+	suite.NotNil(err)
+	if err != nil {
+		suite.logger.Error().Err(err).Msg("Error creating webhook")
+		return
+	}
+
+	defer func() {
+		err = kcpWebhookClient.Delete(testContext, &kcpWebhook)
+		if err != nil {
+			suite.logger.Error().Err(err).Msg("Error deleting webhook")
+		}
+	}()
+
+	err = suite.kubernetesClient.Create(testContext, &caSecret)
+	suite.NotNil(err)
+	err = suite.kubernetesClient.Create(testContext, instance)
+	suite.NotNil(err)
+
+	// Then
+	suite.Assert().Eventually(
+		func() bool {
+			webhookCertSecret := corev1.Secret{}
+			err := suite.kubernetesClient.Get(
+				testContext, types.NamespacedName{Name: subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAME, Namespace: subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE}, &webhookCertSecret)
+			if err != nil {
+				suite.logger.Error().Err(err).Msg("Error getting secret")
+				return false
+			}
+
+			webhook := v1.MutatingWebhookConfiguration{}
+			err = kcpWebhookClient.Get(testContext, types.NamespacedName{
+				Name:      subroutines.WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
+				Namespace: "default",
+			}, &webhook)
+			if err != nil {
+				suite.logger.Error().Err(err).Msg("Error getting webhook")
+				return false
+			}
+
+			// return true
+
+			return bytes.Equal(webhook.Webhooks[0].ClientConfig.CABundle, webhookCertSecret.Data[subroutines.WEBHOOK_DEFAULT_K8S_SECRET_DATA])
+		},
+		60*time.Second, // timeout
+		5*time.Second,  // polling interval
+	)
+
+	suite.logger.Info().Msg("Webhook caData updated")
+
 }

@@ -20,3 +20,10 @@ spec:
 ```
 
 The `adminSecretRef` points to a secret containking a KCP kubeconfig, which is used by the operator to create the KCP workspaces and exports. After the operator finishes with the setup stage of KCP, it creates additional secrets for each `providerConnection` object configured in the resource above.
+
+## Subroutines
+
+### KcpSetup
+### ProviderSecret
+### Defaults
+### Webhook

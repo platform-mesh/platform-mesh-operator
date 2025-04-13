@@ -34,9 +34,24 @@ type OpenMFPSpec struct {
 }
 
 type Kcp struct {
-	AdminSecretRef           *AdminSecretRef      `json:"adminSecretRef,omitempty"`
-	ProviderConnections      []ProviderConnection `json:"providerConnections,omitempty"`
-	ExtraProviderConnections []ProviderConnection `json:"extraProviderConnections,omitempty"`
+	AdminSecretRef             *AdminSecretRef        `json:"adminSecretRef,omitempty"` // TODO: change to v1.SecretReference
+	ProviderConnections        []ProviderConnection   `json:"providerConnections,omitempty"`
+	ExtraProviderConnections   []ProviderConnection   `json:"extraProviderConnections,omitempty"`
+	WebhookConfigurations      []WebhookConfiguration `json:"webhookConfigurations,omitempty"`
+	ExtraWebhookConfigurations []WebhookConfiguration `json:"extraWebhookConfigurations,omitempty"`
+}
+
+type WebhookConfiguration struct {
+	SecretRef  SecretReference      `json:"secretRef,omitempty"`
+	SecretData string               `json:"secretData,omitempty"`
+	WebhookRef KCPAPIVersionKindRef `json:"webhookRef"`
+}
+
+type KCPAPIVersionKindRef struct {
+	ApiVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
 }
 
 type AdminSecretRef struct {
@@ -101,3 +116,27 @@ func init() {
 
 func (i *OpenMFP) GetConditions() []metav1.Condition           { return i.Status.Conditions }
 func (i *OpenMFP) SetConditions(conditions []metav1.Condition) { i.Status.Conditions = conditions }
+
+var DEFAULT_ADMIN_SECRET_KEY = "kubeconfig"
+var DEFAULT_ADMIN_SECRET_NAME = "openmfp-operator-kubeconfig"
+
+func (i *OpenMFP) GetAdminSecretName() string {
+	if i.Spec.Kcp.AdminSecretRef == nil {
+		return DEFAULT_ADMIN_SECRET_NAME
+	}
+	return i.Spec.Kcp.AdminSecretRef.SecretRef.Name
+}
+
+func (i *OpenMFP) GetAdminSecretNamespace() string {
+	if i.Spec.Kcp.AdminSecretRef == nil {
+		return "default"
+	}
+	return i.Spec.Kcp.AdminSecretRef.SecretRef.Namespace
+}
+
+func (i *OpenMFP) GetAdminSecretKey() string {
+	if i.Spec.Kcp.AdminSecretRef == nil {
+		return DEFAULT_ADMIN_SECRET_KEY
+	}
+	return i.Spec.Kcp.AdminSecretRef.Key
+}
