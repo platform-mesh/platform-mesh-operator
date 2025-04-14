@@ -39,7 +39,6 @@ var DirManifestStructure = DirectoryStructure{
 				"/operator/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
-				"/operator/setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml",
 			},
 		},
 		{
@@ -47,6 +46,13 @@ var DirManifestStructure = DirectoryStructure{
 			Files: []string{
 				"/operator/setup/02-orgs/account-root-org.yaml",
 				"/operator/setup/02-orgs/workspace-root-org.yaml",
+			},
+		},
+		// Apply webhooks at the very last as the  certificates are not yet ready blocking the earlier account creation
+		{
+			Name: "root:openmfp-system",
+			Files: []string{
+				"/operator/setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml",
 			},
 		},
 	},
