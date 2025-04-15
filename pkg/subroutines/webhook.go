@@ -67,15 +67,15 @@ func (r *WebhooksSubroutine) Process(
 	if len(instance.Spec.Kcp.WebhookConfigurations) == 0 {
 		config := corev1alpha1.WebhookConfiguration{
 			SecretRef: corev1alpha1.SecretReference{
-				Name:      WEBHOOK_DEFAULT_K8S_SECRET_NAME,
-				Namespace: WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE,
+				Name:      AccountOperatorMutatingWebhookSecretName,
+				Namespace: AccountOperatorMutatingWebhookSecretNamespace,
 			},
-			SecretData: WEBHOOK_DEFAULT_K8S_SECRET_DATA,
+			SecretData: DefaultCASecretKey,
 			WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
 				ApiVersion: "admissionregistration.k8s.io/v1",
 				Kind:       "MutatingWebhookConfiguration",
-				Name:       WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
-				Path:       WEBHOOK_DEFAULT_KCP_PATH,
+				Name:       AccountOperatorMutatingWebhookName,
+				Path:       AccountOperatorWorkspace,
 			},
 		}
 		res, err := r.handleWebhookConfig(ctx, instance, config)

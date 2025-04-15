@@ -68,7 +68,7 @@ func (r *ProvidersecretSubroutine) Process(
 
 	if len(instance.Spec.Kcp.ProviderConnections) == 0 {
 		log.Info().Msg("Applying default provider connection")
-		defaultProviderConnection := DEFAULT_PROVIDER_CONNECTION
+		defaultProviderConnection := DefaultProviderConnection
 		_, errOp := r.handleProviderConnection(ctx, instance, defaultProviderConnection, secret)
 		if errOp != nil {
 			log.Error().Err(errOp.Err()).Msg("Failed to handle default provider-connection")

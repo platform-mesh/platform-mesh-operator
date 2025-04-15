@@ -11,7 +11,6 @@ type WorkspaceDirectory struct {
 	Files []string `yaml:"files"`
 }
 
-// apply manifests for folder dir to KCP
 var DirManifestStructure = DirectoryStructure{
 	Workspaces: []WorkspaceDirectory{
 		{
@@ -58,12 +57,12 @@ var DirManifestStructure = DirectoryStructure{
 	},
 }
 
-var WEBHOOK_DEFAULT_K8S_SECRET_NAME = "openmfp-iam-authorization-webhook-cert"
-var WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE = "openmfp-system"
-var WEBHOOK_DEFAULT_K8S_SECRET_DATA = "ca.crt"
-var WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME = "openmfp-account-operator-mutating-webhook-configuration"
-var WEBHOOK_DEFAULT_KCP_PATH = "root:openmfp-system"
-var DEFAULT_PROVIDER_CONNECTION = corev1alpha1.ProviderConnection{
+var AccountOperatorMutatingWebhookSecretName = "openmfp-account-operator-webhook-server-cert"
+var AccountOperatorMutatingWebhookSecretNamespace = "openmfp-system"
+var DefaultCASecretKey = "ca.crt"
+var AccountOperatorMutatingWebhookName = "openmfp-account-operator-mutating-webhook-configuration"
+var AccountOperatorWorkspace = "root:openmfp-system"
+var DefaultProviderConnection = corev1alpha1.ProviderConnection{
 	EndpointSliceName: "core.openmfp.org",
 	Path:              "root:openmfp-system",
 	Secret:            "openmfp-operator-kubeconfig",

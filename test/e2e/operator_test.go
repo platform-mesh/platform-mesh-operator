@@ -377,21 +377,21 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 	}
 	caSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAME,
-			Namespace: subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE,
+			Name:      subroutines.AccountOperatorMutatingWebhookSecretName,
+			Namespace: subroutines.AccountOperatorMutatingWebhookSecretNamespace,
 		},
 		Data: map[string][]byte{
-			subroutines.WEBHOOK_DEFAULT_K8S_SECRET_DATA: []byte("test"),
+			subroutines.DefaultCASecretKey: []byte("test"),
 		},
 	}
 	sideEffectNone := v1.SideEffectClassNone // Create a variable to hold the value
 	kcpWebhook := v1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: subroutines.WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
+			Name: subroutines.AccountOperatorMutatingWebhookName,
 		},
 		Webhooks: []v1.MutatingWebhook{
 			{
-				Name: subroutines.WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
+				Name: subroutines.AccountOperatorMutatingWebhookName,
 				ClientConfig: v1.WebhookClientConfig{
 					Service: &v1.ServiceReference{
 						Name:      "service",
@@ -414,7 +414,7 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 	// When
 	testContext := context.Background()
 	kcpHelper := &subroutines.Helper{}
-	kcpWebhookClient, err := kcpHelper.NewKcpClient(suite.config, subroutines.WEBHOOK_DEFAULT_KCP_PATH)
+	kcpWebhookClient, err := kcpHelper.NewKcpClient(suite.config, subroutines.AccountOperatorWorkspace)
 	suite.Nil(err)
 	err = kcpWebhookClient.Create(testContext, &kcpWebhook)
 	suite.NotNil(err)
@@ -440,7 +440,7 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 		func() bool {
 			webhookCertSecret := corev1.Secret{}
 			err := suite.kubernetesClient.Get(
-				testContext, types.NamespacedName{Name: subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAME, Namespace: subroutines.WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE}, &webhookCertSecret)
+				testContext, types.NamespacedName{Name: subroutines.AccountOperatorMutatingWebhookSecretName, Namespace: subroutines.AccountOperatorMutatingWebhookSecretNamespace}, &webhookCertSecret)
 			if err != nil {
 				suite.logger.Error().Err(err).Msg("Error getting secret")
 				return false
@@ -448,7 +448,7 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 
 			webhook := v1.MutatingWebhookConfiguration{}
 			err = kcpWebhookClient.Get(testContext, types.NamespacedName{
-				Name:      subroutines.WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME,
+				Name:      subroutines.AccountOperatorMutatingWebhookName,
 				Namespace: "default",
 			}, &webhook)
 			if err != nil {
@@ -458,7 +458,7 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 
 			// return true
 
-			return bytes.Equal(webhook.Webhooks[0].ClientConfig.CABundle, webhookCertSecret.Data[subroutines.WEBHOOK_DEFAULT_K8S_SECRET_DATA])
+			return bytes.Equal(webhook.Webhooks[0].ClientConfig.CABundle, webhookCertSecret.Data[subroutines.DefaultCASecretKey])
 		},
 		60*time.Second, // timeout
 		5*time.Second,  // polling interval
