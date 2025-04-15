@@ -11,6 +11,7 @@ import (
 	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -158,8 +159,10 @@ func (s *WebhooksTestSuite) TestDefaultProcess() {
 		*o.(*v1.MutatingWebhookConfiguration) = *mutatingWebhook
 		return nil
 	}).Once()
-	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
-		if o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle != nil && string(o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle) == "dGVzdC1jYQ==" {
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, patch client.Patch, opts ...client.PatchOption) error {
+		us := o.(*unstructured.Unstructured)
+		caBundle := us.Object["webhooks"].([]interface{})[0].(map[string]interface{})["clientConfig"].(map[string]interface{})["caBundle"]
+		if caBundle != nil && caBundle == "dGVzdC1jYQ==" {
 			return nil
 		}
 		return fmt.Errorf("CABundle not set")
@@ -245,13 +248,14 @@ func (s *WebhooksTestSuite) TestSyncWebhook() {
 		*o.(*v1.MutatingWebhookConfiguration) = *mutatingWebhook
 		return nil
 	}).Once()
-	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
-		if o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle != nil && string(o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle) == "dGVzdC1jYQ==" {
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, patch client.Patch, opts ...client.PatchOption) error {
+		us := o.(*unstructured.Unstructured)
+		caBundle := us.Object["webhooks"].([]interface{})[0].(map[string]interface{})["clientConfig"].(map[string]interface{})["caBundle"]
+		if caBundle != nil && caBundle == "dGVzdC1jYQ==" {
 			return nil
 		}
 		return fmt.Errorf("CABundle not set")
 	}).Once()
-
 	s.testObj = subroutines.NewWebhooksSubroutine(mockClient, mockedKcpHelper)
 
 	instance := &corev1alpha1.OpenMFP{
@@ -361,7 +365,7 @@ func (s *WebhooksTestSuite) TestHandleWebhookConfigErrors() {
 		*o.(*v1.MutatingWebhookConfiguration) = *mutatingWebhook
 		return nil
 	}).Once()
-	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, p client.Patch, opts ...client.PatchOption) error {
 		return fmt.Errorf("Forced test error")
 	}).Once()
 

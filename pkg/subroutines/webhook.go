@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/openmfp/golang-commons/controller/lifecycle"
@@ -9,6 +10,8 @@ import (
 	"github.com/openmfp/golang-commons/logger"
 	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -143,15 +146,30 @@ func (r *WebhooksSubroutine) handleWebhookConfig(
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("Failed to get caData from secret"), false, false)
 	}
 
+	caDataDec := make([]byte, base64.StdEncoding.DecodedLen(len(caData)))
+	n, err := base64.StdEncoding.Decode(caDataDec, caData)
+	caDataDec = caDataDec[:n]
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to decode caData")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
 	webhook := v1.MutatingWebhookConfiguration{}
 	err = kcpclient.Get(ctx, types.NamespacedName{Name: webhookConfig.WebhookRef.Name}, &webhook)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get webhook configuration")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	webhook.Webhooks[0].ClientConfig.CABundle = caData
-	kcpclient = client.WithFieldOwner(kcpclient, "openmfp-operator")
-	err = kcpclient.Update(ctx, &webhook)
+	webhook.Webhooks[0].ClientConfig.CABundle = caDataDec
+
+	unstructuredWH, err := convertToUnstructured(webhook, caData)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to convert webhook to unstructured")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	err = kcpclient.Patch(ctx, unstructuredWH, client.Apply, client.FieldOwner("openmfp-operator"))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update webhook configuration")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -159,4 +177,18 @@ func (r *WebhooksSubroutine) handleWebhookConfig(
 	log.Debug().Msg("Successfully updated webhook's caData")
 
 	return ctrl.Result{}, nil
+}
+
+func convertToUnstructured(webhook v1.MutatingWebhookConfiguration, caData []byte) (*unstructured.Unstructured, error) {
+	// Convert the structured object to a map
+	objMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&webhook)
+	if err != nil {
+		return nil, err
+	}
+	// Create an unstructured object and assign the map
+	unstructuredObj := &unstructured.Unstructured{Object: objMap}
+	unstructuredObj.SetKind("MutatingWebhookConfiguration")
+	unstructuredObj.SetAPIVersion("admissionregistration.k8s.io/v1")
+	unstructuredObj.SetManagedFields(nil)
+	return unstructuredObj, nil
 }
