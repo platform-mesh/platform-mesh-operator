@@ -59,7 +59,7 @@ var DirManifestStructure = DirectoryStructure{
 }
 
 var WEBHOOK_DEFAULT_K8S_SECRET_NAME = "openmfp-iam-authorization-webhook-cert"
-var WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE = "default"
+var WEBHOOK_DEFAULT_K8S_SECRET_NAMESPACE = "openmfp-system"
 var WEBHOOK_DEFAULT_K8S_SECRET_DATA = "ca.crt"
 var WEBHOOK_DEFAULT_KCP_WEBHOOK_NAME = "openmfp-account-operator-mutating-webhook-configuration"
 var WEBHOOK_DEFAULT_KCP_PATH = "root:openmfp-system"
