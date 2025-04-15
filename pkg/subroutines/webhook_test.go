@@ -6,9 +6,6 @@ import (
 	"testing"
 
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	v1 "k8s.io/api/admissionregistration/v1"
@@ -17,6 +14,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 )
 
 type WebhooksTestSuite struct {
@@ -157,7 +158,7 @@ func (s *WebhooksTestSuite) TestDefaultProcess() {
 		*o.(*v1.MutatingWebhookConfiguration) = *mutatingWebhook
 		return nil
 	}).Once()
-	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
+	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
 		if o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle != nil && string(o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle) == "dGVzdC1jYQ==" {
 			return nil
 		}
@@ -244,7 +245,7 @@ func (s *WebhooksTestSuite) TestSyncWebhook() {
 		*o.(*v1.MutatingWebhookConfiguration) = *mutatingWebhook
 		return nil
 	}).Once()
-	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
+	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
 		if o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle != nil && string(o.(*v1.MutatingWebhookConfiguration).Webhooks[0].ClientConfig.CABundle) == "dGVzdC1jYQ==" {
 			return nil
 		}
@@ -360,7 +361,7 @@ func (s *WebhooksTestSuite) TestHandleWebhookConfigErrors() {
 		*o.(*v1.MutatingWebhookConfiguration) = *mutatingWebhook
 		return nil
 	}).Once()
-	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
+	mockKcpClient.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, o client.Object, opts ...client.UpdateOption) error {
 		return fmt.Errorf("Forced test error")
 	}).Once()
 

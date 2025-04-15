@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 
 	"github.com/mohae/deepcopy"
 	"k8s.io/client-go/rest"
@@ -140,15 +139,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	suite.Nil(err)
 
 	dirs := deepcopy.Copy(subroutines.DirManifestStructure).(subroutines.DirectoryStructure)
-	for wi, w := range dirs.Workspaces {
-		filteredFiles := []string{}
-		for _, f := range w.Files {
-			if !strings.Contains(f, "mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml") {
-				filteredFiles = append(filteredFiles, strings.Replace(f, "/operator/setup/", "../../setup/", -1))
-			}
-		}
-		dirs.Workspaces[wi].Files = filteredFiles
-	}
+	subroutines.ReplacePaths(dirs, "../../setup/", true)
 
 	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, dirs)
 	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, defaultConfig, log)

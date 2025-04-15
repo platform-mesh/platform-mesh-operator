@@ -7,13 +7,14 @@ import (
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/errors"
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 type WebhooksSubroutine struct {
@@ -149,6 +150,7 @@ func (r *WebhooksSubroutine) handleWebhookConfig(
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 	webhook.Webhooks[0].ClientConfig.CABundle = caData
+	kcpclient = client.WithFieldOwner(kcpclient, "openmfp-operator")
 	err = kcpclient.Update(ctx, &webhook)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update webhook configuration")

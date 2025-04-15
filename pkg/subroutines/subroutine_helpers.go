@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/openmfp/golang-commons/errors"
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	v1admission "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +18,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 type APIExportInventory struct {
@@ -71,4 +73,16 @@ func (h *Helper) GetSecret(client client.Client, name string, namespace string) 
 		return nil, errors.Wrap(err, "Failed to get secret")
 	}
 	return &secret, nil
+}
+
+func ReplacePaths(dirs DirectoryStructure, relativePath string, isLocal bool) {
+	if isLocal {
+		for wi, w := range dirs.Workspaces {
+			filteredFiles := []string{}
+			for _, f := range w.Files {
+				filteredFiles = append(filteredFiles, strings.Replace(f, "/operator/setup/", relativePath, -1))
+			}
+			dirs.Workspaces[wi].Files = filteredFiles
+		}
+	}
 }

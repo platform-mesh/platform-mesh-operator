@@ -251,7 +251,7 @@ func (r *KcpsetupSubroutine) applyManifestFromFile(
 
 	obj := unstructured.Unstructured{Object: objMap}
 	log.Debug().Str("file", path).Msg("Applying manifest")
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("controller-runtime"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s", path)
 	}
