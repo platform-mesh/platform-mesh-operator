@@ -107,7 +107,7 @@ func (s *WebhooksTestSuite) TestDefaultProcess() {
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"ca.crt": []byte("dGVzdC1jYQ=="),
+			"ca.crt": []byte("test-ca"),
 		},
 	}
 	mockClient := new(mocks.Client)
@@ -196,7 +196,7 @@ func (s *WebhooksTestSuite) TestSyncWebhook() {
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"ca.crt": []byte("dGVzdC1jYQ=="),
+			"ca.crt": []byte("test-ca"),
 		},
 	}
 	mockClient := new(mocks.Client)

@@ -2,7 +2,6 @@ package subroutines
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 
 	"github.com/openmfp/golang-commons/controller/lifecycle"
@@ -140,19 +139,11 @@ func (r *WebhooksSubroutine) handleWebhookConfig(
 		log.Error().Err(err).Msg("Failed to get ca secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
+
 	caData, ok := caSecret.Data[webhookConfig.SecretData]
 	if !ok {
 		log.Error().Msg("Failed to get caData from secret")
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("Failed to get caData from secret"), false, false)
-	}
-
-	caDataDec := make([]byte, base64.StdEncoding.DecodedLen(len(caData)))
-	n, err := base64.StdEncoding.Decode(caDataDec, caData)
-	caDataDec = caDataDec[:n]
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to decode caData")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
 	webhook := v1.MutatingWebhookConfiguration{}
@@ -161,7 +152,7 @@ func (r *WebhooksSubroutine) handleWebhookConfig(
 		log.Error().Err(err).Msg("Failed to get webhook configuration")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	webhook.Webhooks[0].ClientConfig.CABundle = caDataDec
+	webhook.Webhooks[0].ClientConfig.CABundle = caData
 
 	unstructuredWH, err := convertToUnstructured(webhook, caData)
 	if err != nil {
