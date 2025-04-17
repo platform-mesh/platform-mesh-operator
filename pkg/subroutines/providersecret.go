@@ -2,20 +2,22 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/errors"
 	"github.com/openmfp/golang-commons/logger"
-	"github.com/rs/zerolog/log"
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 func NewProvidersecretSubroutine(
@@ -106,26 +108,69 @@ func (r *ProvidersecretSubroutine) GetName() string {
 func (r *ProvidersecretSubroutine) handleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.OpenMFP, pc corev1alpha1.ProviderConnection, secret *corev1.Secret,
 ) (ctrl.Result, errors.OperatorError) {
-	kcpConfig, err := clientcmd.Load(secret.Data[instance.GetAdminSecretKey()])
+	log := logger.LoadLoggerFromContext(ctx)
+	secretKey := instance.GetAdminSecretKey()
+
+	kcpConfig, err := clientcmd.Load(secret.Data[secretKey])
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	for _, cluster := range kcpConfig.Clusters {
-		u, err := url.Parse(cluster.Server)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse KCP host")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
-		cluster.Server = u.Scheme + "://" + u.Host + "/clusters/" + pc.Path
-		break
+
+	kcpConfigBytes := secret.Data[secretKey]
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kcpConfigBytes)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to parse REST config from kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
-	kcpConfigBytes, err := clientcmd.Write(*kcpConfig)
+	kcpClient, err := r.kcpHelper.NewKcpClient(restConfig, pc.Path)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create KCP client")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	var slice kcpapiv1alpha.APIExportEndpointSlice
+	err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	if len(slice.Status.APIExportEndpoints) == 0 {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
+	}
+
+	endpointURL := slice.Status.APIExportEndpoints[0].URL
+	currentContextName := kcpConfig.CurrentContext
+	currentContext, ok := kcpConfig.Contexts[currentContextName]
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("context %s not found in kubeconfig", currentContextName), false, false)
+	}
+
+	clusterName := currentContext.Cluster
+	u, err := url.Parse(endpointURL)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to parse endpoint URL")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	existingCluster, ok := kcpConfig.Clusters[clusterName]
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster %s not found in kubeconfig", clusterName), false, false)
+	}
+
+	kcpConfig.Clusters[clusterName] = &clientcmdapi.Cluster{
+		Server:                   fmt.Sprintf("%s://%s/%s", u.Scheme, u.Host, pc.Path),
+		CertificateAuthorityData: existingCluster.CertificateAuthorityData,
+	}
+
+	kcpConfigBytes, err = clientcmd.Write(*kcpConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
+
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pc.Secret,
@@ -135,13 +180,14 @@ func (r *ProvidersecretSubroutine) handleProviderConnection(
 			"kubeconfig": kcpConfigBytes,
 		},
 	}
+
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
-		err = controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme())
-		return err
+		return controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme())
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
+
 	return ctrl.Result{}, nil
 }
