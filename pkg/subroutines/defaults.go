@@ -60,7 +60,7 @@ var DirManifestStructure = DirectoryStructure{
 var AccountOperatorMutatingWebhookSecretName = "openmfp-account-operator-webhook-server-cert"
 var AccountOperatorMutatingWebhookSecretNamespace = "openmfp-system"
 var DefaultCASecretKey = "ca.crt"
-var AccountOperatorMutatingWebhookName = "openmfp-account-operator-mutating-webhook-configuration"
+var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.openmfp.org"
 var AccountOperatorWorkspace = "root:openmfp-system"
 var DefaultProviderConnection = corev1alpha1.ProviderConnection{
 	EndpointSliceName: "core.openmfp.org",

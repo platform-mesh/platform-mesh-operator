@@ -47,7 +47,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 	// Given
 	instance := &v1alpha1.OpenMFP{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test2",
+			Name:      "test-secrets-created",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.OpenMFPSpec{
@@ -119,7 +119,7 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 		5*time.Second,  // polling interval
 	)
 
-	suite.logger.Info().Msg("Workspace created")
+	suite.logger.Info().Msg("Secret created")
 }
 
 func (suite *OpenmfpTestSuite) AfterTest(suiteName, testName string) {
@@ -143,7 +143,7 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreation() {
 	// Given
 	instance := &v1alpha1.OpenMFP{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-openmfp",
+			Name:      "test-workspace-creation",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.OpenMFPSpec{
@@ -191,7 +191,7 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreationDefaults() {
 	// Given
 	instance := &v1alpha1.OpenMFP{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-openmfp-defaults",
+			Name:      "test-workspace-creation-defaults",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.OpenMFPSpec{
@@ -368,7 +368,7 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 	// Given
 	instance := &v1alpha1.OpenMFP{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-openmfp-webhooks",
+			Name:      "test-webhook-configurations",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.OpenMFPSpec{
@@ -403,10 +403,17 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 						Operations: []v1.OperationType{
 							v1.Create,
 							v1.Update,
+							// Add missing required fields
+						},
+						Rule: v1.Rule{
+							APIGroups:   []string{"core.openmfp.org"},
+							APIVersions: []string{"v1alpha1"},
+							Resources:   []string{"accounts"},
 						},
 					},
 				},
-				SideEffects: &sideEffectNone, // Use the address of the variable
+				SideEffects:             &sideEffectNone,
+				AdmissionReviewVersions: []string{"v1"}, // Required field
 			},
 		},
 	}
