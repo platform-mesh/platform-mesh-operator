@@ -34,6 +34,7 @@ var DirManifestStructure = DirectoryStructure{
 				"/operator/setup/01-openmfp-system/apiexport-kcp.io.yaml",
 				"/operator/setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiexportendpointslice-fga.openmfp.org.yaml",
+				"/operator/setup/01-openmfp-system/apiexportendpointslice-kcp.io.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
 				"/operator/setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
