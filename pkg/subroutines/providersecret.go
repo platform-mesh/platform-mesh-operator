@@ -11,13 +11,14 @@ import (
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/errors"
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 func NewProvidersecretSubroutine(
@@ -161,7 +162,7 @@ func (r *ProvidersecretSubroutine) handleProviderConnection(
 	}
 
 	kcpConfig.Clusters[clusterName] = &clientcmdapi.Cluster{
-		Server:                   fmt.Sprintf("%s://%s/%s", u.Scheme, u.Host, pc.Path),
+		Server:                   fmt.Sprintf("%s://%s/clusters/%s", u.Scheme, u.Host, pc.Path),
 		CertificateAuthorityData: existingCluster.CertificateAuthorityData,
 	}
 

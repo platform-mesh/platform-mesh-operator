@@ -184,7 +184,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		cluster := kubeconfig.Clusters[currentContext.Cluster]
 
 		// Test that the URL is passed correctly form the endpoint slice
-		expectedURL := "http://example.com/root:openmfp-system"
+		expectedURL := "http://example.com/clusters/root:openmfp-system"
 		if cluster.Server != expectedURL {
 			s.T().Logf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
 			return false
