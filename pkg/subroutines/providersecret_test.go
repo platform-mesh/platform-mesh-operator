@@ -3,6 +3,7 @@ package subroutines_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -1049,5 +1050,112 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().NotNil(opErr)
+	s.Assert().Equal(ctrl.Result{}, res)
+}
+
+func (s *ProvidersecretTestSuite) TestDefaultProviderConnections() {
+	instance := s.getBaseInstance()
+	instance.Spec.Kcp.ProviderConnections = nil
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"kubeconfig": secretKubeconfigData,
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	err := corev1alpha1.AddToScheme(scheme)
+	s.Require().NoError(err)
+	err = corev1.AddToScheme(scheme)
+	s.Require().NoError(err)
+	s.clientMock.EXPECT().Scheme().Return(scheme).Times(len(subroutines.DefaultProviderConnections))
+
+	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+		return key.Name == "test-secret" && key.Namespace == "default"
+	}), mock.Anything).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*corev1.Secret) = *secret
+			return nil
+		}).Once()
+
+	mockKcpClient := new(mocks.Client)
+	slice := &kcpapiv1alpha.APIExportEndpointSlice{
+		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
+			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
+				{URL: "http://example.com"},
+			},
+		},
+	}
+	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
+			return nil
+		}).Times(len(subroutines.DefaultProviderConnections))
+
+	mockedKcpHelper := new(mocks.KcpHelper)
+	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
+		Return(mockKcpClient, nil).Times(len(subroutines.DefaultProviderConnections))
+	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
+		Return(secret, nil).Once()
+
+	for _, pc := range subroutines.DefaultProviderConnections {
+		s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+			return key.Name == pc.Secret
+		}), mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Secret"}, pc.Secret)).Once()
+
+		s.clientMock.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+			secret, ok := obj.(*corev1.Secret)
+			if !ok {
+				s.T().Logf("Object is not a Secret")
+				return false
+			}
+
+			if secret.Name != pc.Secret {
+				s.T().Logf("Secret name mismatch: expected '%s', got '%s'", pc.Secret, secret.Name)
+				return false
+			}
+			if secret.Namespace != instance.Namespace {
+				s.T().Logf("Secret namespace mismatch: expected '%s', got '%s'", instance.Namespace, secret.Namespace)
+				return false
+			}
+
+			kubeconfigData, exists := secret.Data["kubeconfig"]
+			if !exists {
+				s.T().Logf("kubeconfig data not found in secret")
+				return false
+			}
+
+			kubeconfig, err := clientcmd.Load(kubeconfigData)
+			if err != nil {
+				s.T().Logf("Failed to parse kubeconfig: %v", err)
+				return false
+			}
+
+			currentContext := kubeconfig.Contexts[kubeconfig.CurrentContext]
+			cluster := kubeconfig.Clusters[currentContext.Cluster]
+
+			expectedURL := fmt.Sprintf("http://example.com/clusters/%s", pc.Path)
+			if cluster.Server != expectedURL {
+				s.T().Logf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
+				return false
+			}
+			return true
+		}), mock.Anything).RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+			providerSecret := obj.(*corev1.Secret)
+			err := controllerutil.SetOwnerReference(instance, providerSecret, scheme)
+			s.NoError(err)
+			return nil
+		}).Once()
+	}
+
+	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
+
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	res, opErr := s.testObj.Process(ctx, instance)
+	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, res)
 }

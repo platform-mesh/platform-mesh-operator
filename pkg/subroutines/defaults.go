@@ -63,8 +63,20 @@ var AccountOperatorMutatingWebhookSecretNamespace = "openmfp-system"
 var DefaultCASecretKey = "ca.crt"
 var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.openmfp.org"
 var AccountOperatorWorkspace = "root:openmfp-system"
-var DefaultProviderConnection = corev1alpha1.ProviderConnection{
-	EndpointSliceName: "core.openmfp.org",
-	Path:              "root:openmfp-system",
-	Secret:            "openmfp-operator-kubeconfig",
+var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
+	{
+		EndpointSliceName: "core.openmfp.org",
+		Path:              "root:openmfp-system",
+		Secret:            "account-operator-kubeconfig",
+	},
+	{
+		EndpointSliceName: "fga.openmfp.org",
+		Path:              "root:openmfp-system",
+		Secret:            "fga-operator-kubeconfig",
+	},
+	{
+		EndpointSliceName: "kcp.io",
+		Path:              "root:openmfp-system",
+		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+	},
 }
