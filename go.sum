@@ -128,8 +128,8 @@ github.com/onsi/ginkgo/v2 v2.22.0 h1:Yed107/8DjTr0lKCNt7Dn8yQ6ybuDRQoMGrNFKzMfHg
 github.com/onsi/ginkgo/v2 v2.22.0/go.mod h1:7Du3c42kxCUegi0IImZ1wUQzMBVecgIHjR1C+NkhLQo=
 github.com/onsi/gomega v1.36.1 h1:bJDPBO7ibjxcbHMgSCoo4Yj18UWbKDlLwX1x9sybDcw=
 github.com/onsi/gomega v1.36.1/go.mod h1:PvZbdDc8J6XJEpDK4HCuRBm8a6Fzp9/DmhC9C7yFlog=
-github.com/openmfp/golang-commons v0.147.1 h1:ZYzqBt03p9u8RHMRK0/L0UEyP4k8JvTEPyQYMkT/dZ0=
-github.com/openmfp/golang-commons v0.147.1/go.mod h1:cMdMGfo56IMogXQv1fkuRdNl/TN/P3MffXWdgnzlpbA=
+github.com/openmfp/golang-commons v0.147.2 h1:1kkQMLQ/1kPuzUhDXv7L5IQ3MByHYSQ1XvPi0Rr+/7s=
+github.com/openmfp/golang-commons v0.147.2/go.mod h1:oLdDooF8PnmJdbko1FClXODOT9IC9/KENNnuNosz134=
 github.com/otiai10/copy v1.14.1 h1:5/7E6qsUMBaH5AnQ0sSLzzTg1oTECmcCmT6lvF45Na8=
 github.com/otiai10/copy v1.14.1/go.mod h1:oQwrEDDOci3IM8dJF0d8+jnbfPDllW6vUjNc3DoZm9I=
 github.com/otiai10/mint v1.6.3 h1:87qsV/aw1F5as1eH1zS/yqHY85ANKVMgkDrf9rcxbQs=
