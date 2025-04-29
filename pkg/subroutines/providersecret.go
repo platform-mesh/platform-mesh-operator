@@ -177,16 +177,16 @@ func (r *ProvidersecretSubroutine) handleProviderConnection(
 			Name:      pc.Secret,
 			Namespace: instance.Namespace,
 		},
-		Data: map[string][]byte{
-			"kubeconfig": kcpConfigBytes,
-		},
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
+		providerSecret.Data = map[string][]byte{
+			"kubeconfig": kcpConfigBytes,
+		}
 		return controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme())
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create secret")
+		log.Error().Err(err).Msg("Failed to create or update secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 

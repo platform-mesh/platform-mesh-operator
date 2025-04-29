@@ -120,6 +120,40 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 	)
 
 	suite.logger.Info().Msg("Secret created")
+
+	// get the created secret
+	secret := &corev1.Secret{}
+	err = suite.kubernetesClient.Get(
+		testContext, types.NamespacedName{Name: instance.Spec.Kcp.ProviderConnections[0].Secret, Namespace: instance.Namespace}, secret)
+	suite.Nil(err)
+
+	// change and update the secret
+	secret.Data["kubeconfig"] = []byte("test2")
+	err = suite.kubernetesClient.Update(testContext, secret)
+	suite.Nil(err)
+
+	// verify the secret was updated
+	updatedSecret := &corev1.Secret{}
+	err = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, updatedSecret)
+	suite.Nil(err)
+	suite.Equal("test2", string(updatedSecret.Data["kubeconfig"]))
+
+	// wait for the secret to be reconciled
+	suite.Assert().Eventually(
+		func() bool {
+			err = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, secret)
+			if err != nil {
+				suite.logger.Error().Err(err).Msg("Failed to get secret")
+				return false
+			}
+			currentValue := string(secret.Data["kubeconfig"])
+			return currentValue == "test2"
+		},
+		15*time.Second, // timeout
+		5*time.Second,  // polling interval
+	)
+
+	suite.logger.Info().Msg("Secret reconciled")
 }
 
 func (suite *OpenmfpTestSuite) AfterTest(suiteName, testName string) {
