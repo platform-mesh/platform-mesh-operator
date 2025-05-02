@@ -26,12 +26,8 @@ func NewProvidersecretSubroutine(
 	helper KcpHelper,
 ) *ProvidersecretSubroutine {
 	sub := &ProvidersecretSubroutine{
-		client: client,
-	}
-	if helper == nil {
-		sub.kcpHelper = &Helper{}
-	} else {
-		sub.kcpHelper = helper
+		client:    client,
+		kcpHelper: helper,
 	}
 	return sub
 }
@@ -61,7 +57,7 @@ func (r *ProvidersecretSubroutine) Process(
 
 	log := logger.LoadLoggerFromContext(ctx)
 
-	secret, err := r.kcpHelper.GetSecret(
+	secret, err := GetSecret(
 		r.client, instance.GetAdminSecretName(), instance.GetAdminSecretNamespace(),
 	)
 	if err != nil {
@@ -189,6 +185,8 @@ func (r *ProvidersecretSubroutine) handleProviderConnection(
 		log.Error().Err(err).Msg("Failed to create or update secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
+
+	log.Debug().Str("secret", pc.Secret).Msg("Created or updated provider secret")
 
 	return ctrl.Result{}, nil
 }

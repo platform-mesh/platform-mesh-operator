@@ -30,6 +30,7 @@ import (
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	openmfpconfig "github.com/openmfp/golang-commons/config"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 
 	openmfpcontext "github.com/openmfp/golang-commons/context"
 	"github.com/openmfp/golang-commons/logger"
@@ -150,6 +151,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	utilruntime.Must(v1.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+	utilruntime.Must(admissionregistrationv1.AddToScheme(scheme))
 
 	// store k8sCfg as a secret
 	kubeconfigData, err := os.ReadFile("../../.kcp/admin.kubeconfig")
@@ -170,7 +172,30 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	err = suite.kubernetesClient.Create(context.Background(), &secret)
 	if err != nil {
 		suite.logger.Error().Err(err).Msg("Failed to create secret")
+		suite.FailNow("Failed to create secret")
 	}
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "openmfp-system",
+		},
+	}
+	err = suite.kubernetesClient.Create(context.Background(), ns)
+	if err != nil {
+		suite.logger.Error().Err(err).Msg("Failed to create namespace")
+		suite.FailNow("Failed to create namespace")
+	}
+
+	caSecretDefault := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      subroutines.AccountOperatorMutatingWebhookSecretName,
+			Namespace: subroutines.AccountOperatorMutatingWebhookSecretNamespace,
+		},
+		Data: map[string][]byte{
+			subroutines.DefaultCASecretKey: []byte("dGVzdA=="),
+		},
+	}
+	err = suite.kubernetesClient.Create(context.Background(), &caSecretDefault)
+	suite.Nil(err)
 
 	// create KCP client
 	config, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])

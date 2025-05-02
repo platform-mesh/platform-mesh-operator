@@ -61,7 +61,7 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 
 	suite.clientMock.EXPECT().Scheme().Return(suite.scheme).Maybe()
 
-	suite.testObj = subroutines.NewProvidersecretSubroutine(suite.clientMock, nil)
+	suite.testObj = subroutines.NewProvidersecretSubroutine(suite.clientMock, &subroutines.Helper{})
 }
 
 func (suite *ProvidersecretTestSuite) TearDownTest() {
@@ -224,8 +224,17 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(&corev1.Secret{Data: map[string][]byte{"kubeconfig": patchedData}}, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"kubeconfig": patchedData,
+				},
+			}
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -278,13 +287,13 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	}
 
 	// mocks
-	mocClient := new(mocks.Client)
-	mocClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	mocClient.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	mockK8sClient := new(mocks.Client)
+	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	mockK8sClient.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	scheme := runtime.NewScheme()
 	err := corev1.AddToScheme(scheme)
 	s.Assert().NoError(err)
-	mocClient.EXPECT().Scheme().Return(scheme).Once()
+	mockK8sClient.EXPECT().Scheme().Return(scheme).Once()
 
 	slice := &kcpapiv1alpha.APIExportEndpointSlice{
 		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
@@ -296,7 +305,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		},
 	}
 
-	mocClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
@@ -305,16 +314,21 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mocClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(&corev1.Secret{
-			Data: map[string][]byte{
-				"kubeconfig": secretKubeconfigData,
-			},
-		}, nil).Once()
+		Return(mockK8sClient, nil).Once()
+	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"kubeconfig": secretKubeconfigData,
+				},
+			}
+			return nil
+		},
+	).Once()
 
 	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = subroutines.NewProvidersecretSubroutine(mocClient, mockedKcpHelper)
+	s.testObj = subroutines.NewProvidersecretSubroutine(mockK8sClient, mockedKcpHelper)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -358,16 +372,6 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{Name: "root:openmfp-system", Phase: "Ready"},
 			},
-		},
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": secretKubeconfigData,
 		},
 	}
 
@@ -418,10 +422,21 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 
 	// Mock KcpHelper
 	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().
-		GetSecret(mockClient, "test-secret", "default").
-		Return(secret, nil).
-		Once()
+	mockClient.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret",
+					Namespace: "default",
+				},
+				Data: map[string][]byte{
+					"kubeconfig": secretKubeconfigData,
+				},
+			}
+			return nil
+		},
+	).Once()
 	mockedKcpHelper.EXPECT().
 		NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).
@@ -501,15 +516,20 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(&corev1.Secret{
-			Data: map[string][]byte{
-				"kubeconfig": []byte("invalid"),
-			},
-		}, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"kubeconfig": []byte("invalid"),
+				},
+			}
+			return nil
+		},
+	).Once()
 
 	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = subroutines.NewProvidersecretSubroutine(mockKcpClient, mockedKcpHelper)
+	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -731,8 +751,13 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 		}).Once()
 
 	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(&secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -787,8 +812,13 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(nil, errors.New("failed to create KCP client")).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -823,8 +853,13 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -868,8 +903,13 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -915,8 +955,13 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -978,8 +1023,13 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -1042,8 +1092,13 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	s.testObj = subroutines.NewProvidersecretSubroutine(s.clientMock, mockedKcpHelper)
 
@@ -1099,8 +1154,13 @@ func (s *ProvidersecretTestSuite) TestDefaultProviderConnections() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockKcpClient, nil).Times(len(subroutines.DefaultProviderConnections))
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(secret, nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		},
+	).Once()
 
 	for _, pc := range subroutines.DefaultProviderConnections {
 		s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {

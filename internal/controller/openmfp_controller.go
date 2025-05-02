@@ -71,13 +71,10 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfi
 func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, dir subroutines.DirectoryStructure) *OpenMFPReconciler {
 	var subs []lifecycle.Subroutine
 	if cfg.Subroutines.KcpSetup.Enabled {
-		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), nil, dir))
+		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, dir, "wave1"))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
-		subs = append(subs, subroutines.NewProvidersecretSubroutine(mgr.GetClient(), nil))
-	}
-	if cfg.Subroutines.Webhook.Enabled {
-		subs = append(subs, subroutines.NewWebhooksSubroutine(mgr.GetClient(), nil))
+		subs = append(subs, subroutines.NewProvidersecretSubroutine(mgr.GetClient(), &subroutines.Helper{}))
 	}
 	return &OpenMFPReconciler{
 		lifecycle: lifecycle.NewLifecycleManager(log, operatorName,

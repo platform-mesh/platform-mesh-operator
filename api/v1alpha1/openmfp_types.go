@@ -25,20 +25,14 @@ import (
 
 // OpenMFPSpec defines the desired state of OpenMFP
 type OpenMFPSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of OpenMFP. Edit openmfp_types.go to remove/update
-	// Foo string `json:"foo,omitempty"`
 	Kcp Kcp `json:"kcp"`
 }
 
 type Kcp struct {
-	AdminSecretRef             *AdminSecretRef        `json:"adminSecretRef,omitempty"` // TODO: change to v1.SecretReference
-	ProviderConnections        []ProviderConnection   `json:"providerConnections,omitempty"`
-	ExtraProviderConnections   []ProviderConnection   `json:"extraProviderConnections,omitempty"`
-	WebhookConfigurations      []WebhookConfiguration `json:"webhookConfigurations,omitempty"`
-	ExtraWebhookConfigurations []WebhookConfiguration `json:"extraWebhookConfigurations,omitempty"`
+	AdminSecretRef           *AdminSecretRef      `json:"adminSecretRef,omitempty"` // TODO: change to v1.SecretReference
+	ProviderConnections      []ProviderConnection `json:"providerConnections,omitempty"`
+	ExtraProviderConnections []ProviderConnection `json:"extraProviderConnections,omitempty"`
 }
 
 type WebhookConfiguration struct {

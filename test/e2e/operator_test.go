@@ -19,6 +19,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,6 @@ import (
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/stretchr/testify/suite"
-	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,6 +35,7 @@ import (
 
 	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 )
 
 const kcpIoApiExport = "kcp.io"
@@ -115,45 +116,47 @@ func (suite *OpenmfpTestSuite) TestSecretsCreated() {
 			}
 			return true
 		},
-		15*time.Second, // timeout
+		40*time.Second, // timeout
 		5*time.Second,  // polling interval
 	)
 
 	suite.logger.Info().Msg("Secret created")
 
-	// get the created secret
-	secret := &corev1.Secret{}
+	// get the created provider secret
+	providerSecret := &corev1.Secret{}
 	err = suite.kubernetesClient.Get(
-		testContext, types.NamespacedName{Name: instance.Spec.Kcp.ProviderConnections[0].Secret, Namespace: instance.Namespace}, secret)
+		testContext, types.NamespacedName{Name: instance.Spec.Kcp.ProviderConnections[0].Secret, Namespace: instance.Namespace}, providerSecret)
 	suite.Nil(err)
+	origSecretValue := string(providerSecret.Data["kubeconfig"])
 
-	// change and update the secret
-	secret.Data["kubeconfig"] = []byte("test2")
-	err = suite.kubernetesClient.Update(testContext, secret)
+	// mangle the created provider secret
+	providerSecret.Data["kubeconfig"] = []byte("UnViYmlzaA==") // "Rubbish" base64 encoded
+	err = suite.kubernetesClient.Update(testContext, providerSecret)
 	suite.Nil(err)
+	suite.logger.Debug().Msg("Secret mangled")
 
-	// verify the secret was updated
-	updatedSecret := &corev1.Secret{}
-	err = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, updatedSecret)
+	// Check if labels map exists, if not initialize it
+	if instance.Labels == nil {
+		instance.Labels = make(map[string]string)
+	}
+	instance.Labels["openmfp.io/refresh-reconcile"] = "True"
+	err = suite.kubernetesClient.Update(testContext, instance)
 	suite.Nil(err)
-	suite.Equal("test2", string(updatedSecret.Data["kubeconfig"]))
 
 	// wait for the secret to be reconciled
 	suite.Assert().Eventually(
 		func() bool {
-			err = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, secret)
-			if err != nil {
-				suite.logger.Error().Err(err).Msg("Failed to get secret")
-				return false
-			}
-			currentValue := string(secret.Data["kubeconfig"])
-			return currentValue == "test2"
+			// verify the secret was restored by the operator
+			updatedSecret := &corev1.Secret{}
+			err = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: providerSecret.Name, Namespace: providerSecret.Namespace}, updatedSecret)
+			suite.Nil(err)
+			return origSecretValue == string(updatedSecret.Data["kubeconfig"])
 		},
-		15*time.Second, // timeout
+		30*time.Second, // timeout
 		5*time.Second,  // polling interval
 	)
 
-	suite.logger.Info().Msg("Secret reconciled")
+	suite.logger.Info().Msg("Secret restored by the operator")
 }
 
 func (suite *OpenmfpTestSuite) AfterTest(suiteName, testName string) {
@@ -399,84 +402,45 @@ func (suite *OpenmfpTestSuite) TestWorkspaceCreationDefaults() {
 }
 
 func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
+	// 1: create OpenMFP instance with WebhookConfigurations (override) pointing to test webhook (it doesn't crevent account creation)
+
 	// Given
 	instance := &v1alpha1.OpenMFP{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-webhook-configurations",
+			Name:      "test-webhook-creation",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.OpenMFPSpec{
-			Kcp: v1alpha1.Kcp{},
-		},
-	}
-	caSecret := corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      subroutines.AccountOperatorMutatingWebhookSecretName,
-			Namespace: subroutines.AccountOperatorMutatingWebhookSecretNamespace,
-		},
-		Data: map[string][]byte{
-			subroutines.DefaultCASecretKey: []byte("test"),
-		},
-	}
-	sideEffectNone := v1.SideEffectClassNone // Create a variable to hold the value
-	kcpWebhook := v1.MutatingWebhookConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: subroutines.AccountOperatorMutatingWebhookName,
-		},
-		Webhooks: []v1.MutatingWebhook{
-			{
-				Name: subroutines.AccountOperatorMutatingWebhookName,
-				ClientConfig: v1.WebhookClientConfig{
-					Service: &v1.ServiceReference{
-						Name:      "service",
+			Kcp: v1alpha1.Kcp{
+				AdminSecretRef: &v1alpha1.AdminSecretRef{
+					SecretRef: v1alpha1.SecretReference{
 						Namespace: "default",
+						Name:      "openmfp-operator-kubeconfig",
 					},
+					Key: "kubeconfig",
 				},
-				Rules: []v1.RuleWithOperations{
+				ProviderConnections: []v1alpha1.ProviderConnection{
 					{
-						Operations: []v1.OperationType{
-							v1.Create,
-							v1.Update,
-							// Add missing required fields
-						},
-						Rule: v1.Rule{
-							APIGroups:   []string{"core.openmfp.org"},
-							APIVersions: []string{"v1alpha1"},
-							Resources:   []string{"accounts"},
-						},
+						EndpointSliceName: "core.openmfp.org",
+						Path:              "root:openmfp-system",
+						Secret:            "test-secret",
 					},
 				},
-				SideEffects:             &sideEffectNone,
-				AdmissionReviewVersions: []string{"v1"}, // Required field
 			},
 		},
 	}
 
 	// When
 	testContext := context.Background()
-	kcpHelper := &subroutines.Helper{}
-	kcpWebhookClient, err := kcpHelper.NewKcpClient(suite.config, subroutines.AccountOperatorWorkspace)
+	suite.logger.Info().Msg("CA secret created")
+	err := suite.kubernetesClient.Create(testContext, instance)
 	suite.Nil(err)
-	err = kcpWebhookClient.Create(testContext, &kcpWebhook)
-	suite.NotNil(err)
-	if err != nil {
-		suite.logger.Error().Err(err).Msg("Error creating webhook")
-		return
-	}
 
-	defer func() {
-		err = kcpWebhookClient.Delete(testContext, &kcpWebhook)
-		if err != nil {
-			suite.logger.Error().Err(err).Msg("Error deleting webhook")
-		}
-	}()
-
-	err = suite.kubernetesClient.Create(testContext, &caSecret)
-	suite.NotNil(err)
-	err = suite.kubernetesClient.Create(testContext, instance)
-	suite.NotNil(err)
-
+	// 2: check that webhook has been created with replaced CABundle
 	// Then
+	kcpHelper := &subroutines.Helper{}
+	kcpWebhookClient, err := kcpHelper.NewKcpClient(suite.config, subroutines.DEFAULT_WEBHOOK_CONFIGURATION.WebhookRef.Path)
+	suite.Nil(err)
 	suite.Assert().Eventually(
 		func() bool {
 			webhookCertSecret := corev1.Secret{}
@@ -487,24 +451,27 @@ func (suite *OpenmfpTestSuite) TestWebhookConfigurations() {
 				return false
 			}
 
-			webhook := v1.MutatingWebhookConfiguration{}
-			err = kcpWebhookClient.Get(testContext, types.NamespacedName{
-				Name:      subroutines.AccountOperatorMutatingWebhookName,
-				Namespace: "default",
-			}, &webhook)
+			// List all webhook configurations
+			webhookList := &admissionregistrationv1.MutatingWebhookConfigurationList{}
+			err = kcpWebhookClient.List(testContext, webhookList)
 			if err != nil {
-				suite.logger.Error().Err(err).Msg("Error getting webhook")
+				suite.logger.Error().Err(err).Msg("Error listing webhook configurations")
 				return false
 			}
 
-			// return true
-
-			return bytes.Equal(webhook.Webhooks[0].ClientConfig.CABundle, webhookCertSecret.Data[subroutines.DefaultCASecretKey])
+			for _, webhook := range webhookList.Items {
+				if webhook.Name == "account-operator.webhooks.core.openmfp.org" {
+					suite.logger.Debug().Str("webhook.CABundle", string(webhook.Webhooks[0].ClientConfig.CABundle)).Str("secret.data", string(webhookCertSecret.Data[subroutines.DefaultCASecretKey])).Msg("Comparing CABundle")
+					// Decode the base64 value from the secret
+					decodedSecretData, _ := base64.StdEncoding.DecodeString(string(webhookCertSecret.Data[subroutines.DefaultCASecretKey]))
+					return bytes.Equal(webhook.Webhooks[0].ClientConfig.CABundle, decodedSecretData)
+				}
+			}
+			suite.logger.Debug().Msg("Webhook not found")
+			return false
 		},
-		60*time.Second, // timeout
+		30*time.Second, // timeout
 		5*time.Second,  // polling interval
 	)
-
-	suite.logger.Info().Msg("Webhook caData updated")
 
 }

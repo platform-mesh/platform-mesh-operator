@@ -56,7 +56,6 @@ func init() {
 func initConfig() {
 	v.SetDefault("subroutines-provider-secret-enabled", true)
 	v.SetDefault("subroutines-kcp-setup-enabled", true)
-	v.SetDefault("subroutines-webhook-enabled", true)
 }
 
 func initLog() { // coverage-ignore

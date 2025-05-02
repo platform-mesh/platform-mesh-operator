@@ -47,9 +47,8 @@ spec:
             description: OpenMFPSpec defines the desired state of OpenMFP
             properties:
               kcp:
-                description: |-
-                  Foo is an example field of OpenMFP. Edit openmfp_types.go to remove/update
-                  Foo string `json:"foo,omitempty"`
+                description: 'Important: Run "make" to regenerate code after modifying
+                  this file'
                 properties:
                   adminSecretRef:
                     properties:
@@ -81,42 +80,6 @@ spec:
                       - path
                       type: object
                     type: array
-                  extraWebhookConfigurations:
-                    items:
-                      properties:
-                        secretData:
-                          type: string
-                        secretRef:
-                          properties:
-                            name:
-                              description: name is unique within a namespace to reference
-                                a secret resource.
-                              type: string
-                            namespace:
-                              description: namespace defines the space within which
-                                the secret name must be unique.
-                              type: string
-                          type: object
-                        webhookRef:
-                          properties:
-                            apiVersion:
-                              type: string
-                            kind:
-                              type: string
-                            name:
-                              type: string
-                            path:
-                              type: string
-                          required:
-                          - apiVersion
-                          - kind
-                          - name
-                          - path
-                          type: object
-                      required:
-                      - webhookRef
-                      type: object
-                    type: array
                   providerConnections:
                     items:
                       properties:
@@ -129,42 +92,6 @@ spec:
                       required:
                       - endpointSliceName
                       - path
-                      type: object
-                    type: array
-                  webhookConfigurations:
-                    items:
-                      properties:
-                        secretData:
-                          type: string
-                        secretRef:
-                          properties:
-                            name:
-                              description: name is unique within a namespace to reference
-                                a secret resource.
-                              type: string
-                            namespace:
-                              description: namespace defines the space within which
-                                the secret name must be unique.
-                              type: string
-                          type: object
-                        webhookRef:
-                          properties:
-                            apiVersion:
-                              type: string
-                            kind:
-                              type: string
-                            name:
-                              type: string
-                            path:
-                              type: string
-                          required:
-                          - apiVersion
-                          - kind
-                          - name
-                          - path
-                          type: object
-                      required:
-                      - webhookRef
                       type: object
                     type: array
                 type: object

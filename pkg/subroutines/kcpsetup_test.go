@@ -77,6 +77,92 @@ func TestKcpsetupTestSuite(t *testing.T) {
 	suite.Run(t, new(KcpsetupTestSuite))
 }
 
+func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	expectedCaData := []byte("test-ca-data")
+
+	// Test case 1: No webhook configurations, use default
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name, Namespace: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
+			}
+			return nil
+		}).Once()
+
+	inventory, err := s.testObj.GetCABundleInventory(ctx)
+	s.Assert().NoError(err)
+	s.Assert().NotNil(inventory)
+	expectedKey := subroutines.DEFAULT_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
+	s.Assert().Contains(inventory, expectedKey)
+	s.Assert().Equal(string(expectedCaData), inventory[expectedKey])
+	s.clientMock.AssertExpectations(s.T())
+
+	// Test case 2: No webhook configurations, getCaBundle fails
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name, Namespace: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace}, mock.AnythingOfType("*v1.Secret")).
+		Return(errors.New("secret not found")).Once()
+
+	inventory, err = s.testObj.GetCABundleInventory(ctx)
+	s.Assert().Error(err)
+	s.Assert().Nil(inventory)
+	s.Assert().Contains(err.Error(), "Failed to get CA bundle")
+	s.clientMock.AssertExpectations(s.T())
+}
+
+func (s *KcpsetupTestSuite) Test_GetCaBundle() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	webhookConfig := &corev1alpha1.WebhookConfiguration{
+		SecretRef: corev1alpha1.SecretReference{
+			Name:      "ca-secret",
+			Namespace: "default",
+		},
+		SecretData: "ca.crt",
+	}
+	expectedCaData := []byte("test-ca-data")
+
+	// Test case 1: Successful retrieval
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "ca-secret", Namespace: "default"}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt": expectedCaData,
+			}
+			return nil
+		}).Once()
+
+	caData, err := s.testObj.GetCaBundle(ctx, webhookConfig)
+	s.Assert().NoError(err)
+	s.Assert().Equal(expectedCaData, caData)
+	s.clientMock.AssertExpectations(s.T())
+
+	// Test case 2: Secret not found
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "ca-secret", Namespace: "default"}, mock.AnythingOfType("*v1.Secret")).
+		Return(errors.New("secret not found")).Once()
+
+	caData, err = s.testObj.GetCaBundle(ctx, webhookConfig)
+	s.Assert().Error(err)
+	s.Assert().Nil(caData)
+	s.Assert().Contains(err.Error(), "Failed to get ca secret")
+	s.clientMock.AssertExpectations(s.T())
+
+	// Test case 3: Secret data key not found
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "ca-secret", Namespace: "default"}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"wrong-key": []byte("some data"),
+			}
+			return nil
+		}).Once()
+
+	caData, err = s.testObj.GetCaBundle(ctx, webhookConfig)
+	s.Assert().Error(err)
+	s.Assert().Nil(caData)
+	s.Assert().Contains(err.Error(), "Failed to get caData from secret")
+	s.clientMock.AssertExpectations(s.T())
+}
+
 func (suite *KcpsetupTestSuite) SetupTest() {
 	// create new logger
 	suite.log, _ = logger.New(logger.DefaultConfig())
@@ -85,7 +171,7 @@ func (suite *KcpsetupTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 
 	// create new test object
-	suite.testObj = subroutines.NewKcpsetupSubroutine(suite.clientMock, nil, ManifestStructureTest)
+	suite.testObj = subroutines.NewKcpsetupSubroutine(suite.clientMock, &subroutines.Helper{}, ManifestStructureTest, "wave1")
 }
 
 func (suite *KcpsetupTestSuite) TearDownTest() {
@@ -145,6 +231,28 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	s.Assert().NoError(err)
 	s.clientMock.EXPECT().Scheme().Return(scheme).Once()
 
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"kubeconfig": secretKubeconfigData,
+				},
+			}
+			return nil
+		},
+	).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"ca.crt": []byte("CABundle"),
+				},
+			}
+			return nil
+		}).Once()
+
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
 			IdentityHash: "hash1",
@@ -162,12 +270,6 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
-	mockedKcpHelper.EXPECT().GetSecret(mock.Anything, mock.Anything, mock.Anything).
-		Return(&corev1.Secret{
-			Data: map[string][]byte{
-				"kubeconfig": secretKubeconfigData,
-			},
-		}, nil).Once()
 
 	workspace := kcptenancyv1alpha.Workspace{
 		Status: kcptenancyv1alpha.WorkspaceStatus{
@@ -194,7 +296,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	}).Once()
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient2, nil)
 
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest)
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest, "wave1")
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -209,7 +311,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Times(3)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest)
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest, "wave1")
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -232,9 +334,9 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 
 	inventory, err := s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(subroutines.APIExportInventory{
-		ApiExportRootTenancyKcpIoIdentityHash: "hash1",
-		ApiExportRootShardsKcpIoIdentityHash:  "hash1",
+	s.Assert().Equal(map[string]string{
+		"apiExportRootTenancyKcpIoIdentityHash": "hash1",
+		"apiExportRootShardsKcpIoIdentityHash":  "hash1",
 	}, inventory)
 
 	// test error 2
@@ -253,8 +355,8 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 
 	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(subroutines.APIExportInventory{
-		ApiExportRootTenancyKcpIoIdentityHash: "hash1",
+	s.Assert().Equal(map[string]string{
+		"apiExportRootTenancyKcpIoIdentityHash": "hash1",
 	}, inventory)
 
 	// test error 3
@@ -267,18 +369,14 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 
 	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(subroutines.APIExportInventory{
-		ApiExportRootTenancyKcpIoIdentityHash: "",
-	}, inventory)
+	s.Assert().Equal(map[string]string{}, inventory)
 
 	// test error 4
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(nil, errors.New("Error")).Once()
 	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
-	s.Assert().Equal(subroutines.APIExportInventory{
-		ApiExportRootTenancyKcpIoIdentityHash: "",
-	}, inventory)
+	s.Assert().Equal(map[string]string{}, inventory)
 }
 
 func (s *KcpsetupTestSuite) Test_Constructor() {
@@ -290,7 +388,7 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 	helper := &subroutines.Helper{}
 
 	// create new test object
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, ManifestStructureTest)
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, ManifestStructureTest, "wave1")
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
@@ -300,7 +398,7 @@ func (s *KcpsetupTestSuite) TestFinalizers() {
 
 func (s *KcpsetupTestSuite) TestGetName() {
 	res := s.testObj.GetName()
-	s.Assert().Equal(res, subroutines.KcpsetupSubroutineName)
+	s.Assert().Equal(res, subroutines.KcpsetupSubroutineName+".wave1")
 }
 
 func (s *KcpsetupTestSuite) TestFinalize() {
@@ -313,23 +411,29 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 
 	client := new(mocks.Client)
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", client, subroutines.APIExportInventory{})
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", client, make(map[string]string))
 	s.Assert().Nil(err)
 
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, subroutines.APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string))
 	s.Assert().Error(err)
 
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, subroutines.APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string))
 	s.Assert().Error(err)
 
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", client, subroutines.APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", client, make(map[string]string))
 	s.Assert().Error(err)
 
 	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-orgs.yaml", client, subroutines.APIExportInventory{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-orgs.yaml", client, make(map[string]string))
 	s.Assert().Nil(err)
 
+	client.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	templateData := map[string]string{
+		".account-operator.webhooks.core.openmfp.org.ca-bundle": "CABundle",
+	}
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", client, templateData)
+	s.Assert().Nil(err)
 }
 
 func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
@@ -339,14 +443,30 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
-	}, "kubeconfig", ManifestStructureTest)
+	},
+		"kubeconfig",
+		ManifestStructureTest,
+		&corev1alpha1.OpenMFP{},
+	)
 	s.Assert().Error(err)
 
 	// test OK
+	mockedK8sClient := new(mocks.Client)
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockKcpClient, mockedKcpHelper, ManifestStructureTest)
+	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, ManifestStructureTest, "wave1")
+
+	mockedK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		) error {
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"ca.crt": []byte("CABundle"),
+				},
+			}
+			return nil
+		}).Once()
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -378,7 +498,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
-	}, "kubeconfig", ManifestStructureTest)
+	}, "kubeconfig", ManifestStructureTest, &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 
 	// test err2
@@ -386,6 +506,6 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invaliddata"),
 		},
-	}, "kubeconfig", ManifestStructureTest)
+	}, "kubeconfig", ManifestStructureTest, &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 }

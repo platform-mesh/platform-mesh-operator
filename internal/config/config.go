@@ -9,8 +9,5 @@ type OperatorConfig struct {
 		ProviderSecret struct {
 			Enabled bool `mapstructure:"subroutines-provider-secret-enabled"`
 		} `mapstructure:",squash"`
-		Webhook struct {
-			Enabled bool `mapstructure:"subroutines-webhook-enabled"`
-		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 }

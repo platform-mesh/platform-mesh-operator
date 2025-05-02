@@ -48,8 +48,7 @@ var DirManifestStructure = DirectoryStructure{
 				"/operator/setup/02-orgs/workspace-root-org.yaml",
 			},
 		},
-		// Apply webhooks at the very last as the  certificates are not yet ready blocking the earlier account creation
-		{
+		{ // applied last because there is not running webhook during the tests
 			Name: "root:openmfp-system",
 			Files: []string{
 				"/operator/setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml",
@@ -78,5 +77,18 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		EndpointSliceName: "kcp.io",
 		Path:              "root:openmfp-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+	},
+}
+var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
+	SecretRef: corev1alpha1.SecretReference{
+		Name:      AccountOperatorMutatingWebhookSecretName,
+		Namespace: AccountOperatorMutatingWebhookSecretNamespace,
+	},
+	SecretData: DefaultCASecretKey,
+	WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
+		ApiVersion: "admissionregistration.k8s.io/v1",
+		Kind:       "MutatingWebhookConfiguration",
+		Name:       AccountOperatorMutatingWebhookName,
+		Path:       AccountOperatorWorkspace,
 	},
 }

@@ -1,12 +1,12 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: account-operator.webhooks.core.openmfp.org
+  name: e2e-test-webhook.webhooks.core.openmfp.org
 webhooks:
   - admissionReviewVersions:
       - v1
     clientConfig:
-      caBundle: {{ index . "account-operator.webhooks.core.openmfp.org.ca-bundle" }}
+      caBundle: {{ index . "e2e-test-webhook.webhooks.core.openmfp.org.ca-bundle" }}
       url: https://openmfp-account-operator-webhook.openmfp-system.svc:9443/mutate-core-openmfp-org-v1alpha1-account
     failurePolicy: Fail
     name: maccount.kb.io
@@ -16,7 +16,7 @@ webhooks:
         apiVersions:
           - v1alpha1
         operations:
-          - CREATE
+          - DELETE
         resources:
           - accounts
     sideEffects: None
