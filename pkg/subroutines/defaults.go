@@ -79,6 +79,13 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 	},
 }
+var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
+	{
+		WorkspaceTypeName: "fga.openmfp.org",
+		Path:              "root:openmfp-system",
+		Secret:            "fga-initializer-kubeconfig",
+	},
+}
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
 		Name:      AccountOperatorMutatingWebhookSecretName,

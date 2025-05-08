@@ -33,6 +33,14 @@ type Kcp struct {
 	AdminSecretRef           *AdminSecretRef      `json:"adminSecretRef,omitempty"` // TODO: change to v1.SecretReference
 	ProviderConnections      []ProviderConnection `json:"providerConnections,omitempty"`
 	ExtraProviderConnections []ProviderConnection `json:"extraProviderConnections,omitempty"`
+	InitializerConnections      []InitializerConnection `json:"initializerConnections,omitempty"`
+	ExtraInitializerConnections []InitializerConnection `json:"extraInitializerConnections,omitempty"`
+}
+
+type InitializerConnection struct {
+	WorkspaceTypeName string `json:"workspaceTypeName"`
+	Path              string `json:"path"`
+	Secret            string `json:"secret,omitempty"`
 }
 
 type WebhookConfiguration struct {
