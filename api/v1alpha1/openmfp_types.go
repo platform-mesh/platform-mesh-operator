@@ -17,22 +17,52 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // OpenMFPSpec defines the desired state of OpenMFP
 type OpenMFPSpec struct {
-	// Important: Run "make" to regenerate code after modifying this file
-	Kcp Kcp `json:"kcp"`
+	Exposure   *ExposureConfig  `json:"exposure,omitempty"`
+	Components ComponentsConfig `json:"components,omitempty"`
+	Kcp        Kcp              `json:"kcp,omitempty"`
+}
+
+type ComponentsConfig struct {
+	AccountOperator          Component `json:"accountOperator,omitempty"`
+	AccountUI                Component `json:"accountUI,omitempty"`
+	Crossplane               Component `json:"crossplane,omitempty"`
+	Kcp                      Component `json:"kcp,omitempty"`
+	Keycloak                 Component `json:"keycloak,omitempty"`
+	KubernetesGraphqlGateway Component `json:"kubernetesGraphqlGateway,omitempty"`
+	ApeiroExampleContent     Component `json:"apeiroExampleContent,omitempty"`
+	ApeiroPortal             Component `json:"apeiroPortal,omitempty"`
+	Portal                   Component `json:"portal,omitempty"`
+	ExtensionManagerOperator Component `json:"extensionManagerOperator,omitempty"`
+	ExampleResources         Component `json:"exampleResources,omitempty"`
+	FgaOperator              Component `json:"fgaOperator,omitempty"`
+	IamAuthorizationWebhook  Component `json:"iamAuthorizationWebhook,omitempty"`
+	IamService               Component `json:"iamService,omitempty"`
+	Infra                    Component `json:"infra,omitempty"`
+	IstioBase                Component `json:"istioBase,omitempty"`
+	IstioD                   Component `json:"istioD,omitempty"`
+	IstioGateway             Component `json:"istioGateway,omitempty"`
+	OpenFGA                  Component `json:"openFGA,omitempty"`
+}
+
+type Component struct {
+	Values apiextensionsv1.JSON `json:"values,omitempty"`
+}
+
+type ExposureConfig struct {
+	BaseDomain string `json:"baseDomain,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	Protocol   string `json:"protocol,omitempty"`
 }
 
 type Kcp struct {
-	AdminSecretRef           *AdminSecretRef      `json:"adminSecretRef,omitempty"` // TODO: change to v1.SecretReference
-	ProviderConnections      []ProviderConnection `json:"providerConnections,omitempty"`
-	ExtraProviderConnections []ProviderConnection `json:"extraProviderConnections,omitempty"`
+	ProviderConnections         []ProviderConnection    `json:"providerConnections,omitempty"`
+	ExtraProviderConnections    []ProviderConnection    `json:"extraProviderConnections,omitempty"`
 	InitializerConnections      []InitializerConnection `json:"initializerConnections,omitempty"`
 	ExtraInitializerConnections []InitializerConnection `json:"extraInitializerConnections,omitempty"`
 }
@@ -56,11 +86,6 @@ type KCPAPIVersionKindRef struct {
 	Path       string `json:"path"`
 }
 
-type AdminSecretRef struct {
-	SecretRef SecretReference `json:"secret,omitempty"`
-	Key       string          `json:"key,omitempty"`
-}
-
 type SecretReference struct {
 	// name is unique within a namespace to reference a secret resource.
 	// +optional
@@ -74,6 +99,7 @@ type ProviderConnection struct {
 	EndpointSliceName string `json:"endpointSliceName"`
 	Path              string `json:"path"`
 	Secret            string `json:"secret,omitempty"`
+	External          bool   `json:"external,omitempty"`
 }
 
 // OpenMFPStatus defines the observed state of OpenMFP
@@ -118,27 +144,3 @@ func init() {
 
 func (i *OpenMFP) GetConditions() []metav1.Condition           { return i.Status.Conditions }
 func (i *OpenMFP) SetConditions(conditions []metav1.Condition) { i.Status.Conditions = conditions }
-
-var DEFAULT_ADMIN_SECRET_KEY = "kubeconfig"
-var DEFAULT_ADMIN_SECRET_NAME = "openmfp-operator-kubeconfig"
-
-func (i *OpenMFP) GetAdminSecretName() string {
-	if i.Spec.Kcp.AdminSecretRef == nil {
-		return DEFAULT_ADMIN_SECRET_NAME
-	}
-	return i.Spec.Kcp.AdminSecretRef.SecretRef.Name
-}
-
-func (i *OpenMFP) GetAdminSecretNamespace() string {
-	if i.Spec.Kcp.AdminSecretRef == nil {
-		return "default"
-	}
-	return i.Spec.Kcp.AdminSecretRef.SecretRef.Namespace
-}
-
-func (i *OpenMFP) GetAdminSecretKey() string {
-	if i.Spec.Kcp.AdminSecretRef == nil {
-		return DEFAULT_ADMIN_SECRET_KEY
-	}
-	return i.Spec.Kcp.AdminSecretRef.Key
-}

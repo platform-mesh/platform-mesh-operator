@@ -1,0 +1,14 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ComponentVersion
+metadata:
+  name: openmfp-priv
+  namespace: default
+spec:
+  interval: 10m0s
+  component: github.com/openmfp/openmfp-priv
+  repository:
+    url: ghcr.io/openmfp/ocm
+    secretRef:
+      name: ocm-oci-github-pull
+  version:
+    semver: 0.0.100

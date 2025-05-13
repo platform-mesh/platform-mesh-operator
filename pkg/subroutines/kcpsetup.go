@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -30,7 +32,10 @@ type KcpsetupSubroutine struct {
 	client       client.Client
 	kcpHelper    KcpHelper
 	kcpDirectory DirectoryStructure
-	wave         string
+	kcpUrl       string
+	helm         HelmGetter
+	// Cache for CA bundles to avoid redundant secret lookups
+	caBundleCache map[string]string
 }
 
 const (
@@ -38,21 +43,21 @@ const (
 	KcpsetupSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir DirectoryStructure, wave string) *KcpsetupSubroutine {
-	sub := &KcpsetupSubroutine{
-		client:       client,
-		kcpDirectory: kcpdir,
-		kcpHelper:    helper,
-		wave:         wave,
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir DirectoryStructure, kcpUrl string) *KcpsetupSubroutine {
+	return &KcpsetupSubroutine{
+		client:        client,
+		kcpDirectory:  kcpdir,
+		kcpUrl:        kcpUrl,
+		kcpHelper:     helper,
+		helm:          DefaultHelmGetter{},
+		caBundleCache: make(map[string]string),
 	}
-	return sub
 }
 
 func (r *KcpsetupSubroutine) GetName() string {
-	return KcpsetupSubroutineName + "." + r.wave
+	return KcpsetupSubroutineName
 }
 
-// TODO: Implement the following methods
 func (r *KcpsetupSubroutine) Finalize(
 	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
@@ -62,7 +67,6 @@ func (r *KcpsetupSubroutine) Finalize(
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
-// TODO: Implement the following methods
 func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
@@ -73,16 +77,27 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 	instance := runtimeObj.(*corev1alpha1.OpenMFP)
 	log.Debug().Str("subroutine", r.GetName()).Str("name", instance.Name).Msg("Processing OpenMFP resource")
 
-	// Get the secret
-	secret, err := GetSecret(
-		r.client, instance.GetAdminSecretName(), instance.GetAdminSecretNamespace(),
-	)
+	// Wait for kcp release to be ready before continuing
+	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
 	if err != nil {
-		log.Error().Str("subroutine", r.GetName()).Err(err).Msg("Failed to get secret")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), false, false)
+		log.Error().Err(err).Msg("Failed to get KCP Release")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
-	err = r.createKcpResources(ctx, *secret, instance.GetAdminSecretKey(), r.kcpDirectory, instance)
+	if !isReady(rel) {
+		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Build kcp kubeonfig
+	cfg, err := buildKubeconfig(r.client, r.kcpUrl, "kcp-cluster-admin-client-cert")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to build kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
+	}
+
+	// generate kcp secret
+	err = r.createKcpResources(ctx, cfg, r.kcpDirectory)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
@@ -106,21 +121,78 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 
 }
 
-func (r *KcpsetupSubroutine) createKcpResources(
-	ctx context.Context,
-	secret corev1.Secret,
-	secretKey string,
-	dir DirectoryStructure,
-	instance *corev1alpha1.OpenMFP,
-) error {
-	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	// kcp kubernetes client
-	config, err := clientcmd.RESTConfigFromKubeConfig(secret.Data[secretKey])
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to build config from kubeconfig string")
-		return errors.Wrap(err, "Failed to build config from kubeconfig string")
+// isReady checks the Ready Condition if it has status true
+func isReady(release *unstructured.Unstructured) bool {
+	if release == nil {
+		return false
+	}
+	conditions, found, err := unstructured.NestedSlice(release.Object, "status", "conditions")
+	if err != nil || !found {
+		return false
 	}
 
+	for _, condition := range conditions {
+		c := condition.(map[string]interface{})
+		if c["type"] == "Ready" && c["status"] == "True" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*rest.Config, error) {
+	secret, err := GetSecret(client, secretName, "openmfp-system")
+	if err != nil {
+		return nil, fmt.Errorf("getting secret %s/openmfp-system: %w", secretName, err)
+	}
+	if secret == nil {
+		return nil, fmt.Errorf("secret %s/openmfp-system is nil", secretName)
+	}
+	if secret.Data == nil {
+		return nil, fmt.Errorf("secret %s/openmfp-system has no Data", secretName)
+	}
+
+	caData, ok := secret.Data["ca.crt"]
+	if !ok || len(caData) == 0 {
+		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"ca.crt\"", secretName)
+	}
+
+	tlsCrt, ok := secret.Data["tls.crt"]
+	if !ok || len(tlsCrt) == 0 {
+		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"tls.crt\"", secretName)
+	}
+
+	tlsKey, ok := secret.Data["tls.key"]
+	if !ok || len(tlsKey) == 0 {
+		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"tls.key\"", secretName)
+	}
+
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters = map[string]*clientcmdapi.Cluster{
+		"kcp": {
+			Server:                   kcpUrl,
+			CertificateAuthorityData: secret.Data["ca.crt"],
+		},
+	}
+	cfg.Contexts = map[string]*clientcmdapi.Context{
+		"admin": {
+			Cluster:  "kcp",
+			AuthInfo: "admin",
+		},
+	}
+	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
+		"admin": {
+			ClientCertificateData: secret.Data["tls.crt"],
+			ClientKeyData:         secret.Data["tls.key"],
+		},
+	}
+	cfg.CurrentContext = "admin"
+	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
+}
+
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure) error {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
 	if err != nil {
@@ -140,7 +212,6 @@ func (r *KcpsetupSubroutine) createKcpResources(
 		templateData[k] = v
 	}
 
-	// TODO: check if already applied
 	err = r.applyDirStructure(ctx, dir, config, templateData)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
@@ -156,8 +227,14 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 ) (map[string]string, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 
+	// If we already have cached results, return them
+	if len(r.caBundleCache) > 0 {
+		return r.caBundleCache, nil
+	}
+
 	caBundles := make(map[string]string)
 
+	// Get default webhook CA bundle
 	webhookConfig := DEFAULT_WEBHOOK_CONFIGURATION
 	caData, err := r.getCaBundle(ctx, &webhookConfig)
 	if err != nil {
@@ -166,7 +243,11 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	}
 
 	key := fmt.Sprintf("%s.ca-bundle", webhookConfig.WebhookRef.Name)
-	caBundles[key] = string(caData)
+	b64Data := base64.StdEncoding.EncodeToString(caData)
+	caBundles[key] = b64Data
+
+	// Cache the results
+	r.caBundleCache = caBundles
 
 	return caBundles, nil
 }
@@ -175,7 +256,7 @@ func (r *KcpsetupSubroutine) getCaBundle(
 	ctx context.Context,
 	webhookConfig *corev1alpha1.WebhookConfiguration,
 ) ([]byte, error) {
-	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+	log := logger.LoadLoggerFromContext(ctx)
 
 	caSecret := corev1.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{
@@ -258,7 +339,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 			return err
 		}
 		for _, file := range workspace.Files {
-			err := r.applyManifestFromFile(ctx, file, k8sClient, templateData)
+			err := applyManifestFromFile(ctx, file, k8sClient, templateData)
 			if err != nil {
 				return err
 			}
@@ -295,35 +376,45 @@ func (r *KcpsetupSubroutine) waitForWorkspace(
 	return err
 }
 
-func (r *KcpsetupSubroutine) applyManifestFromFile(
+func applyManifestFromFile(
 	ctx context.Context,
 	path string, k8sClient client.Client, templateData map[string]string,
 ) error {
-	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	manifestBytes, err := os.ReadFile(path)
+	log := logger.LoadLoggerFromContext(ctx)
+
+	obj, err := unstructuredFromFile(path, templateData, log)
 	if err != nil {
-		pwdir, _ := os.Getwd()
-		return errors.Wrap(err, "Failed to read file, pwd: %s", pwdir)
+		return err
 	}
-
-	res, err := ReplaceTemplate(templateData, manifestBytes)
-	if err != nil {
-		return errors.Wrap(err, "Failed to replace template with path: %s", path)
-	}
-
-	var objMap map[string]interface{}
-	if err := yaml.Unmarshal(res, &objMap); err != nil {
-		return errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
-	}
-
-	obj := unstructured.Unstructured{Object: objMap}
-
-	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
 
 	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
-
 	return nil
+}
+
+func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
+	manifestBytes, err := os.ReadFile(path)
+	if err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
+	}
+	log.Debug().Str("file", path).Str("template", string(manifestBytes)).Str("templateData", fmt.Sprintf("%+v", templateData)).Msg("Replacing template")
+
+	res, err := ReplaceTemplate(templateData, manifestBytes)
+	if err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to replace template with path: %s", path)
+	}
+
+	var objMap map[string]interface{}
+	if err := yaml.Unmarshal(res, &objMap); err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
+	}
+
+	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
+
+	obj := unstructured.Unstructured{Object: objMap}
+
+	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
+	return obj, err
 }

@@ -1,0 +1,23 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: extension-manager-operator
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: extension-manager-operator
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: extension-manager-operator
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: istio-istiod
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]

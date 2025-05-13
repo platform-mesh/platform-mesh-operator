@@ -1,0 +1,36 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: openfga
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: openfga
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: openfga
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: istio-istiod
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      databaseService: openfga-openfga-postgres
+      trust:
+        openmfp:
+          trustedIssuer: https://{{ .BASE_DOMAIN }}{{ .COLON_PORT }}/keycloak/realms/openmfp
+          jwksUrl: http://keycloak-headless.openmfp-system:8080/keycloak/realms/openmfp/protocol/openid-connect/certs
+          audience: openmfp
+      rbac:
+        writePrincipals:
+          - cluster.local/ns/openmfp-system/sa/iam-service
+          - cluster.local/ns/openmfp-system/sa/iam-service-dataloader-sa
+          - cluster.local/ns/openmfp-system/sa/fga-operator
+          - cluster.local/ns/openmfp-system/sa/account-operator

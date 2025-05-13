@@ -1,0 +1,36 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: account-operator
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: account-operator
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: account-operator
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: istio-istiod
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      kubeconfigSecret: account-operator-kubeconfig
+      log:
+        level: debug
+      crds:
+        enabled: false
+      kcp:
+        enabled: true
+        apiExportEndpointSliceName: ""
+
+      subroutines:
+        fga:
+          grpcAddr: openfga:8081

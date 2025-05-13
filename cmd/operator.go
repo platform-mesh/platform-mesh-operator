@@ -83,7 +83,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if defaultCfg.IsLocal {
 		subroutines.ReplacePaths(dirs, "./setup/", true)
 	}
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, dirs)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, defaultCfg, dirs)
 	if err := openmfpReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenMFP")
 		os.Exit(1)

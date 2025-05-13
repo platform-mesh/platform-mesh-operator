@@ -141,8 +141,9 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 
 	dirs := deepcopy.Copy(subroutines.DirManifestStructure).(subroutines.DirectoryStructure)
 	subroutines.ReplacePaths(dirs, "../../setup/", true)
+	commonConfig := &openmfpconfig.CommonServiceConfig{}
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, dirs)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, commonConfig, dirs)
 	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, defaultConfig, log)
 	suite.Nil(err)
 

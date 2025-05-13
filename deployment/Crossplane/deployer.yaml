@@ -1,0 +1,25 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: crossplane
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: crossplane
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: crossplane
+    targetNamespace: crossplane-system
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      provider:
+        packages:
+          - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v1.8.0
+    

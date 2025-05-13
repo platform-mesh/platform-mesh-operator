@@ -1,0 +1,32 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: apeiro-example-content
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: apeiro-example-content
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: apeiro-example-content
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: istio-gateway
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      contentConfigurations:
+        kubermatic:
+          enabled: true
+          url: {{ .PROTOCOL }}://{{ .BASE_DOMAIN }}{{ .COLON_PORT }}/ui/example-content/ui/assets/config.json
+      istio:
+        virtualService:
+          hosts:
+            - "{{ .BASE_DOMAIN }}"

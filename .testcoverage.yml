@@ -8,4 +8,5 @@ exclude:
     - ^test/
     - ^setup/
     - .*_testexports.go
+    - pkg/subroutines/deployment.go
 

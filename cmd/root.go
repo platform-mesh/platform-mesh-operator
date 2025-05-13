@@ -54,8 +54,11 @@ func init() {
 }
 
 func initConfig() {
-	v.SetDefault("subroutines-provider-secret-enabled", true)
+	v.SetDefault("subroutines-deployment-enabled", true)
 	v.SetDefault("subroutines-kcp-setup-enabled", true)
+	v.SetDefault("subroutines-provider-secret-enabled", true)
+	v.SetDefault("workspace-dir", "/operator/")
+
 }
 
 func initLog() { // coverage-ignore

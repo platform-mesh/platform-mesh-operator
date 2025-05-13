@@ -46,31 +46,136 @@ spec:
           spec:
             description: OpenMFPSpec defines the desired state of OpenMFP
             properties:
-              kcp:
-                description: 'Important: Run "make" to regenerate code after modifying
-                  this file'
+              components:
                 properties:
-                  adminSecretRef:
+                  accountOperator:
                     properties:
-                      key:
-                        type: string
-                      secret:
-                        properties:
-                          name:
-                            description: name is unique within a namespace to reference
-                              a secret resource.
-                            type: string
-                          namespace:
-                            description: namespace defines the space within which
-                              the secret name must be unique.
-                            type: string
-                        type: object
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
                     type: object
+                  accountUI:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  apeiroExampleContent:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  apeiroPortal:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  crossplane:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  exampleResources:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  extensionManagerOperator:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  fgaOperator:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  iamAuthorizationWebhook:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  iamService:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  infra:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  istioBase:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  istioD:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  istioGateway:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  kcp:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  keycloak:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  kubernetesGraphqlGateway:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  openFGA:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  portal:
+                    properties:
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                type: object
+              exposure:
+                properties:
+                  baseDomain:
+                    type: string
+                  port:
+                    type: integer
+                  protocol:
+                    type: string
+                type: object
+              kcp:
+                properties:
+                  extraInitializerConnections:
+                    items:
+                      properties:
+                        path:
+                          type: string
+                        secret:
+                          type: string
+                        workspaceTypeName:
+                          type: string
+                      required:
+                      - path
+                      - workspaceTypeName
+                      type: object
+                    type: array
                   extraProviderConnections:
                     items:
                       properties:
                         endpointSliceName:
                           type: string
+                        external:
+                          type: boolean
                         path:
                           type: string
                         secret:
@@ -80,11 +185,27 @@ spec:
                       - path
                       type: object
                     type: array
+                  initializerConnections:
+                    items:
+                      properties:
+                        path:
+                          type: string
+                        secret:
+                          type: string
+                        workspaceTypeName:
+                          type: string
+                      required:
+                      - path
+                      - workspaceTypeName
+                      type: object
+                    type: array
                   providerConnections:
                     items:
                       properties:
                         endpointSliceName:
                           type: string
+                        external:
+                          type: boolean
                         path:
                           type: string
                         secret:
@@ -95,8 +216,6 @@ spec:
                       type: object
                     type: array
                 type: object
-            required:
-            - kcp
             type: object
           status:
             description: OpenMFPStatus defines the observed state of OpenMFP

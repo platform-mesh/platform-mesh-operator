@@ -1,0 +1,34 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: istio-gateway
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: istio-gateway
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: istio-gateway
+    targetNamespace: istio-system
+    dependsOn:
+    - name: istio-istiod
+      namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      service:
+        type: NodePort
+        ports:
+          - name: https
+            port: 8443
+            nodePort: 31000
+          - name: status-port
+            port: 15021
+            nodePort: 32000
+    

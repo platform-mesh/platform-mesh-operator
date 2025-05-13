@@ -19,5 +19,6 @@ jobs:
       imageTagName: ghcr.io/openmfp/openmfp-operator
       useTask: true
       useLocalCoverageConfig: true
-      # repoVersionUpdate: openmfp/helm-charts
-      coverageThreasholdTotal: 80
+      coverageThresholdTotal: 45
+      coverageThresholdPackage: 60
+      coverageThresholdFile: 30

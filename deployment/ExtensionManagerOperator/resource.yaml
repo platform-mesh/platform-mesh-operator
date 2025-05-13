@@ -1,0 +1,17 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: extension-manager-operator
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: ComponentVersion
+    name: openmfp-priv
+    namespace: default
+    resourceRef:
+      name: chart
+      version: 0.27.3
+      referencePath:
+        - name: extension-manager-operator

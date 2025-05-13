@@ -21,8 +21,9 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
+
+	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 type KcpHelper interface {
@@ -48,13 +49,13 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme))
 
-	client, err := client.New(config, client.Options{
+	cl, err := client.New(config, client.Options{
 		Scheme: scheme,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create KCP client: %w", err)
 	}
-	return client, nil
+	return cl, nil
 }
 
 func GetSecret(client client.Client, name string, namespace string) (*corev1.Secret, error) {
@@ -74,7 +75,7 @@ func ReplacePaths(dirs DirectoryStructure, relativePath string, isLocal bool) {
 		for wi, w := range dirs.Workspaces {
 			filteredFiles := []string{}
 			for _, f := range w.Files {
-				filteredFiles = append(filteredFiles, strings.Replace(f, "/operator/setup/", relativePath, -1))
+				filteredFiles = append(filteredFiles, strings.ReplaceAll(f, "/operator/setup/", relativePath))
 			}
 			dirs.Workspaces[wi].Files = filteredFiles
 		}

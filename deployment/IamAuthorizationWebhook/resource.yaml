@@ -1,0 +1,17 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: iam-authorization-webhook
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: ComponentVersion
+    name: openmfp-priv
+    namespace: default
+    resourceRef:
+      name: chart
+      version: 0.7.14
+      referencePath:
+        - name: iam-authorization-webhook

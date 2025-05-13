@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
@@ -14,7 +17,7 @@ import (
 	"github.com/openmfp/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,13 +26,30 @@ import (
 	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
-func NewProvidersecretSubroutine(
+// HelmGetter is an interface for getting Helm releases
+type HelmGetter interface {
+	GetRelease(ctx context.Context, client client.Client, name, ns string) (*unstructured.Unstructured, error)
+}
+
+// DefaultHelmGetter is the default implementation of HelmGetter
+type DefaultHelmGetter struct{}
+
+// GetRelease implements HelmGetter interface
+func (g DefaultHelmGetter) GetRelease(ctx context.Context, cli client.Client, name, ns string) (*unstructured.Unstructured, error) {
+	return getHelmRelease(ctx, cli, name, ns)
+}
+
+func NewProviderSecretSubroutine(
 	client client.Client,
 	helper KcpHelper,
+	helm HelmGetter,
+	kcpUrl string,
 ) *ProvidersecretSubroutine {
 	sub := &ProvidersecretSubroutine{
 		client:    client,
+		kcpUrl:    kcpUrl,
 		kcpHelper: helper,
+		helm:      helm,
 	}
 	return sub
 }
@@ -37,6 +57,8 @@ func NewProvidersecretSubroutine(
 type ProvidersecretSubroutine struct {
 	client    client.Client
 	kcpHelper KcpHelper
+	kcpUrl    string
+	helm      HelmGetter
 }
 
 const (
@@ -44,7 +66,6 @@ const (
 	ProvidersecretSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
 )
 
-// TODO: Implement the following methods
 func (r *ProvidersecretSubroutine) Finalize(
 	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
@@ -54,17 +75,25 @@ func (r *ProvidersecretSubroutine) Finalize(
 func (r *ProvidersecretSubroutine) Process(
 	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
+	scheme := r.client.Scheme()
+	if scheme == nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("client scheme is nil"), true, false)
+	}
+
 	instance := runtimeObj.(*corev1alpha1.OpenMFP)
 	log := logger.LoadLoggerFromContext(ctx)
 
-	secret, err := GetSecret(
-		r.client, instance.GetAdminSecretName(), instance.GetAdminSecretNamespace(),
-	)
+	// Wait for kcp release to be ready before continuing
+	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		log.Error().Err(err).Msg("Failed to get KCP Release")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
+	if !isReady(rel) {
+		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
 	// Determine which provider connections to use based on configuration:
 	var providers []corev1alpha1.ProviderConnection
 	hasProv := len(instance.Spec.Kcp.ProviderConnections) > 0
@@ -85,47 +114,49 @@ func (r *ProvidersecretSubroutine) Process(
 		providers = append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...)
 	}
 
+	// Build kcp kubeonfig
+	cfg, err := buildKubeconfig(r.client, r.kcpUrl, "kcp-cluster-admin-client-cert")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to build kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
+	}
 	for _, pc := range providers {
-		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, secret); opErr != nil {
+		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg); opErr != nil {
 			log.Error().Err(opErr.Err()).Msg("Failed to handle provider connection")
 			return ctrl.Result{}, opErr
 		}
 	}
 
-	// Only process initializers if no providers are configured
-	if !hasProv && !hasExtraProv {
-		// Determine which initializer connections to use based on configuration:
-		var inits []corev1alpha1.InitializerConnection
-		hasInit := len(instance.Spec.Kcp.InitializerConnections) > 0
-		hasExtraInit := len(instance.Spec.Kcp.ExtraInitializerConnections) > 0
+	// Determine which initializer connections to use based on configuration:
+	var inits []corev1alpha1.InitializerConnection
+	hasInit := len(instance.Spec.Kcp.InitializerConnections) > 0
+	hasExtraInit := len(instance.Spec.Kcp.ExtraInitializerConnections) > 0
 
-		switch {
-		case !hasInit && !hasExtraInit:
-			// Nothing configured -> use default initializers
-			inits = DefaultInitializerConnection
-		case !hasInit && hasExtraInit:
-			// Only extra initializers configured -> use default + extra initializers
-			inits = append(DefaultInitializerConnection, instance.Spec.Kcp.ExtraInitializerConnections...)
-		case hasInit && !hasExtraInit:
-			// Only initializers configured -> use only specified initializers
-			inits = instance.Spec.Kcp.InitializerConnections
-		default:
-			// Both initializers and extra initializers configured -> use specified + extra initializers
-			inits = append(instance.Spec.Kcp.InitializerConnections, instance.Spec.Kcp.ExtraInitializerConnections...)
-		}
+	switch {
+	case !hasInit && !hasExtraInit:
+		// Nothing configured -> use default initializers
+		inits = DefaultInitializerConnection
+	case !hasInit && hasExtraInit:
+		// Only extra initializers configured -> use default + extra initializers
+		inits = append(DefaultInitializerConnection, instance.Spec.Kcp.ExtraInitializerConnections...)
+	case hasInit && !hasExtraInit:
+		// Only initializers configured -> use only specified initializers
+		inits = instance.Spec.Kcp.InitializerConnections
+	default:
+		// Both initializers and extra initializers configured -> use specified + extra initializers
+		inits = append(instance.Spec.Kcp.InitializerConnections, instance.Spec.Kcp.ExtraInitializerConnections...)
+	}
 
-		for _, ic := range inits {
-			if _, opErr := r.HandleInitializerConnection(ctx, instance, ic, secret); opErr != nil {
-				log.Error().Err(opErr.Err()).Msg("Failed to handle initializer connection")
-				return ctrl.Result{}, opErr
-			}
+	for _, ic := range inits {
+		if _, opErr := r.HandleInitializerConnection(ctx, instance, ic, cfg); opErr != nil {
+			log.Error().Err(opErr.Err()).Msg("Failed to handle initializer connection")
+			return ctrl.Result{}, opErr
 		}
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// TODO: Implement the following methods
 func (r *ProvidersecretSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{ProvidersecretSubroutineFinalizer}
 }
@@ -135,25 +166,11 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.OpenMFP, pc corev1alpha1.ProviderConnection, secret *corev1.Secret,
+	ctx context.Context, instance *corev1alpha1.OpenMFP, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
-	secretKey := instance.GetAdminSecretKey()
 
-	kcpConfig, err := clientcmd.Load(secret.Data[secretKey])
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to load kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-
-	kcpConfigBytes := secret.Data[secretKey]
-	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kcpConfigBytes)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse REST config from kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	kcpClient, err := r.kcpHelper.NewKcpClient(restConfig, pc.Path)
+	kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create KCP client")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -171,30 +188,22 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	endpointURL := slice.Status.APIExportEndpoints[0].URL
-	currentContextName := kcpConfig.CurrentContext
-	currentContext, ok := kcpConfig.Contexts[currentContextName]
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("context %s not found in kubeconfig", currentContextName), false, false)
-	}
-
-	clusterName := currentContext.Cluster
 	u, err := url.Parse(endpointURL)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to parse endpoint URL")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
-	existingCluster, ok := kcpConfig.Clusters[clusterName]
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster %s not found in kubeconfig", clusterName), false, false)
+	newConfig := rest.CopyConfig(cfg)
+
+	if pc.External {
+		newConfig.Host = fmt.Sprintf("%s://%s%s/", u.Scheme, u.Host, u.Path)
+	} else {
+		newConfig.Host = fmt.Sprintf("https://kcp-front-proxy.openmfp-system:8443%s/", u.Path)
 	}
 
-	kcpConfig.Clusters[clusterName] = &clientcmdapi.Cluster{
-		Server:                   fmt.Sprintf("%s://%s/clusters/%s", u.Scheme, u.Host, pc.Path),
-		CertificateAuthorityData: existingCluster.CertificateAuthorityData,
-	}
-
-	kcpConfigBytes, err = clientcmd.Write(*kcpConfig)
+	apiConfig := restConfigToAPIConfig(newConfig)
+	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -224,17 +233,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.OpenMFP, ic corev1alpha1.InitializerConnection, adminSecret *corev1.Secret,
+	ctx context.Context, instance *corev1alpha1.OpenMFP, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
-	key := instance.Spec.Kcp.AdminSecretRef.Key
-	restConfig, err := clientcmd.RESTConfigFromKubeConfig(adminSecret.Data[key])
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse REST config from kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-	kcpClient, err := r.kcpHelper.NewKcpClient(restConfig, ic.Path)
+	kcpClient, err := r.kcpHelper.NewKcpClient(restCfg, ic.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("creating kcp client for initializer")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
@@ -251,16 +254,13 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	cfg, err := clientcmd.Load(adminSecret.Data[key])
-	if err != nil {
-		log.Error().Err(err).Msg("loading admin kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-	curr := cfg.CurrentContext
-	cluster := cfg.Contexts[curr].Cluster
-	cfg.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
+	newConfig := rest.CopyConfig(restCfg)
+	apiConfig := restConfigToAPIConfig(newConfig)
+	curr := apiConfig.CurrentContext
+	cluster := apiConfig.Contexts[curr].Cluster
+	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
 
-	data, err := clientcmd.Write(*cfg)
+	data, err := clientcmd.Write(*apiConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("writing modified kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -282,4 +282,38 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
+	if restCfg == nil {
+		return nil
+	}
+
+	clientConfig := &clientcmdapi.Config{
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"default-cluster": {
+				Server:                   restCfg.Host,
+				CertificateAuthorityData: restCfg.CAData,
+				InsecureSkipTLSVerify:    restCfg.Insecure,
+			},
+		},
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			"default-auth": {
+				Token:                 restCfg.BearerToken,
+				ClientCertificateData: restCfg.CertData,
+				ClientKeyData:         restCfg.KeyData,
+				Username:              restCfg.Username,
+				Password:              restCfg.Password,
+			},
+		},
+		Contexts: map[string]*clientcmdapi.Context{
+			"default-context": {
+				Cluster:  "default-cluster",
+				AuthInfo: "default-auth",
+			},
+		},
+		CurrentContext: "default-context",
+	}
+
+	return clientConfig
 }

@@ -4,11 +4,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 	"github.com/stretchr/testify/suite"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
+
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 )
 
 type HelperTestSuite struct {
@@ -86,9 +87,9 @@ func strPtr(s string) *string {
 func (s *HelperTestSuite) TestReplaceManifests() {
 	templateData := map[string]string{
 		"e2e-test-webhook.webhooks.core.openmfp.org.ca-bundle": "dGVzdA==",
-		"ApiExportRootShardsKcpIoIdentityHash":                 "054a9b98bdb5c420e6749ff60975f5fd3cddd61859c730c571ebb3e95acc015e",
-		"ApiExportRootTenancyKcpIoIdentityHash":                "c52f4c4461a66afedd3cb406e61faeff350f15d3c727dce1961b8f53470a6699",
-		"ApiExportRootTopologyKcpIoIdentityHash":               "6b429dea42adabdbb7656f4c3a9b85125ae72543adf446dfaad93f22da58a859",
+		"apiExportRootShardsKcpIoIdentityHash":                 "054a9b98bdb5c420e6749ff60975f5fd3cddd61859c730c571ebb3e95acc015e",
+		"apiExportRootTenancyKcpIoIdentityHash":                "c52f4c4461a66afedd3cb406e61faeff350f15d3c727dce1961b8f53470a6699",
+		"apiExportRootTopologyKcpIoIdentityHash":               "6b429dea42adabdbb7656f4c3a9b85125ae72543adf446dfaad93f22da58a859",
 	}
 
 	files := []string{
@@ -273,13 +274,13 @@ func (suite *HelperTestSuite) SetupTest() {
 }
 
 func (s *HelperTestSuite) TestConstructorError() {
-	client, err := s.KcpHelper.NewKcpClient(&rest.Config{}, "")
+	client, err := s.NewKcpClient(&rest.Config{}, "")
 	s.Assert().Error(err)
 	s.Assert().Nil(client)
 }
 
 func (s *HelperTestSuite) TestConstructorOK() {
-	client, err := s.KcpHelper.NewKcpClient(&rest.Config{
+	client, err := s.NewKcpClient(&rest.Config{
 		Host: "http://server:1234",
 	}, "")
 	s.Assert().NoError(err)

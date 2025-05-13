@@ -11,10 +11,10 @@ spec:
       resource: namespaces
     - all: true
       group: tenancy.kcp.io
-      identityHash: {{ .ApiExportRootTenancyKcpIoIdentityHash }}
+      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
       resource: workspaces
     - all: true
       group: tenancy.kcp.io
-      identityHash: {{ .ApiExportRootTenancyKcpIoIdentityHash }}
+      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
       resource: workspacetypes
 status: {}

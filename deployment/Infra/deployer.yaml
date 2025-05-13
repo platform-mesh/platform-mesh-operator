@@ -1,0 +1,52 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: infra
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: infra
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: infra
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: istio-istiod
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      kcp:
+        enabled: true
+      fga:
+        enabled: false
+      istio:
+        enabled: true
+        gateway:
+          servers:
+            - hosts:
+                - "{{ .BASE_DOMAIN }}"
+                - "*.{{ .BASE_DOMAIN }}"
+              port:
+                number: 8443
+                name: https
+                protocol: HTTPS
+              tls:
+                minProtocolVersion: TLSV1_2
+                mode: SIMPLE
+                credentialName: domain-certificate
+            - hosts:
+                - kcp.{{ .SUPER_DOMAIN }}
+              port:
+                name: pass-https
+                number: 8443
+                protocol: HTTPS
+              tls:
+                mode: PASSTHROUGH
+        

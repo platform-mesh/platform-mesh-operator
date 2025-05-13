@@ -1,0 +1,49 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: kubernetes-graphql-gateway
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: kubernetes-graphql-gateway
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: kubernetes-graphql-gateway
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: istio-istiod
+        namespace: default
+      - name: keycloak
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      trust:
+        openmfp:
+          trustedIssuer: https://{{ .BASE_DOMAIN }}{{ .COLON_PORT }}/keycloak/realms/openmfp
+          jwksUrl: http://keycloak-headless.openmfp-system:8080/keycloak/realms/openmfp/protocol/openid-connect/certs
+          audience: openmfp
+      kubeConfig:
+        enabled: true
+        secretName: kubernetes-grapqhl-gateway-kubeconfig
+
+      virtualService:
+        pathPrefix: /api/kubernetes-graphql-gateway/
+        hosts:
+          - "{{ .BASE_DOMAIN }}"
+        httpRules:
+          - name: default
+            cors:
+              allowHeaders:
+                - "*"
+              allowMethods:
+                - GET
+                - POST
+              allowOrigins:
+                - regex: .*

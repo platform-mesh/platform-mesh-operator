@@ -57,7 +57,7 @@ var DirManifestStructure = DirectoryStructure{
 	},
 }
 
-var AccountOperatorMutatingWebhookSecretName = "openmfp-account-operator-webhook-server-cert"
+var AccountOperatorMutatingWebhookSecretName = "account-operator-webhook-server-cert"
 var AccountOperatorMutatingWebhookSecretNamespace = "openmfp-system"
 var DefaultCASecretKey = "ca.crt"
 var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.openmfp.org"
@@ -81,8 +81,8 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 }
 var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
 	{
-		WorkspaceTypeName: "fga.openmfp.org",
-		Path:              "root:openmfp-system",
+		WorkspaceTypeName: "fga",
+		Path:              "root",
 		Secret:            "fga-initializer-kubeconfig",
 	},
 }

@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/openmfp/golang-commons/logger"
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 // these are needed to allow testing private functions in the subroutines_test namespace
@@ -20,8 +20,8 @@ func (r *KcpsetupSubroutine) GetCABundleInventory(ctx context.Context) (map[stri
 	return r.getCABundleInventory(ctx)
 }
 
-func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, secret corev1.Secret, secretKey string, dir DirectoryStructure, instance *corev1alpha1.OpenMFP) error {
-	return r.createKcpResources(ctx, secret, secretKey, dir, instance)
+func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure) error {
+	return r.createKcpResources(ctx, config, dir)
 }
 
 func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, config *rest.Config) (map[string]string, error) {
@@ -47,5 +47,5 @@ func (r *KcpsetupSubroutine) ApplyManifestFromFile(
 	k8sClient client.Client,
 	templateData map[string]string,
 ) error {
-	return r.applyManifestFromFile(ctx, path, k8sClient, templateData)
+	return applyManifestFromFile(ctx, path, k8sClient, templateData)
 }

@@ -1,0 +1,35 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: FluxDeployer
+metadata:
+  name: account-ui
+  namespace: default
+spec:
+  interval: 10m0s
+  sourceRef:
+    apiVersion: delivery.ocm.software/v1alpha1
+    kind: Resource
+    name: account-ui
+  helmReleaseTemplate:
+    interval: 10s
+    releaseName: account-ui
+    targetNamespace: openmfp-system
+    dependsOn:
+      - name: kcp
+        namespace: default
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: [ "/spec/replicas" ]
+        - paths: [ "/data" ]
+    values:
+      istio:
+        virtualService:
+          hosts:
+            - "{{ .BASE_DOMAIN }}"
+          matcher:
+            match:
+              - uri:
+                  exact: /ui/account-ui
+              - uri:
+                  prefix: /ui/account-ui/
+        

@@ -11,4 +11,4 @@ spec:
     - resource: workspaces
       group: tenancy.kcp.io
       all: true
-      identityHash: {{ .ApiExportRootTenancyKcpIoIdentityHash }}
+      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
