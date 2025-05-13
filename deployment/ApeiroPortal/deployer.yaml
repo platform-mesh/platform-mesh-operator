@@ -34,9 +34,9 @@ spec:
           # -- discovery endpoint. If specified (different than ""), authDomain and tokenUrl are not required
           discoveryEndpoint: ""
           # -- auth domain (if discoveryEndpoint is not specified)
-          authDomain: https://portal.{{ .BASE_DOMAIN }}{{ .COLON_PORT }}/keycloak/realms/openmfp/protocol/openid-connect/auth
+          authDomain: https://{{ .BASE_DOMAIN }}{{ .COLON_PORT }}/keycloak/realms/openmfp/protocol/openid-connect/auth
           # -- token url (if discoveryEndpoint is not specified)
-          tokenUrl: http://openmfp-keycloak/keycloak/realms/openmfp/protocol/openid-connect/token
+          tokenUrl: http://keycloak/keycloak/realms/openmfp/protocol/openid-connect/token
           # -- oidc client secret name
           oidcClientSecretName: openmfp-client
           # -- login audience
@@ -44,12 +44,9 @@ spec:
           # -- secret key reference
           secretKeyRef: attribute.client_secret
           # -- ContentConfiguration validator api url
-          contentConfigurationValidatorApiUrl: http://openmfp-extension-manager-operator-server.openmfp-system.svc.cluster.local:8088/validate
+          contentConfigurationValidatorApiUrl: http://extension-manager-operator-server.openmfp-system.svc.cluster.local:8088/validate
       virtualService:
         hosts: false
       baseDomains:
         - {{ .BASE_DOMAIN }}
       cookieDomain: {{ .BASE_DOMAIN }}
-      extraEnvVars:
-        - name: KUBERNETES_GRAPHQL_GATEWAY_API_URL
-          value: https://portal.dev.local:8443/api/kubernetes-graphql-gateway/root:orgs:openmfp/graphql
