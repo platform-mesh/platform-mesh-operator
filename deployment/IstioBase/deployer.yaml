@@ -13,6 +13,8 @@ spec:
     interval: 10s
     releaseName: istio-base
     targetNamespace: istio-system
+    install:
+      createNamespace: true
     driftDetection:
       mode: disabled
       ignore:

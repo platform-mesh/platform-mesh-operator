@@ -13,6 +13,8 @@ spec:
     interval: 10s
     releaseName: crossplane
     targetNamespace: crossplane-system
+    install:
+      createNamespace: true
     driftDetection:
       mode: enabled
       ignore:

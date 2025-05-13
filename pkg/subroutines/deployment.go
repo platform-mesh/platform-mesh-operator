@@ -340,8 +340,7 @@ func mergeValues(inst *v1alpha1.OpenMFP, name string, obj unstructured.Unstructu
 
 func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (map[string]string, error) {
 	port := 8443
-	superDomain := "dev.local"
-	baseDomain := fmt.Sprintf("portal.%s", superDomain)
+	baseDomain := "portal.dev.local"
 	protocol := "https"
 
 	if inst.Spec.Exposure != nil {
@@ -368,7 +367,6 @@ func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 	result := map[string]string{
 		"IAM_WEBHOOK_CA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"COLON_PORT":     fmt.Sprintf(":%d", port),
-		"SUPER_DOMAIN":   superDomain,
 		"BASE_DOMAIN":    baseDomain,
 		"PROTOCOL":       protocol,
 		"PORT":           fmt.Sprintf("%d", port),

@@ -42,7 +42,7 @@ spec:
                 mode: SIMPLE
                 credentialName: domain-certificate
             - hosts:
-                - kcp.{{ .SUPER_DOMAIN }}
+                - "kcp.api.{{ .BASE_DOMAIN }}"
               port:
                 name: pass-https
                 number: 8443

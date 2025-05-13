@@ -9,6 +9,6 @@ spec:
   repository:
     url: ghcr.io/openmfp/ocm
     secretRef:
-      name: ocm-oci-github-pull
+      name: github
   version:
-    semver: 0.0.100
+    semver: 0.0.103

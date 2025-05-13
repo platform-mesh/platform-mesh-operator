@@ -16,8 +16,6 @@ spec:
     dependsOn:
       - name: istio-istiod
         namespace: default
-      - name: crossplane
-        namespace: default
     driftDetection:
       mode: enabled
       ignore:
@@ -32,6 +30,8 @@ spec:
         server: https://iam-authorization-webhook.openmfp-system.svc.cluster.local:9443/authz
         caData: {{ .IAM_WEBHOOK_CA }}
       istio:
+        hosts:
+         - "kcp.api.{{ .BASE_DOMAIN }}"
         gateway:
           create: false
       kcp:
@@ -48,6 +48,8 @@ spec:
           groupClaim: groups
           usernameClaim: email
         kcpFrontProxy:
+          externalPort: "{{ .PORT }}"
+          externalHostname: "kcp.api.{{ .BASE_DOMAIN }}"
           extraDNSNames:
             - kcp-front-proxy.openmfp-system
         certificates:
