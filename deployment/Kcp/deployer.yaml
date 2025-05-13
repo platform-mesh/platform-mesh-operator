@@ -35,6 +35,8 @@ spec:
         gateway:
           create: false
       kcp:
+        externalPort: "{{ .PORT }}"
+        externalHostname: "kcp.api.{{ .BASE_DOMAIN }}"
         kcp:
           podAnnotations:
             traffic.sidecar.istio.io/excludeOutboundPorts: "9443"
@@ -48,8 +50,6 @@ spec:
           groupClaim: groups
           usernameClaim: email
         kcpFrontProxy:
-          externalPort: "{{ .PORT }}"
-          externalHostname: "kcp.api.{{ .BASE_DOMAIN }}"
           extraDNSNames:
             - kcp-front-proxy.openmfp-system
         certificates:
