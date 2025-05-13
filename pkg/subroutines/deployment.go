@@ -375,6 +375,11 @@ func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 		}
 	}
 
+	colonPort := fmt.Sprintf(":%d", port)
+	if port == 443 {
+		colonPort = ""
+	}
+
 	var secret corev1.Secret
 	err := cl.Get(ctx, client.ObjectKey{
 		Name:      "iam-authorization-webhook-cert",
@@ -386,7 +391,7 @@ func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 
 	result := map[string]string{
 		"IAM_WEBHOOK_CA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"COLON_PORT":     fmt.Sprintf(":%d", port),
+		"COLON_PORT":     colonPort,
 		"BASE_DOMAIN":    baseDomain,
 		"VERSION":        inst.Spec.Version,
 		"PROTOCOL":       protocol,
