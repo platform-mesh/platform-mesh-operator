@@ -22,7 +22,7 @@ spec:
         - paths: [ "/spec/replicas" ]
         - paths: [ "/data" ]
     values:
-      crdGatewayApiUrl: "https://${org-subdomain}portal.{{ .BASE_DOMAIN }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+      crdGatewayApiUrl: "https://${org-subdomain}{{ .BASE_DOMAIN }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
       environment: kind
       http:
         protocol: https
