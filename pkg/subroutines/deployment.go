@@ -107,14 +107,14 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	err = applyManifestFromFile(ctx, fmt.Sprintf("%s%s", r.workspaceDirectory, r.component.ManifestFile), r.client, templateVars)
+	err = applyComponentVersionManifest(ctx, fmt.Sprintf("%s%s", r.workspaceDirectory, r.component.ManifestFile), r.client, templateVars, inst)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 	for _, resource := range r.component.Resources {
 		// lookup version
 		path := fmt.Sprintf("%sdeployment/%s/resource.yaml", r.workspaceDirectory, resource.name)
-		err := applyManifestFromFile(ctx, path, r.client, templateVars)
+		err := applyResourceManifest(ctx, path, r.client, templateVars, resource.name, inst)
 		if err != nil {
 			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 		}
@@ -274,10 +274,8 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 
 	return false, nil, errors.New("pod not found")
 }
-func applyManifestFromFileWithMergedValues(
-	ctx context.Context, inst *v1alpha1.OpenMFP, name string,
-	path string, k8sClient client.Client, templateData map[string]string,
-) error {
+
+func applyManifestFromFileWithMergedValues(ctx context.Context, inst *v1alpha1.OpenMFP, name string, path string, k8sClient client.Client, templateData map[string]string) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
 	obj, err := unstructuredFromFile(path, templateData, log)
@@ -368,6 +366,7 @@ func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 		"IAM_WEBHOOK_CA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"COLON_PORT":     fmt.Sprintf(":%d", port),
 		"BASE_DOMAIN":    baseDomain,
+		"VERSION":        inst.Spec.Version,
 		"PROTOCOL":       protocol,
 		"PORT":           fmt.Sprintf("%d", port),
 	}
@@ -393,4 +392,65 @@ func getFieldValueByName(obj interface{}, fieldName string) (interface{}, error)
 	}
 
 	return field.Interface(), nil
+}
+
+func applyComponentVersionManifest(
+	ctx context.Context,
+	path string, k8sClient client.Client, templateData map[string]string, inst *v1alpha1.OpenMFP,
+) error {
+	log := logger.LoadLoggerFromContext(ctx)
+
+	obj, err := unstructuredFromFile(path, templateData, log)
+	if err != nil {
+		return err
+	}
+
+	if inst.Spec.Version != "" {
+		err = unstructured.SetNestedField(obj.Object, inst.Spec.Version, "spec", "version", "semver")
+		if err != nil {
+			return errors.Wrap(err, "Failed to set semver for %s/%s", obj.GetKind(), obj.GetName())
+		}
+	}
+
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	if err != nil {
+		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+	}
+	return nil
+}
+
+func applyResourceManifest(
+	ctx context.Context,
+	path string, k8sClient client.Client, templateData map[string]string, name string, inst *v1alpha1.OpenMFP,
+) error {
+	log := logger.LoadLoggerFromContext(ctx)
+
+	// lookup version
+	componentInt, err := getFieldValueByName(inst.Spec.Components, name)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get component by name for OpenMFP/%s", inst.GetName())
+	}
+
+	component, ok := componentInt.(v1alpha1.Component)
+	if !ok {
+		return errors.New("Failed to cast component to v1alpha1.DeploymentComponents")
+	}
+
+	obj, err := unstructuredFromFile(path, templateData, log)
+	if err != nil {
+		return err
+	}
+
+	if component.Version != "" {
+		err = unstructured.SetNestedField(obj.Object, component.Version, "spec", "sourceRef", "resourceRef", "version")
+		if err != nil {
+			return errors.Wrap(err, "Failed to set semver for %s/%s", obj.GetKind(), obj.GetName())
+		}
+	}
+
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	if err != nil {
+		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+	}
+	return nil
 }

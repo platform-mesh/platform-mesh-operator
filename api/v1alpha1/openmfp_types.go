@@ -26,6 +26,7 @@ type OpenMFPSpec struct {
 	Exposure   *ExposureConfig  `json:"exposure,omitempty"`
 	Components ComponentsConfig `json:"components,omitempty"`
 	Kcp        Kcp              `json:"kcp,omitempty"`
+	Version    string           `json:"version,omitempty"`
 }
 
 type ComponentsConfig struct {
@@ -51,7 +52,8 @@ type ComponentsConfig struct {
 }
 
 type Component struct {
-	Values apiextensionsv1.JSON `json:"values,omitempty"`
+	Values  apiextensionsv1.JSON `json:"values,omitempty"`
+	Version string               `json:"version,omitempty"`
 }
 
 type ExposureConfig struct {
