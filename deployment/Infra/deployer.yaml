@@ -34,7 +34,7 @@ spec:
                 - "{{ .BASE_DOMAIN }}"
                 - "*.{{ .BASE_DOMAIN }}"
               port:
-                number: 8443
+                number: {{ .PORT }}
                 name: https
                 protocol: HTTPS
               tls:
@@ -45,7 +45,7 @@ spec:
                 - "kcp.api.{{ .BASE_DOMAIN }}"
               port:
                 name: pass-https
-                number: 8443
+                number: {{ .PORT }}
                 protocol: HTTPS
               tls:
                 mode: PASSTHROUGH
