@@ -26,7 +26,7 @@ spec:
       environment: kind
       http:
         protocol: https
-      frontendPort: 8443
+      frontendPort: {{ .PORT }}
       trust:
         openmfp:
           # -- base domains
