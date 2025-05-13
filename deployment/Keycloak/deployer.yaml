@@ -25,10 +25,13 @@ spec:
       service:
         name: keycloak
       keycloak:
+        externalSecrets:
+          keycloakAdminRemoteRef: keycloak-admin
+          postgresAdminRemoteRef: postgres-admin
         extraEnvVars:
           - name: JAVA_OPTS_APPEND
             value: |-
-              -Djgroups.dns.query=openmfp-keycloak-headless.openmfp-system.svc.cluster.local
+              -Djgroups.dns.query=keycloak-headless.openmfp-system.svc.cluster.local
           - name: KC_PROXY_HEADERS
             value: xforwarded
           - name: KC_HOSTNAME_STRICT
