@@ -50,98 +50,174 @@ spec:
                 properties:
                   accountOperator:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   accountUI:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   apeiroExampleContent:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   apeiroPortal:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   crossplane:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   exampleResources:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   extensionManagerOperator:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   fgaOperator:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   iamAuthorizationWebhook:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   iamService:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   infra:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   istioBase:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   istioD:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   istioGateway:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   kcp:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   keycloak:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   kubernetesGraphqlGateway:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   openFGA:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                   portal:
                     properties:
+                      enabled:
+                        type: boolean
                       values:
                         x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
                     type: object
                 type: object
               exposure:
@@ -216,6 +292,8 @@ spec:
                       type: object
                     type: array
                 type: object
+              version:
+                type: string
             type: object
           status:
             description: OpenMFPStatus defines the observed state of OpenMFP

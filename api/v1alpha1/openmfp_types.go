@@ -53,6 +53,7 @@ type ComponentsConfig struct {
 
 type Component struct {
 	Values  apiextensionsv1.JSON `json:"values,omitempty"`
+	Enabled *bool                `json:"enabled,omitempty"`
 	Version string               `json:"version,omitempty"`
 }
 

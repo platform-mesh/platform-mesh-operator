@@ -47,7 +47,8 @@ type DeploymentComponents struct {
 	Resources    []Resource
 }
 type Resource struct {
-	name string
+	name    string
+	enabled bool
 }
 
 func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
@@ -60,25 +61,25 @@ func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServ
 			name:         "openmfp",
 			ManifestFile: "deployment/component-version.yaml",
 			Resources: []Resource{
-				{name: "IstioBase"},
-				{name: "IstioD"},
-				{name: "IstioGateway"},
-				{name: "Crossplane"},
-				{name: "AccountOperator"},
-				{name: "AccountUI"},
-				{name: "ApeiroExampleContent"},
-				//{name: "ApeiroPortal"},
-				{name: "Portal"},
-				{name: "ExampleResources"},
-				{name: "ExtensionManagerOperator"},
-				{name: "FgaOperator"},
-				{name: "IamAuthorizationWebhook"},
+				{name: "IstioBase", enabled: true},
+				{name: "IstioD", enabled: true},
+				{name: "IstioGateway", enabled: true},
+				{name: "Crossplane", enabled: true},
+				{name: "AccountOperator", enabled: true},
+				{name: "AccountUI", enabled: true},
+				{name: "ApeiroExampleContent", enabled: true},
+				{name: "ApeiroPortal", enabled: false},
+				{name: "Portal", enabled: true},
+				{name: "ExampleResources", enabled: true},
+				{name: "ExtensionManagerOperator", enabled: true},
+				{name: "FgaOperator", enabled: true},
+				{name: "IamAuthorizationWebhook", enabled: true},
 				//{name: "IamService"},
-				{name: "Infra"},
-				{name: "OpenFGA"},
-				{name: "Kcp"},
-				{name: "Keycloak"},
-				{name: "KubernetesGraphqlGateway"},
+				{name: "Infra", enabled: true},
+				{name: "OpenFGA", enabled: true},
+				{name: "Kcp", enabled: true},
+				{name: "Keycloak", enabled: true},
+				{name: "KubernetesGraphqlGateway", enabled: true},
 			},
 		},
 	}
@@ -112,18 +113,22 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 	for _, resource := range r.component.Resources {
-		// lookup version
-		path := fmt.Sprintf("%sdeployment/%s/resource.yaml", r.workspaceDirectory, resource.name)
-		err := applyResourceManifest(ctx, path, r.client, templateVars, resource.name, inst)
-		if err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		if isEnabled(resource, inst) {
+			// lookup version
+			path := fmt.Sprintf("%sdeployment/%s/resource.yaml", r.workspaceDirectory, resource.name)
+			err := applyResourceManifest(ctx, path, r.client, templateVars, resource.name, inst)
+			if err != nil {
+				return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+			}
 		}
 	}
 	for _, resource := range r.component.Resources {
-		path := fmt.Sprintf("%sdeployment/%s/deployer.yaml", r.workspaceDirectory, resource.name)
-		err := applyManifestFromFileWithMergedValues(ctx, inst, resource.name, path, r.client, templateVars)
-		if err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		if isEnabled(resource, inst) {
+			path := fmt.Sprintf("%sdeployment/%s/deployer.yaml", r.workspaceDirectory, resource.name)
+			err := applyManifestFromFileWithMergedValues(ctx, inst, resource.name, path, r.client, templateVars)
+			if err != nil {
+				return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+			}
 		}
 	}
 
@@ -293,6 +298,23 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, inst *v1alpha1.O
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 	return nil
+}
+
+func isEnabled(resource Resource, inst *v1alpha1.OpenMFP) bool {
+	enabled := resource.enabled
+
+	componentInt, err := getFieldValueByName(inst.Spec.Components, resource.name)
+	if err != nil {
+		return enabled
+	}
+	component, ok := componentInt.(v1alpha1.Component)
+	if !ok {
+		return enabled
+	}
+	if component.Enabled != nil {
+		enabled = *component.Enabled
+	}
+	return enabled
 }
 
 func mergeValues(inst *v1alpha1.OpenMFP, name string, obj unstructured.Unstructured, log *logger.Logger) error {
