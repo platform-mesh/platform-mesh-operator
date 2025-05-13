@@ -30,7 +30,7 @@ spec:
       trust:
         openmfp:
           # -- base domains
-          baseDomains: "portal.dev.local"
+          baseDomains: "{{ .BASE_DOMAIN }}"
           # -- discovery endpoint. If specified (different than ""), authDomain and tokenUrl are not required
           discoveryEndpoint: ""
           # -- auth domain (if discoveryEndpoint is not specified)
