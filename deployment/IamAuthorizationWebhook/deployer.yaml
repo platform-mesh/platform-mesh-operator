@@ -80,6 +80,12 @@ spec:
             verb: create
             relation: create
             reference: kcp
+          - apiGroup: core.openmfp.org
+            resource: accounts
+            object: account
+            verb: delete
+            relation: delete
+            reference: kcp
           - apiGroup: ""
             resource: namespaces
             verb: create

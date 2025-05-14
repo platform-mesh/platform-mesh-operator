@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.34.12
+      version: 0.34.13
       referencePath:
         - name: account-ui

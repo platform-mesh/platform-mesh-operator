@@ -24,10 +24,10 @@ spec:
     values:
       service:
         name: keycloak
+      externalSecrets:
+        keycloakAdminRemoteRef: keycloak-admin
+        postgresAdminRemoteRef: postgres-admin
       keycloak:
-        externalSecrets:
-          keycloakAdminRemoteRef: keycloak-admin
-          postgresAdminRemoteRef: postgres-admin
         extraEnvVars:
           - name: JAVA_OPTS_APPEND
             value: |-
