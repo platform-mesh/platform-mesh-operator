@@ -70,8 +70,8 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfi
 
 func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *openmfpconfig.CommonServiceConfig, dir subroutines.DirectoryStructure) *OpenMFPReconciler {
 	kcpUrl := "https://kcp-front-proxy.openmfp-system:8443"
-	if commonCfg.IsLocal {
-		kcpUrl = "https://kcp.dev.local:8443"
+	if cfg.KCPUrl != "" {
+		kcpUrl = cfg.KCPUrl
 	}
 
 	var subs []lifecycle.Subroutine

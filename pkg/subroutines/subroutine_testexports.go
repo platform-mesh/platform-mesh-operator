@@ -20,8 +20,8 @@ func (r *KcpsetupSubroutine) GetCABundleInventory(ctx context.Context) (map[stri
 	return r.getCABundleInventory(ctx)
 }
 
-func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure) error {
-	return r.createKcpResources(ctx, config, dir)
+func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure, inst *corev1alpha1.OpenMFP) error {
+	return r.createKcpResources(ctx, config, dir, inst)
 }
 
 func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, config *rest.Config) (map[string]string, error) {
@@ -29,9 +29,9 @@ func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, conf
 }
 
 func (r *KcpsetupSubroutine) ApplyDirStructure(
-	ctx context.Context, dir DirectoryStructure, config *rest.Config, inventory map[string]string,
+	ctx context.Context, dir DirectoryStructure, config *rest.Config, inventory map[string]string, inst *corev1alpha1.OpenMFP,
 ) error {
-	return r.applyDirStructure(ctx, dir, config, inventory)
+	return r.applyDirStructure(ctx, dir, config, inventory, inst)
 }
 
 func (r *KcpsetupSubroutine) WaitForWorkspace(
@@ -45,7 +45,7 @@ func (r *KcpsetupSubroutine) ApplyManifestFromFile(
 	ctx context.Context,
 	path string,
 	k8sClient client.Client,
-	templateData map[string]string,
+	templateData map[string]string, wsPath string, inst *corev1alpha1.OpenMFP,
 ) error {
-	return applyManifestFromFile(ctx, path, k8sClient, templateData)
+	return applyManifestFromFile(ctx, path, k8sClient, templateData, wsPath, inst)
 }

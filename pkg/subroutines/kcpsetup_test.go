@@ -470,28 +470,28 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 
 	cl := new(mocks.Client)
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", cl, make(map[string]string))
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string))
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string))
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", cl, make(map[string]string))
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-orgs.yaml", cl, make(map[string]string))
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	templateData := map[string]string{
 		".account-operator.webhooks.core.openmfp.org.ca-bundle": "CABundle",
 	}
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData)
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 }
 
@@ -530,7 +530,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(nil, errors.New("failed to create client"))
 	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest, "")
 
-	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest)
+	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to get APIExport hash inventory")
 
@@ -594,7 +594,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			return nil
 		})
 	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest)
+	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 
 	// test err2 - expect error when Patch fails
@@ -645,7 +645,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			return nil
 		})
 	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed"))
-	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest)
+	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply manifest file")
 }

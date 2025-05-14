@@ -231,6 +231,21 @@ spec:
                 type: object
               kcp:
                 properties:
+                  extraDefaultAPIBindings:
+                    items:
+                      properties:
+                        export:
+                          type: string
+                        path:
+                          type: string
+                        workspaceTypePath:
+                          type: string
+                      required:
+                      - export
+                      - path
+                      - workspaceTypePath
+                      type: object
+                    type: array
                   extraInitializerConnections:
                     items:
                       properties:

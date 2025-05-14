@@ -64,10 +64,17 @@ type ExposureConfig struct {
 }
 
 type Kcp struct {
-	ProviderConnections         []ProviderConnection    `json:"providerConnections,omitempty"`
-	ExtraProviderConnections    []ProviderConnection    `json:"extraProviderConnections,omitempty"`
-	InitializerConnections      []InitializerConnection `json:"initializerConnections,omitempty"`
-	ExtraInitializerConnections []InitializerConnection `json:"extraInitializerConnections,omitempty"`
+	ProviderConnections         []ProviderConnection             `json:"providerConnections,omitempty"`
+	ExtraProviderConnections    []ProviderConnection             `json:"extraProviderConnections,omitempty"`
+	InitializerConnections      []InitializerConnection          `json:"initializerConnections,omitempty"`
+	ExtraInitializerConnections []InitializerConnection          `json:"extraInitializerConnections,omitempty"`
+	ExtraDefaultAPIBindings     []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
+}
+
+type DefaultAPIBindingConfiguration struct {
+	WorkspaceTypePath string `json:"workspaceTypePath"`
+	Export            string `json:"export"`
+	Path              string `json:"path"`
 }
 
 type InitializerConnection struct {

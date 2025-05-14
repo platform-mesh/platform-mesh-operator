@@ -74,8 +74,8 @@ func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	instance := runtimeObj.(*corev1alpha1.OpenMFP)
-	log.Debug().Str("subroutine", r.GetName()).Str("name", instance.Name).Msg("Processing OpenMFP resource")
+	inst := runtimeObj.(*corev1alpha1.OpenMFP)
+	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing OpenMFP resource")
 
 	// Wait for kcp release to be ready before continuing
 	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
@@ -97,14 +97,14 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 	}
 
 	// generate kcp secret
-	err = r.createKcpResources(ctx, cfg, r.kcpDirectory)
+	err = r.createKcpResources(ctx, cfg, r.kcpDirectory, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
 	}
 
 	// update workspace status
-	instance.Status.KcpWorkspaces = []corev1alpha1.KcpWorkspace{
+	inst.Status.KcpWorkspaces = []corev1alpha1.KcpWorkspace{
 		{
 			Name:  "root:openmfp-system",
 			Phase: "Ready",
@@ -191,7 +191,7 @@ func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*r
 	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 
-func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure) error {
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure, inst *corev1alpha1.OpenMFP) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
@@ -212,7 +212,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		templateData[k] = v
 	}
 
-	err = r.applyDirStructure(ctx, dir, config, templateData)
+	err = r.applyDirStructure(ctx, dir, config, templateData, inst)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
 		return errors.Wrap(err, "Failed to apply dir structure")
@@ -275,13 +275,7 @@ func (r *KcpsetupSubroutine) getCaBundle(
 	}
 
 	decodedCaData := caData
-	// decodedCaData := base64.StdEncoding.EncodeToString(caData)
-	// if err != nil {
-	// 	log.Error().Str("subroutine", r.GetName()).Err(err).Msg("Failed to decode caData")
-	// 	return nil, errors.Wrap(err, "Failed to decode caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
-	// }
-
-	return []byte(decodedCaData), nil
+	return decodedCaData, nil
 }
 
 func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, config *rest.Config) (map[string]string, error) {
@@ -323,9 +317,11 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	dir DirectoryStructure,
 	config *rest.Config,
 	templateData map[string]string,
+	inst *corev1alpha1.OpenMFP,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	for _, workspace := range dir.Workspaces {
+		wsPath := workspace.Name
 		if workspace.Name != "root" {
 			wsName, _ := strings.CutPrefix(workspace.Name, "root:")
 			err := r.waitForWorkspace(ctx, config, wsName, log)
@@ -339,7 +335,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 			return err
 		}
 		for _, file := range workspace.Files {
-			err := applyManifestFromFile(ctx, file, k8sClient, templateData)
+			err := applyManifestFromFile(ctx, file, k8sClient, templateData, wsPath, inst)
 			if err != nil {
 				return err
 			}
@@ -378,7 +374,7 @@ func (r *KcpsetupSubroutine) waitForWorkspace(
 
 func applyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string,
+	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.OpenMFP,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -387,11 +383,51 @@ func applyManifestFromFile(
 		return err
 	}
 
+	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
+		extraDefaultApiBindings := getExtraDefaultApiBindings(obj, wsPath, inst)
+		currentDefAPiBindings, found, err := unstructured.NestedSlice(obj.Object, "spec", "defaultAPIBindings")
+		if err != nil || !found {
+			currentDefAPiBindings = []interface{}{}
+		}
+		for _, v := range extraDefaultApiBindings {
+			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}
+			var m map[string]interface{}
+			b, marshalErr := yaml.Marshal(newExport)
+			if marshalErr != nil {
+				return errors.Wrap(marshalErr, "Failed to marshal APIExportReference")
+			}
+			if unmarshalErr := yaml.Unmarshal(b, &m); unmarshalErr != nil {
+				return errors.Wrap(unmarshalErr, "Failed to unmarshal APIExportReference")
+			}
+			currentDefAPiBindings = append(currentDefAPiBindings, m)
+		}
+		err = unstructured.SetNestedSlice(obj.Object, currentDefAPiBindings, "spec", "defaultAPIBindings")
+		if err != nil {
+			return errors.Wrap(err, "Failed to set defaultAPIBindings")
+		}
+	}
+
 	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 	return nil
+}
+
+func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.OpenMFP) []corev1alpha1.DefaultAPIBindingConfiguration {
+	if inst.Spec.Kcp.ExtraDefaultAPIBindings == nil {
+		return nil
+	}
+	res := []corev1alpha1.DefaultAPIBindingConfiguration{}
+	for _, binding := range inst.Spec.Kcp.ExtraDefaultAPIBindings {
+		workspaceTypePath := fmt.Sprintf("%s:%s", workspacePath, obj.GetName())
+		if binding.WorkspaceTypePath == workspaceTypePath {
+			found := binding
+			res = append(res, found)
+		}
+	}
+
+	return res
 }
 
 func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
