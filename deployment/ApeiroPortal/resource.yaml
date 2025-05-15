@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.5.6
+      version: 0.5.7
       referencePath:
         - name: apeiro-portal
