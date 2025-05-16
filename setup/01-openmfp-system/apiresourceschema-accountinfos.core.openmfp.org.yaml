@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250226-290f38d.accountinfos.core.openmfp.org
+  name: v250516-0b27c30.accountinfos.core.openmfp.org
 spec:
   group: core.openmfp.org
   names:
@@ -38,9 +38,11 @@ spec:
           properties:
             account:
               properties:
-                clusterId:
+                generatedClusterId:
                   type: string
                 name:
+                  type: string
+                originClusterId:
                   type: string
                 path:
                   type: string
@@ -49,8 +51,9 @@ spec:
                 url:
                   type: string
               required:
-              - clusterId
+              - generatedClusterId
               - name
+              - originClusterId
               - path
               - type
               - url
@@ -76,9 +79,11 @@ spec:
               type: object
             organization:
               properties:
-                clusterId:
+                generatedClusterId:
                   type: string
                 name:
+                  type: string
+                originClusterId:
                   type: string
                 path:
                   type: string
@@ -87,17 +92,20 @@ spec:
                 url:
                   type: string
               required:
-              - clusterId
+              - generatedClusterId
               - name
+              - originClusterId
               - path
               - type
               - url
               type: object
             parentAccount:
               properties:
-                clusterId:
+                generatedClusterId:
                   type: string
                 name:
+                  type: string
+                originClusterId:
                   type: string
                 path:
                   type: string
@@ -106,8 +114,9 @@ spec:
                 url:
                   type: string
               required:
-              - clusterId
+              - generatedClusterId
               - name
+              - originClusterId
               - path
               - type
               - url
