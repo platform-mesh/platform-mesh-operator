@@ -131,7 +131,7 @@ metadata:
   name: core.openmfp.org
 spec:
   latestResourceSchemas:
-    - v250226-290f38d.accountinfos.core.openmfp.org
+    - v250516-0b27c30.accountinfos.core.openmfp.org
     - v250226-290f38d.accounts.core.openmfp.org
   permissionClaims:
     - all: true
