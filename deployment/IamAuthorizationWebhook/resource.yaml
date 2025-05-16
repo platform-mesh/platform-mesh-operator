@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.7.23
+      version: 0.7.24
       referencePath:
         - name: iam-authorization-webhook
