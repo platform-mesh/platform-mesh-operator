@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.73.152
+      version: 0.73.153
       referencePath:
         - name: portal

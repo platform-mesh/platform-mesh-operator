@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.3.0
+      version: 0.3.2
       referencePath:
         - name: apeiro-example-content
