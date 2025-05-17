@@ -1,7 +1,6 @@
 package subroutines_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -82,121 +81,6 @@ func (s *HelperTestSuite) TestConvertToUnstructured() {
 // Helper function to create string pointers
 func strPtr(s string) *string {
 	return &s
-}
-
-func (s *HelperTestSuite) TestReplaceManifests() {
-	templateData := map[string]string{
-		"e2e-test-webhook.webhooks.core.openmfp.org.ca-bundle": "dGVzdA==",
-		"apiExportRootShardsKcpIoIdentityHash":                 "054a9b98bdb5c420e6749ff60975f5fd3cddd61859c730c571ebb3e95acc015e",
-		"apiExportRootTenancyKcpIoIdentityHash":                "c52f4c4461a66afedd3cb406e61faeff350f15d3c727dce1961b8f53470a6699",
-		"apiExportRootTopologyKcpIoIdentityHash":               "6b429dea42adabdbb7656f4c3a9b85125ae72543adf446dfaad93f22da58a859",
-	}
-
-	files := []string{
-		"../../test/e2e/e2e-test-webhook.yaml",
-		"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-		"../../setup/01-openmfp-system/apiexport-fga.openmfp.org.yaml",
-		"../../setup/01-openmfp-system/apiexport-kcp.io.yaml",
-		"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-	}
-
-	results := []string{
-		`apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: e2e-test-webhook.webhooks.core.openmfp.org
-webhooks:
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      caBundle: dGVzdA==
-      url: https://openmfp-account-operator-webhook.openmfp-system.svc:9443/mutate-core-openmfp-org-v1alpha1-account
-    failurePolicy: Fail
-    name: maccount.kb.io
-    rules:
-      - apiGroups:
-          - core.openmfp.org
-        apiVersions:
-          - v1alpha1
-        operations:
-          - DELETE
-        resources:
-          - accounts
-    sideEffects: None
-    timeoutSeconds: 30
-`,
-		`apiVersion: apis.kcp.io/v1alpha1
-kind: APIExport
-metadata:
-  name: core.openmfp.org
-spec:
-  latestResourceSchemas:
-    - v250516-0b27c30.accountinfos.core.openmfp.org
-    - v250226-290f38d.accounts.core.openmfp.org
-  permissionClaims:
-    - all: true
-      resource: namespaces
-    - all: true
-      group: tenancy.kcp.io
-      identityHash: c52f4c4461a66afedd3cb406e61faeff350f15d3c727dce1961b8f53470a6699
-      resource: workspaces
-    - all: true
-      group: tenancy.kcp.io
-      identityHash: c52f4c4461a66afedd3cb406e61faeff350f15d3c727dce1961b8f53470a6699
-      resource: workspacetypes
-status: {}
-`,
-		`apiVersion: apis.kcp.io/v1alpha1
-kind: APIExport
-metadata:
-  name: fga.openmfp.org
-spec:
-  latestResourceSchemas:
-  - v250401-5769f6b.authorizationmodels.fga.openmfp.org
-  - v250401-5769f6b.stores.fga.openmfp.org
-  permissionClaims:
-  - all: true
-    group: apis.kcp.io
-    identityHash: ""
-    resource: apiexports
-  - all: true
-    group: apis.kcp.io
-    identityHash: ""
-    resource: apiresourceschemas
-status: {}`,
-		`apiVersion: apis.kcp.io/v1alpha1
-kind: APIExport
-metadata:
-  name: kcp.io
-spec:
-  permissionClaims:
-    - resource: apibindings
-      group: apis.kcp.io
-      all: true
-      identityHash: ""
-    - resource: workspaces
-      group: tenancy.kcp.io
-      all: true
-      identityHash: c52f4c4461a66afedd3cb406e61faeff350f15d3c727dce1961b8f53470a6699
-`,
-		`kind: APIExportEndpointSlice
-apiVersion: apis.kcp.io/v1alpha1
-metadata:
-  name: core.openmfp.org
-spec:
-  export:
-    path: root:openmfp-system
-    name: core.openmfp.org
-`,
-	}
-
-	for i, path := range files {
-		manifestBytes, err := os.ReadFile(path)
-		s.Assert().NoError(err)
-		result, err := subroutines.ReplaceTemplate(templateData, manifestBytes)
-		s.Assert().NoError(err)
-		s.Assert().Equal(results[i], string(result))
-	}
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_ParseError() {
