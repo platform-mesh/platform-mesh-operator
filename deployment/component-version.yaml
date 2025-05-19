@@ -11,4 +11,4 @@ spec:
     secretRef:
       name: github
   version:
-    semver: 0.0.171
+    semver: 0.0.176

@@ -77,6 +77,7 @@ func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServ
 				//{name: "IamService"},
 				{name: "Infra", enabled: true},
 				{name: "OpenFGA", enabled: true},
+				{name: "Observability", enabled: true},
 				{name: "Kcp", enabled: true},
 				{name: "Keycloak", enabled: true},
 				{name: "KubernetesGraphqlGateway", enabled: true},

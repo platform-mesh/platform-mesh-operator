@@ -146,6 +146,7 @@ tasks:
         - keycloak
         - kubernetes-graphql-gateway
         - openfga
+        - observability
         - crossplane
         - istiod
         - istio-gateway

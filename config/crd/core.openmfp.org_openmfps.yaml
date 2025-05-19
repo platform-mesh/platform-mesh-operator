@@ -201,6 +201,15 @@ spec:
                       version:
                         type: string
                     type: object
+                  observability:
+                    properties:
+                      enabled:
+                        type: boolean
+                      values:
+                        x-kubernetes-preserve-unknown-fields: true
+                      version:
+                        type: string
+                    type: object
                   openFGA:
                     properties:
                       enabled:

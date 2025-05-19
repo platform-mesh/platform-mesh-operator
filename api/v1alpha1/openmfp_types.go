@@ -49,6 +49,7 @@ type ComponentsConfig struct {
 	IstioD                   Component `json:"istioD,omitempty"`
 	IstioGateway             Component `json:"istioGateway,omitempty"`
 	OpenFGA                  Component `json:"openFGA,omitempty"`
+	Observability            Component `json:"observability,omitempty"`
 }
 
 type Component struct {
