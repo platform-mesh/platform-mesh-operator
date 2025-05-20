@@ -23,6 +23,9 @@ spec:
         - paths: [ "/data" ]
     values:
       istio:
+        grafana:
+          virtualService:
+            hosts: ["grafana.{{ .BASE_DOMAIN }}"]
         tracing:
           enabled: true
       opentelemetry-collector:
