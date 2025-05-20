@@ -40,6 +40,7 @@ spec:
         pathPrefix: "/keycloak"
       istio:
         https:
+          port: {{ .PORT }}
           enabled: true
         virtualservice:
           hosts:
