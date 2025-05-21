@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.19.75
+      version: 0.19.77
       referencePath:
         - name: kubernetes-graphql-gateway
