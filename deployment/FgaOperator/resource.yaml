@@ -12,6 +12,6 @@ spec:
     namespace: default
     resourceRef:
       name: chart
-      version: 0.7.37
+      version: 0.7.39
       referencePath:
         - name: fga-operator
