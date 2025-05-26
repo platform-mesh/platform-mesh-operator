@@ -1321,7 +1321,7 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	// Setup mock expectations for Get and Create
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "default"},
+		types.NamespacedName{Name: "test-initializer-secret", Namespace: "openmfp-system"},
 		mock.Anything,
 	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
 
@@ -1338,9 +1338,6 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 		mock.Anything,
 	).
 		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-			providerSecret := obj.(*corev1.Secret)
-			err := controllerutil.SetOwnerReference(instance, providerSecret, s.clientMock.Scheme())
-			s.NoError(err)
 			return nil
 		}).
 		Once()
@@ -1551,7 +1548,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 	// Setup mock expectations for Get and Create
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "default"},
+		types.NamespacedName{Name: "test-initializer-secret", Namespace: "openmfp-system"},
 		mock.Anything,
 	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
 
@@ -1574,9 +1571,6 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 		mock.Anything,
 	).
 		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-			providerSecret := obj.(*corev1.Secret)
-			err := controllerutil.SetOwnerReference(instance, providerSecret, s.clientMock.Scheme())
-			s.NoError(err)
 			return errors.New("failed to create secret")
 		}).
 		Once()

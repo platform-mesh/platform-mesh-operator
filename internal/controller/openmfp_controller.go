@@ -68,7 +68,7 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfi
 	return builder.Complete(r)
 }
 
-func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *openmfpconfig.CommonServiceConfig, dir subroutines.DirectoryStructure) *OpenMFPReconciler {
+func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *openmfpconfig.CommonServiceConfig, dir string) *OpenMFPReconciler {
 	kcpUrl := "https://kcp-front-proxy.openmfp-system:8443"
 	if cfg.KCPUrl != "" {
 		kcpUrl = cfg.KCPUrl
@@ -79,7 +79,7 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), commonCfg, cfg))
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
-		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, dir, kcpUrl))
+		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, dir+"/manifests/kcp", kcpUrl))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))

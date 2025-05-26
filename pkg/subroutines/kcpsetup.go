@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/openmfp/golang-commons/controller/lifecycle"
@@ -31,9 +30,9 @@ import (
 type KcpsetupSubroutine struct {
 	client       client.Client
 	kcpHelper    KcpHelper
-	kcpDirectory DirectoryStructure
 	kcpUrl       string
 	helm         HelmGetter
+	kcpDirectory string
 	// Cache for CA bundles to avoid redundant secret lookups
 	caBundleCache map[string]string
 }
@@ -43,7 +42,7 @@ const (
 	KcpsetupSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir DirectoryStructure, kcpUrl string) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
 	return &KcpsetupSubroutine{
 		client:        client,
 		kcpDirectory:  kcpdir,
@@ -78,7 +77,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing OpenMFP resource")
 
 	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
+	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", inst.Namespace)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get KCP Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
@@ -191,7 +190,7 @@ func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*r
 	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 
-func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure, inst *corev1alpha1.OpenMFP) error {
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.OpenMFP) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
@@ -212,7 +211,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		templateData[k] = v
 	}
 
-	err = r.applyDirStructure(ctx, dir, config, templateData, inst)
+	err = r.applyDirStructure(ctx, dir, "root", config, templateData, inst)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
 		return errors.Wrap(err, "Failed to apply dir structure")
@@ -314,35 +313,54 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, conf
 
 func (r *KcpsetupSubroutine) applyDirStructure(
 	ctx context.Context,
-	dir DirectoryStructure,
+	dir string,
+	kcpPath string,
 	config *rest.Config,
 	templateData map[string]string,
 	inst *corev1alpha1.OpenMFP,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	for _, workspace := range dir.Workspaces {
-		wsPath := workspace.Name
-		if workspace.Name != "root" {
-			wsName, _ := strings.CutPrefix(workspace.Name, "root:")
-			err := r.waitForWorkspace(ctx, config, wsName, log)
-			if err != nil {
-				return err
-			}
-		}
 
-		k8sClient, err := r.kcpHelper.NewKcpClient(config, workspace.Name)
+	k8sClient, err := r.kcpHelper.NewKcpClient(config, kcpPath)
+	if err != nil {
+		return err
+	}
+
+	// apply all manifest files in the current directory first
+	files, err := ListFiles(dir)
+	if err != nil {
+		return errors.Wrap(err, "Failed to list files in workspace")
+	}
+	var errApplyManifests error = nil
+	for _, file := range files {
+		path := dir + "/" + file
+		err := applyManifestFromFile(ctx, path, k8sClient, templateData, kcpPath, inst)
+		if err != nil {
+			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continueing to next file in directory")
+			errApplyManifests = err
+		}
+	}
+	if errApplyManifests != nil {
+		return errApplyManifests
+	}
+
+	for _, wsDir := range GetWorkspaceDirs(dir) {
+		wsName, err := GetWorkspaceName(wsDir)
+		if err != nil {
+			log.Warn().Err(err).Str("Directory", dir).Str("wsName", wsName).Msg("Failed to get workspace path, skipping")
+			continue
+		}
+		err = r.waitForWorkspace(ctx, config, wsName, log)
 		if err != nil {
 			return err
 		}
-		for _, file := range workspace.Files {
-			err := applyManifestFromFile(ctx, file, k8sClient, templateData, wsPath, inst)
-			if err != nil {
-				return err
-			}
+		err = r.applyDirStructure(ctx, dir+"/"+wsDir, fmt.Sprintf("%s:%s", kcpPath, wsName), config, templateData, inst)
+		if err != nil {
+			return err
 		}
 	}
-	return nil
 
+	return nil
 }
 
 func (r *KcpsetupSubroutine) waitForWorkspace(

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"time"
 
 	openmfpconfig "github.com/openmfp/golang-commons/config"
@@ -21,34 +20,23 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-
 	"k8s.io/client-go/tools/clientcmd"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/openmfp/openmfp-operator/internal/config"
-	"github.com/openmfp/openmfp-operator/pkg/merge"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
 
 type DeploymentSubroutine struct {
 	client             client.Client
-	component          DeploymentComponents
 	cfg                *openmfpconfig.CommonServiceConfig
 	workspaceDirectory string
-}
-
-type DeploymentComponents struct {
-	name         string
-	ManifestFile string
-	Resources    []Resource
-}
-type Resource struct {
-	name    string
-	enabled bool
 }
 
 func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
@@ -56,33 +44,7 @@ func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServ
 	sub := &DeploymentSubroutine{
 		cfg:                cfg,
 		client:             client,
-		workspaceDirectory: operatorCfg.WorkspaceDir,
-		component: DeploymentComponents{
-			name:         "openmfp",
-			ManifestFile: "deployment/component-version.yaml",
-			Resources: []Resource{
-				{name: "IstioBase", enabled: true},
-				{name: "IstioD", enabled: true},
-				{name: "IstioGateway", enabled: true},
-				{name: "Crossplane", enabled: true},
-				{name: "AccountOperator", enabled: true},
-				{name: "AccountUI", enabled: true},
-				{name: "ApeiroExampleContent", enabled: true},
-				{name: "ApeiroPortal", enabled: false},
-				{name: "Portal", enabled: true},
-				{name: "ExampleResources", enabled: true},
-				{name: "ExtensionManagerOperator", enabled: true},
-				{name: "FgaOperator", enabled: true},
-				{name: "IamAuthorizationWebhook", enabled: true},
-				//{name: "IamService"},
-				{name: "Infra", enabled: true},
-				{name: "OpenFGA", enabled: true},
-				{name: "Observability", enabled: false},
-				{name: "Kcp", enabled: true},
-				{name: "Keycloak", enabled: true},
-				{name: "KubernetesGraphqlGateway", enabled: true},
-			},
-		},
+		workspaceDirectory: operatorCfg.WorkspaceDir + "/manifests/k8s/",
 	}
 
 	return sub
@@ -103,35 +65,41 @@ func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
 func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	inst := runtimeObj.(*v1alpha1.OpenMFP)
 	log := logger.LoadLoggerFromContext(ctx)
+
 	// Create DeploymentComponents Version
-	templateVars, err := templateVars(ctx, inst, r.client)
+	values, err := templateVars(ctx, inst, r.client)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	err = applyComponentVersionManifest(ctx, fmt.Sprintf("%s%s", r.workspaceDirectory, r.component.ManifestFile), r.client, templateVars, inst)
+	services := apiextensionsv1.JSON{}
+	services.Raw = inst.Spec.Values.Raw
+
+	mergedValues, err := MergeValuesAndServices(values, services)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to merge values and services")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	log.Debug().Msgf("Merged values: %s", string(mergedValues.Raw))
+
+	// apply repository
+	path := r.workspaceDirectory + "openmfp-operator-components/repository.yaml"
+	tplValues := map[string]string{
+		"version": inst.Spec.Version,
+	}
+	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
-	for _, resource := range r.component.Resources {
-		if isEnabled(resource, inst) {
-			// lookup version
-			path := fmt.Sprintf("%sdeployment/%s/resource.yaml", r.workspaceDirectory, resource.name)
-			err := applyResourceManifest(ctx, path, r.client, templateVars, resource.name, inst)
-			if err != nil {
-				return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-			}
-		}
+	log.Debug().Str("path", path).Msgf("Applied repository path: %s", path)
+
+	// apply release and merge values from spec.values
+	path = r.workspaceDirectory + "openmfp-operator-components/release.yaml"
+	err = applyReleaseWithValues(ctx, path, r.client, mergedValues)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
-	for _, resource := range r.component.Resources {
-		if isEnabled(resource, inst) {
-			path := fmt.Sprintf("%sdeployment/%s/deployer.yaml", r.workspaceDirectory, resource.name)
-			err := applyManifestFromFileWithMergedValues(ctx, inst, resource.name, path, r.client, templateVars)
-			if err != nil {
-				return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-			}
-		}
-	}
+	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
 	// Wait for kcp release to be ready before continuing
 	rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
@@ -184,7 +152,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 
 func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, inst *v1alpha1.OpenMFP) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
-	obj, err := unstructuredFromFile(fmt.Sprintf("%sdeployment/iam-authorization-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
+	obj, err := unstructuredFromFile(fmt.Sprintf("%s/iam-authorization-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -231,7 +199,7 @@ func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, 
 		iamWebhookSecret.Data = map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
 		}
-		return controllerutil.SetOwnerReference(inst, iamWebhookSecret, r.client.Scheme())
+		return err
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
@@ -281,17 +249,12 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 	return false, nil, errors.New("pod not found")
 }
 
-func applyManifestFromFileWithMergedValues(ctx context.Context, inst *v1alpha1.OpenMFP, name string, path string, k8sClient client.Client, templateData map[string]string) error {
+func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]string) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
 	obj, err := unstructuredFromFile(path, templateData, log)
 	if err != nil {
 		return err
-	}
-
-	err = mergeValues(inst, name, obj, log)
-	if err != nil {
-		return errors.Wrap(err, "Failed to merge values for %s/%s", obj.GetKind(), obj.GetName())
 	}
 
 	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
@@ -301,65 +264,23 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, inst *v1alpha1.O
 	return nil
 }
 
-func isEnabled(resource Resource, inst *v1alpha1.OpenMFP) bool {
-	enabled := resource.enabled
+func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.Client, values apiextensionsv1.JSON) error {
+	log := logger.LoadLoggerFromContext(ctx)
 
-	componentInt, err := getFieldValueByName(inst.Spec.Components, resource.name)
+	obj, err := unstructuredFromFile(path, map[string]string{}, log)
 	if err != nil {
-		return enabled
+		return errors.Wrap(err, "Failed to get unstructuredFromFile")
 	}
-	component, ok := componentInt.(v1alpha1.Component)
-	if !ok {
-		return enabled
+	obj.Object["spec"].(map[string]interface{})["values"] = values
+
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	if err != nil {
+		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
-	if component.Enabled != nil {
-		enabled = *component.Enabled
-	}
-	return enabled
+	return nil
 }
 
-func mergeValues(inst *v1alpha1.OpenMFP, name string, obj unstructured.Unstructured, log *logger.Logger) error {
-	componentInt, err := getFieldValueByName(inst.Spec.Components, name)
-	if err != nil {
-		return errors.Wrap(err, "Failed to get component name for %s/%s", obj.GetKind(), obj.GetName())
-	}
-
-	component, ok := componentInt.(v1alpha1.Component)
-	if !ok {
-		return errors.New("Failed to cast component to v1alpha1.DeploymentComponents")
-	}
-
-	data, err := component.Values.MarshalJSON()
-	if err != nil {
-		return errors.Wrap(err, "Failed to marshal values for %s/%s", obj.GetKind(), obj.GetName())
-	}
-
-	overwriteValues := map[string]any{}
-	err = json.Unmarshal(data, &overwriteValues)
-	if err != nil {
-		return errors.Wrap(err, "Failed to unmarshal values for %s/%s", obj.GetKind(), obj.GetName())
-	}
-
-	var values map[string]any
-	baseValues, found, err := unstructured.NestedMap(obj.Object, "spec", "helmReleaseTemplate", "values")
-	if err != nil || !found {
-		values = overwriteValues
-	} else {
-		// Overwrite base values with the values from the component
-		values, err = merge.MergeMaps(baseValues, overwriteValues, log)
-		if err != nil {
-			return errors.Wrap(err, "Failed to merge values for %s/%s", obj.GetKind(), obj.GetName())
-		}
-	}
-
-	err = unstructured.SetNestedMap(obj.Object, values, "spec", "helmReleaseTemplate", "values")
-	if err != nil {
-		return errors.Wrap(err, "Failed to set values for %s/%s", obj.GetKind(), obj.GetName())
-	}
-	return err
-}
-
-func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (map[string]string, error) {
+func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (apiextensionsv1.JSON, error) {
 	port := 8443
 	baseDomain := "portal.dev.local"
 	protocol := "https"
@@ -376,109 +297,23 @@ func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 		}
 	}
 
-	colonPort := fmt.Sprintf(":%d", port)
-	if port == 443 {
-		colonPort = ""
-	}
-
 	var secret corev1.Secret
 	err := cl.Get(ctx, client.ObjectKey{
 		Name:      "iam-authorization-webhook-cert",
 		Namespace: inst.Namespace,
 	}, &secret)
 	if err != nil && !kerrors.IsNotFound(err) {
-		return nil, errors.Wrap(err, "Failed to get secret iam-authorization-webhook-cert")
+		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret iam-authorization-webhook-cert")
 	}
 
-	result := map[string]string{
-		"IAM_WEBHOOK_CA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"COLON_PORT":     colonPort,
-		"BASE_DOMAIN":    baseDomain,
-		"VERSION":        inst.Spec.Version,
-		"PROTOCOL":       protocol,
-		"PORT":           fmt.Sprintf("%d", port),
-	}
+	result := apiextensionsv1.JSON{}
+	result.Raw, _ = json.Marshal(map[string]string{
+		"iamWebhookCA":            base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":              baseDomain,
+		"componentVersion.semver": inst.Spec.Version,
+		"protocol":                protocol,
+		"port":                    fmt.Sprintf("%d", port),
+	})
 
 	return result, nil
-}
-
-func getFieldValueByName(obj interface{}, fieldName string) (interface{}, error) {
-	v := reflect.ValueOf(obj)
-
-	// Ensure the object is a struct or a pointer to a struct
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	if v.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected a struct or pointer to struct")
-	}
-
-	// Get the field by name
-	field := v.FieldByName(fieldName)
-	if !field.IsValid() {
-		return nil, fmt.Errorf("no such field: %s", fieldName)
-	}
-
-	return field.Interface(), nil
-}
-
-func applyComponentVersionManifest(
-	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, inst *v1alpha1.OpenMFP,
-) error {
-	log := logger.LoadLoggerFromContext(ctx)
-
-	obj, err := unstructuredFromFile(path, templateData, log)
-	if err != nil {
-		return err
-	}
-
-	if inst.Spec.Version != "" {
-		err = unstructured.SetNestedField(obj.Object, inst.Spec.Version, "spec", "version", "semver")
-		if err != nil {
-			return errors.Wrap(err, "Failed to set semver for %s/%s", obj.GetKind(), obj.GetName())
-		}
-	}
-
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
-	if err != nil {
-		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-	}
-	return nil
-}
-
-func applyResourceManifest(
-	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, name string, inst *v1alpha1.OpenMFP,
-) error {
-	log := logger.LoadLoggerFromContext(ctx)
-
-	// lookup version
-	componentInt, err := getFieldValueByName(inst.Spec.Components, name)
-	if err != nil {
-		return errors.Wrap(err, "Failed to get component by name for OpenMFP/%s", inst.GetName())
-	}
-
-	component, ok := componentInt.(v1alpha1.Component)
-	if !ok {
-		return errors.New("Failed to cast component to v1alpha1.DeploymentComponents")
-	}
-
-	obj, err := unstructuredFromFile(path, templateData, log)
-	if err != nil {
-		return err
-	}
-
-	if component.Version != "" {
-		err = unstructured.SetNestedField(obj.Object, component.Version, "spec", "sourceRef", "resourceRef", "version")
-		if err != nil {
-			return errors.Wrap(err, "Failed to set semver for %s/%s", obj.GetKind(), obj.GetName())
-		}
-	}
-
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
-	if err != nil {
-		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-	}
-	return nil
 }

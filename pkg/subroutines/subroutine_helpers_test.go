@@ -1,6 +1,7 @@
 package subroutines_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -19,6 +20,121 @@ type HelperTestSuite struct {
 
 func TestHelperTestSuite(t *testing.T) {
 	suite.Run(t, new(HelperTestSuite))
+}
+
+func (s *HelperTestSuite) TestGetWorkspaceName() {
+	tests := []struct {
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{"01-openmfp-system", "openmfp-system", false},
+		{"99-abc123", "abc123", false},
+		{"00-", "", true},
+		{"openmfp-system", "", true},
+		{"01openmfp-system", "01openmfp-system", true},
+		{"01-openmfp_system", "01-openmfp_system", true},
+		{"01-openmfp-system-extra", "openmfp-system-extra", false},
+		{"1-openmfp-system", "1-openmfp-system", true},
+		{"01-", "-", true},
+		{"", "", true},
+		{"01-OpenMFP-System", "OpenMFP-System", false},
+		{"01-openmfp-system/", "01-openmfp-system/", true},
+		{"../../manifests/kcp/02-orgs", "orgs", false},
+		{"/operator/manifests/kcp/02-orgs", "orgs", false},
+	}
+
+	for _, tt := range tests {
+		s.T().Run(tt.input, func(t *testing.T) {
+			result, err := subroutines.GetWorkspaceName(tt.input)
+			if tt.expectError {
+				s.Assert().Error(err, "input: %q", tt.input)
+			} else {
+				s.Assert().NoError(err, "input: %q", tt.input)
+				s.Assert().Equal(tt.expected, result, "input: %q", tt.input)
+			}
+		})
+	}
+}
+
+func (s *HelperTestSuite) TestListFiles() {
+	// Create a temporary directory
+	dir, err := os.MkdirTemp("", "listfiles-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(dir)
+
+	// Create some files and subdirectories
+	files := []string{"file1.txt", "file2.yaml", "file3"}
+	subdirs := []string{"subdir1", "subdir2"}
+	for _, fname := range files {
+		f, err := os.CreateTemp(dir, fname)
+		s.Require().NoError(err)
+		f.Close()
+	}
+	for _, dname := range subdirs {
+		_, err := os.MkdirTemp(dir, dname)
+		s.Require().NoError(err)
+	}
+
+	// Get the expected file names (os.CreateTemp adds random suffix)
+	entries, err := os.ReadDir(dir)
+	s.Require().NoError(err)
+	expected := []string{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			expected = append(expected, entry.Name())
+		}
+	}
+
+	// Call ListFiles
+	result, err := subroutines.ListFiles(dir)
+	s.Require().NoError(err)
+	s.ElementsMatch(expected, result)
+}
+
+func (s *HelperTestSuite) TestListFiles_DirectoryNotExist() {
+	// Call ListFiles on a non-existent directory
+	result, err := subroutines.ListFiles("/nonexistent/path/to/dir")
+	s.Error(err)
+	s.Empty(result)
+	s.Contains(err.Error(), "Failed to read directory")
+}
+
+func (s *HelperTestSuite) TestListFiles_EmptyDirectory() {
+	dir, err := os.MkdirTemp("", "listfiles-empty")
+	s.Require().NoError(err)
+	defer os.RemoveAll(dir)
+
+	result, err := subroutines.ListFiles(dir)
+	s.NoError(err)
+	s.Empty(result)
+}
+
+func (s *HelperTestSuite) TestIsWorkspace() {
+	tests := []struct {
+		dir      string
+		expected bool
+	}{
+		{"01-openmfp-system", true},
+		{"99-abc123", true},
+		{"00-", false},
+		{"openmfp-system", false},
+		{"01openmfp-system", false},
+		{"01-openmfp_system", false},
+		{"01-openmfp-system-extra", true},
+		{"1-openmfp-system", false},
+		{"01-", false},
+		{"", false},
+		{"01-OpenMFP-System", true},
+		{"01-openmfp-system/", false},
+	}
+
+	for _, tt := range tests {
+		s.T().Run(tt.dir, func(t *testing.T) {
+			result := subroutines.IsWorkspace(tt.dir)
+			s.Assert().Equal(tt.expected, result, "dir: %q", tt.dir)
+		})
+	}
 }
 
 func (s *HelperTestSuite) TestConvertToUnstructured() {

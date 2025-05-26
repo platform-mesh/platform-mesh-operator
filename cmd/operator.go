@@ -29,7 +29,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/openmfp/openmfp-operator/internal/controller"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
 )
 
 var operatorCmd = &cobra.Command{
@@ -79,11 +78,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
-	dirs := subroutines.DirManifestStructure
-	if defaultCfg.IsLocal {
-		subroutines.ReplacePaths(dirs, "./setup/", true)
-	}
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, defaultCfg, dirs)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, defaultCfg, "/operator")
 	if err := openmfpReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenMFP")
 		os.Exit(1)

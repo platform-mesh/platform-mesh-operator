@@ -24,43 +24,7 @@ import (
 	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
 )
 
-var ManifestStructureTest = subroutines.DirectoryStructure{
-	Workspaces: []subroutines.WorkspaceDirectory{
-		{
-			Name: "root",
-			Files: []string{
-				"../../setup/workspace-openmfp-system.yaml",
-				"../../setup/workspace-type-provider.yaml",
-				"../../setup/workspace-type-providers.yaml",
-				"../../setup/workspace-type-org.yaml",
-				"../../setup/workspace-type-orgs.yaml",
-				"../../setup/workspace-type-account.yaml",
-				"../../setup/workspace-orgs.yaml",
-			},
-		},
-		{
-			Name: "root:openmfp-system",
-			Files: []string{
-				"../../setup/01-openmfp-system/apiexport-core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiexport-fga.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiexport-kcp.io.yaml",
-				"../../setup/01-openmfp-system/apiexportendpointslice-core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiexportendpointslice-fga.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-accountinfos.core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-accounts.core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-authorizationmodels.core.openmfp.org.yaml",
-				"../../setup/01-openmfp-system/apiresourceschema-stores.core.openmfp.org.yaml",
-			},
-		},
-		{
-			Name: "root:orgs",
-			Files: []string{
-				"../../setup/02-orgs/account-root-org.yaml",
-				"../../setup/02-orgs/workspace-root-org.yaml",
-			},
-		},
-	},
-}
+var ManifestStructureTest = "../../manifests/kcp"
 
 type KcpsetupTestSuite struct {
 	suite.Suite
@@ -72,6 +36,30 @@ type KcpsetupTestSuite struct {
 
 func TestKcpsetupTestSuite(t *testing.T) {
 	suite.Run(t, new(KcpsetupTestSuite))
+}
+
+func (s *KcpsetupTestSuite) Test_applyDirStructure() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	kcpClientMock := new(mocks.Client)
+	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil)
+	inventory := map[string]string{
+		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
+		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
+		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
+	}
+	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			workspace := obj.(*kcptenancyv1alpha.Workspace)
+			workspace.Status.Phase = "Ready"
+			return nil
+		})
+
+	err := s.testObj.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.OpenMFP{})
+
+	s.Assert().Nil(err)
+
 }
 
 func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
@@ -227,7 +215,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	// Mock the Helm release lookup
 	s.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: "default"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: ""}, mock.AnythingOfType("*unstructured.Unstructured")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			release := obj.(*unstructured.Unstructured)
 			release.Object = map[string]interface{}{
@@ -299,6 +287,10 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	s.helperMock.EXPECT().
 		NewKcpClient(mock.Anything, "root:orgs").
+		Return(mockKcpClient, nil)
+
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, "root:orgs:openmfp").
 		Return(mockKcpClient, nil)
 
 	// Mock APIExport lookups
@@ -470,7 +462,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 
 	cl := new(mocks.Client)
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 
 	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
@@ -480,18 +472,18 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	s.Assert().Error(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	templateData := map[string]string{
 		".account-operator.webhooks.core.openmfp.org.ca-bundle": "CABundle",
 	}
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../setup/01-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/03-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)
 }
 

@@ -24,7 +24,6 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/mohae/deepcopy"
 	"k8s.io/client-go/rest"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
@@ -93,7 +92,7 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 		useExistingCluster = envValue
 	}
 	suite.kcpTestenv = kcpenvtest.NewEnvironment(
-		"openmfp.org", "openmfp-system", "../../", "bin", "setup", useExistingCluster, testEnvLogger)
+		"openmfp.org", "openmfp-system", "../../", "bin", "manifests/kcp", useExistingCluster, testEnvLogger)
 	k8sCfg, _, err := suite.kcpTestenv.Start()
 	suite.Require().NoError(err)
 	if err != nil {
@@ -139,11 +138,9 @@ func (suite *OpenmfpTestSuite) SetupSuite() {
 	})
 	suite.Nil(err)
 
-	dirs := deepcopy.Copy(subroutines.DirManifestStructure).(subroutines.DirectoryStructure)
-	subroutines.ReplacePaths(dirs, "../../setup/", true)
 	commonConfig := &openmfpconfig.CommonServiceConfig{}
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, commonConfig, dirs)
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, suite.kubernetesManager, appConfig, commonConfig, "../../manifests/kcp")
 	err = openmfpReconciler.SetupWithManager(suite.kubernetesManager, defaultConfig, log)
 	suite.Nil(err)
 

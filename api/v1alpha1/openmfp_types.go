@@ -23,39 +23,10 @@ import (
 
 // OpenMFPSpec defines the desired state of OpenMFP
 type OpenMFPSpec struct {
-	Exposure   *ExposureConfig  `json:"exposure,omitempty"`
-	Components ComponentsConfig `json:"components,omitempty"`
-	Kcp        Kcp              `json:"kcp,omitempty"`
-	Version    string           `json:"version,omitempty"`
-}
-
-type ComponentsConfig struct {
-	AccountOperator          Component `json:"accountOperator,omitempty"`
-	AccountUI                Component `json:"accountUI,omitempty"`
-	Crossplane               Component `json:"crossplane,omitempty"`
-	Kcp                      Component `json:"kcp,omitempty"`
-	Keycloak                 Component `json:"keycloak,omitempty"`
-	KubernetesGraphqlGateway Component `json:"kubernetesGraphqlGateway,omitempty"`
-	ApeiroExampleContent     Component `json:"apeiroExampleContent,omitempty"`
-	ApeiroPortal             Component `json:"apeiroPortal,omitempty"`
-	Portal                   Component `json:"portal,omitempty"`
-	ExtensionManagerOperator Component `json:"extensionManagerOperator,omitempty"`
-	ExampleResources         Component `json:"exampleResources,omitempty"`
-	FgaOperator              Component `json:"fgaOperator,omitempty"`
-	IamAuthorizationWebhook  Component `json:"iamAuthorizationWebhook,omitempty"`
-	IamService               Component `json:"iamService,omitempty"`
-	Infra                    Component `json:"infra,omitempty"`
-	IstioBase                Component `json:"istioBase,omitempty"`
-	IstioD                   Component `json:"istioD,omitempty"`
-	IstioGateway             Component `json:"istioGateway,omitempty"`
-	OpenFGA                  Component `json:"openFGA,omitempty"`
-	Observability            Component `json:"observability,omitempty"`
-}
-
-type Component struct {
-	Values  apiextensionsv1.JSON `json:"values,omitempty"`
-	Enabled *bool                `json:"enabled,omitempty"`
-	Version string               `json:"version,omitempty"`
+	Exposure *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp      Kcp                  `json:"kcp,omitempty"`
+	Version  string               `json:"version,omitempty"`
+	Values   apiextensionsv1.JSON `json:"values,omitempty"`
 }
 
 type ExposureConfig struct {
@@ -128,8 +99,13 @@ type KcpWorkspace struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",name="KCP",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",name="SECRET",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",name="KCP",type=string,description="KCP status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].reason",name="KCP_REASON",type=string,description="KCP reason if status is Unknown",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",name="SECRET",type=string,description="Provider Secret status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].reason",name="SECRET_REASON",type=string,description="Provider Secret reason if status is Unknown",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",name="DEPLOYMENT",type=string,description="Deployment status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason",name="DEPLOYMENT_REASON",type=string,description="Deployment reason if status is Unknown",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='Ready')].status",name="Ready",type=string,description="Shows if resource is ready",priority=0
 
 // OpenMFP is the Schema for the openmfps API
 type OpenMFP struct {

@@ -20,8 +20,7 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 COPY pkg/ pkg/
-COPY setup/ setup/
-COPY deployment/ deployment/
+COPY manifests/ manifests/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags '-w -s' -o manager main.go
@@ -33,8 +32,7 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 ENV USER_UID=1001
 ENV GROUP_UID=1001
 COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/manager /operator/manager
-COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/setup /operator/setup
-COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/deployment /operator/deployment
+COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/manifests /operator/manifests
 
 USER ${USER_UID}:${GROUP_UID}
 ENTRYPOINT ["/operator/manager"]

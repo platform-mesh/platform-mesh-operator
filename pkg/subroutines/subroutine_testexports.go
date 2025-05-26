@@ -20,7 +20,7 @@ func (r *KcpsetupSubroutine) GetCABundleInventory(ctx context.Context) (map[stri
 	return r.getCABundleInventory(ctx)
 }
 
-func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir DirectoryStructure, inst *corev1alpha1.OpenMFP) error {
+func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.OpenMFP) error {
 	return r.createKcpResources(ctx, config, dir, inst)
 }
 
@@ -29,9 +29,9 @@ func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, conf
 }
 
 func (r *KcpsetupSubroutine) ApplyDirStructure(
-	ctx context.Context, dir DirectoryStructure, config *rest.Config, inventory map[string]string, inst *corev1alpha1.OpenMFP,
+	ctx context.Context, dir string, kcpPath string, config *rest.Config, inventory map[string]string, inst *corev1alpha1.OpenMFP,
 ) error {
-	return r.applyDirStructure(ctx, dir, config, inventory, inst)
+	return r.applyDirStructure(ctx, dir, kcpPath, config, inventory, inst)
 }
 
 func (r *KcpsetupSubroutine) WaitForWorkspace(
