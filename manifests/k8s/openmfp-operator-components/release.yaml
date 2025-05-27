@@ -10,9 +10,6 @@ spec:
     kind: OCIRepository
     name: openmfp-operator-components
   releaseName: openmfp-operator-components
-  dependsOn:
-    - name: ocm-controller
-      namespace: default
   targetNamespace: default
   values:
     imagePullSecret: github

@@ -6,7 +6,6 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/kcp-dev/kcp/sdk v0.27.1
 	github.com/mitchellh/copystructure v1.2.0
-	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
 	github.com/openmfp/golang-commons v0.147.8
 	github.com/otiai10/copy v1.14.1
 	github.com/rs/zerolog v1.34.0
