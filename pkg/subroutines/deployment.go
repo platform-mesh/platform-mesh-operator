@@ -85,7 +85,8 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	// apply repository
 	path := r.workspaceDirectory + "openmfp-operator-components/repository.yaml"
 	tplValues := map[string]string{
-		"version": inst.Spec.Version,
+		"chartVersion":     inst.Spec.ChartVersion,
+		"componentVersion": inst.Spec.ComponentVersion,
 	}
 	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {
@@ -310,7 +311,7 @@ func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 	result.Raw, _ = json.Marshal(map[string]string{
 		"iamWebhookCA":            base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"baseDomain":              baseDomain,
-		"componentVersion.semver": inst.Spec.Version,
+		"componentVersion.semver": inst.Spec.ComponentVersion,
 		"protocol":                protocol,
 		"port":                    fmt.Sprintf("%d", port),
 	})

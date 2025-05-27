@@ -23,10 +23,11 @@ import (
 
 // OpenMFPSpec defines the desired state of OpenMFP
 type OpenMFPSpec struct {
-	Exposure *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp      Kcp                  `json:"kcp,omitempty"`
-	Version  string               `json:"version,omitempty"`
-	Values   apiextensionsv1.JSON `json:"values,omitempty"`
+	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp              Kcp                  `json:"kcp,omitempty"`
+	ChartVersion     string               `json:"chartVersion,omitempty"`
+	ComponentVersion string               `json:"componentVersion,omitempty"`
+	Values           apiextensionsv1.JSON `json:"values,omitempty"`
 }
 
 type ExposureConfig struct {

@@ -71,6 +71,10 @@ spec:
           spec:
             description: OpenMFPSpec defines the desired state of OpenMFP
             properties:
+              chartVersion:
+                type: string
+              componentVersion:
+                type: string
               exposure:
                 properties:
                   baseDomain:
@@ -160,8 +164,6 @@ spec:
                 type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true
-              version:
-                type: string
             type: object
           status:
             description: OpenMFPStatus defines the observed state of OpenMFP

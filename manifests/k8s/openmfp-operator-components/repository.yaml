@@ -8,6 +8,6 @@ spec:
   url: oci://ghcr.io/openmfp/helm-charts-priv/openmfp-operator-components
   ref:
     # renovate: datasource=docker registryUrl=https://ghcr.io depName=ghcr.io/openmfp/helm-charts-priv/openmfp-priv-crds
-    semver: {{ .version }}
+    semver: {{ .chartVersion }}
   secretRef:
     name: github
