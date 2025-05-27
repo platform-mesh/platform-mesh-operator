@@ -1,0 +1,105 @@
+package subroutines_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/openmfp/golang-commons/logger"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	openmfpconfig "github.com/openmfp/golang-commons/config"
+	"github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/openmfp/openmfp-operator/internal/config"
+)
+
+type DeployTestSuite struct {
+	suite.Suite
+	clientMock *mocks.Client
+	helperMock *mocks.KcpHelper
+	testObj    *subroutines.DeploymentSubroutine
+	log        *logger.Logger
+}
+
+func TestDeployTestSuite(t *testing.T) {
+	suite.Run(t, new(DeployTestSuite))
+}
+
+func (s *DeployTestSuite) SetupTest() {
+	s.clientMock = new(mocks.Client)
+	s.helperMock = new(mocks.KcpHelper)
+	s.log, _ = logger.New(logger.DefaultConfig())
+
+	cfg := openmfpconfig.CommonServiceConfig{}
+	operatorCfg := config.OperatorConfig{
+		WorkspaceDir: "../../",
+	}
+
+	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
+}
+
+func (s *DeployTestSuite) Test_applyReleaseWithValues() {
+	ctx := context.TODO()
+
+	inst := &v1alpha1.OpenMFP{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-openmfp",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.OpenMFPSpec{
+			ChartVersion:     "v1.0.0",
+			ComponentVersion: "v2.0.0",
+		},
+	}
+
+	// mocks
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "iam-authorization-webhook-cert"}, mock.Anything).Return(nil).Once()
+	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			// Simulate a successful patch operation
+			hr := obj.(*unstructured.Unstructured)
+
+			// Extract .spec
+			spec, found, err := unstructured.NestedFieldNoCopy(hr.Object, "spec")
+			s.Require().NoError(err, "should be able to get spec")
+			s.Require().True(found, "spec should be present")
+
+			// Check if spec is a map
+			specMap, ok := spec.(map[string]interface{})
+			s.Require().True(ok, "spec should be a map[string]interface{}")
+
+			// Extract .spec.values
+			specValues, found, err := unstructured.NestedFieldNoCopy(specMap, "values")
+			s.Require().NoError(err, "should be able to get spec.values")
+			s.Require().True(found, "spec.values should be present")
+
+			specJSON, ok := specValues.(apiextensionsv1.JSON)
+			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
+
+			expected := `{"baseDomain":"portal.dev.local","componentVersion":{"semver":"v2.0.0"},"iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"openmfp-operator":{"version":"v1.0.0"}}}}`
+			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
+
+			return nil
+		},
+	).Once()
+
+	// Create DeploymentComponents Version
+	values, err := subroutines.TemplateVars(ctx, inst, s.clientMock)
+	s.Assert().NoError(err, "TemplateVars should not return an error")
+
+	services := apiextensionsv1.JSON{}
+	services.Raw = []byte(`{"services": {"openmfp-operator": {"version": "v1.0.0"}}}`)
+
+	mergedValues, err := subroutines.MergeValuesAndServices(values, services)
+	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
+
+	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/openmfp-operator-components/release.yaml", s.clientMock, mergedValues)
+	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
+}

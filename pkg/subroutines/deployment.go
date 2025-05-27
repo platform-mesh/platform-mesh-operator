@@ -2,8 +2,6 @@ package subroutines
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -67,7 +65,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Create DeploymentComponents Version
-	values, err := templateVars(ctx, inst, r.client)
+	values, err := TemplateVars(ctx, inst, r.client)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -279,42 +277,4 @@ func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.C
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 	return nil
-}
-
-func templateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (apiextensionsv1.JSON, error) {
-	port := 8443
-	baseDomain := "portal.dev.local"
-	protocol := "https"
-
-	if inst.Spec.Exposure != nil {
-		if inst.Spec.Exposure.Port != 0 {
-			port = inst.Spec.Exposure.Port
-		}
-		if inst.Spec.Exposure.BaseDomain != "" {
-			baseDomain = inst.Spec.Exposure.BaseDomain
-		}
-		if inst.Spec.Exposure.Protocol != "" {
-			protocol = inst.Spec.Exposure.Protocol
-		}
-	}
-
-	var secret corev1.Secret
-	err := cl.Get(ctx, client.ObjectKey{
-		Name:      "iam-authorization-webhook-cert",
-		Namespace: inst.Namespace,
-	}, &secret)
-	if err != nil && !kerrors.IsNotFound(err) {
-		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret iam-authorization-webhook-cert")
-	}
-
-	result := apiextensionsv1.JSON{}
-	result.Raw, _ = json.Marshal(map[string]string{
-		"iamWebhookCA":            base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"baseDomain":              baseDomain,
-		"componentVersion.semver": inst.Spec.ComponentVersion,
-		"protocol":                protocol,
-		"port":                    fmt.Sprintf("%d", port),
-	})
-
-	return result, nil
 }

@@ -3,6 +3,7 @@ package subroutines
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -238,4 +240,44 @@ func MergeValuesAndServices(values, services apiextensionsv1.JSON) (apiextension
 	}
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
 
+}
+
+func TemplateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (apiextensionsv1.JSON, error) {
+	port := 8443
+	baseDomain := "portal.dev.local"
+	protocol := "https"
+
+	if inst.Spec.Exposure != nil {
+		if inst.Spec.Exposure.Port != 0 {
+			port = inst.Spec.Exposure.Port
+		}
+		if inst.Spec.Exposure.BaseDomain != "" {
+			baseDomain = inst.Spec.Exposure.BaseDomain
+		}
+		if inst.Spec.Exposure.Protocol != "" {
+			protocol = inst.Spec.Exposure.Protocol
+		}
+	}
+
+	var secret corev1.Secret
+	err := cl.Get(ctx, client.ObjectKey{
+		Name:      "iam-authorization-webhook-cert",
+		Namespace: inst.Namespace,
+	}, &secret)
+	if err != nil && !kerrors.IsNotFound(err) {
+		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret iam-authorization-webhook-cert")
+	}
+
+	result := apiextensionsv1.JSON{}
+	result.Raw, _ = json.Marshal(map[string]interface{}{
+		"iamWebhookCA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":   baseDomain,
+		"componentVersion": map[string]string{
+			"semver": inst.Spec.ComponentVersion,
+		},
+		"protocol": protocol,
+		"port":     fmt.Sprintf("%d", port),
+	})
+
+	return result, nil
 }
