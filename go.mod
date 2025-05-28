@@ -3,7 +3,7 @@ module github.com/openmfp/openmfp-operator
 go 1.24.0
 
 require (
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.27.1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/openmfp/golang-commons v0.147.8
@@ -30,9 +30,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
-	github.com/fluxcd/helm-controller/api v1.2.0 // indirect
-	github.com/fluxcd/pkg/apis/kustomize v1.9.0 // indirect
-	github.com/fluxcd/pkg/apis/meta v1.10.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/getsentry/sentry-go v0.33.0 // indirect
