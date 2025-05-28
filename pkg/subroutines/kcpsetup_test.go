@@ -215,7 +215,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	// Mock the Helm release lookup
 	s.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: ""}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: "default"}, mock.AnythingOfType("*unstructured.Unstructured")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			release := obj.(*unstructured.Unstructured)
 			release.Object = map[string]interface{}{

@@ -77,7 +77,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing OpenMFP resource")
 
 	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", inst.Namespace)
+	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get KCP Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
