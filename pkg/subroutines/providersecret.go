@@ -84,7 +84,7 @@ func (r *ProvidersecretSubroutine) Process(
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", instance.Namespace)
+	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get KCP Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
