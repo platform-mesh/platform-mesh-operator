@@ -268,16 +268,21 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret iam-authorization-webhook-cert")
 	}
 
-	result := apiextensionsv1.JSON{}
-	result.Raw, _ = json.Marshal(map[string]interface{}{
+	values := map[string]interface{}{
 		"iamWebhookCA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"baseDomain":   baseDomain,
-		"componentVersion": map[string]string{
+		"protocol":     protocol,
+		"port":         fmt.Sprintf("%d", port),
+	}
+
+	if inst.Spec.ComponentVersion != "" {
+		values["componentVersion"] = map[string]string{
 			"semver": inst.Spec.ComponentVersion,
-		},
-		"protocol": protocol,
-		"port":     fmt.Sprintf("%d", port),
-	})
+		}
+	}
+
+	result := apiextensionsv1.JSON{}
+	result.Raw, _ = json.Marshal(values)
 
 	return result, nil
 }

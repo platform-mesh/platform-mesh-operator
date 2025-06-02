@@ -83,8 +83,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	// apply repository
 	path := r.workspaceDirectory + "openmfp-operator-components/repository.yaml"
 	tplValues := map[string]string{
-		"chartVersion":     inst.Spec.ChartVersion,
-		"componentVersion": inst.Spec.ComponentVersion,
+		"chartVersion": inst.Spec.ChartVersion,
 	}
 	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {
