@@ -25,10 +25,15 @@ import (
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"net/http"
+
+	"github.com/openmfp/golang-commons/traces"
 	"github.com/openmfp/openmfp-operator/internal/controller"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var operatorCmd = &cobra.Command{
@@ -38,6 +43,8 @@ var operatorCmd = &cobra.Command{
 }
 
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
+	var err error
+
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
 
 	log.Info().Msg("Starting OpenMFP Operator")
@@ -56,9 +63,33 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	var providerShutdown func(ctx context.Context) error
+	if defaultCfg.Tracing.Enabled {
+		providerShutdown, err = traces.InitProvider(ctx, defaultCfg.Tracing.Collector)
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to start gRPC-Sidecar TracerProvider")
+		}
+	} else {
+		providerShutdown, err = traces.InitLocalProvider(ctx, defaultCfg.Tracing.Collector, false)
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to start local TracerProvider")
+		}
+	}
+
+	defer func() {
+		if err := providerShutdown(ctx); err != nil {
+			log.Fatal().Err(err).Msg("failed to shutdown TracerProvider")
+		}
+	}()
+
 	log.Info().Msg("Starting manager")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Client: client.Options{
+			HTTPClient: &http.Client{
+				Transport: otelhttp.NewTransport(http.DefaultTransport),
+			},
+		},
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
