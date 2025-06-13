@@ -24,9 +24,7 @@ import (
 	openmfpcontext "github.com/openmfp/golang-commons/context"
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -86,19 +84,10 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	log.Info().Msg("Starting manager")
 
 	restCfg := ctrl.GetConfigOrDie()
-	baseTransport, err := rest.TransportFor(restCfg)
-	if err != nil {
-		log.Fatal().Err(err).Msg("unable to create base transport")
-		return
-	}
-	tracingTransport := otelhttp.NewTransport(baseTransport)
-
+	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Client: client.Options{
-			HTTPClient: &http.Client{
-				Transport: tracingTransport,
-			},
-		},
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
