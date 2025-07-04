@@ -11,7 +11,7 @@ replace (
 )
 
 require (
-	github.com/cert-manager/cert-manager v1.17.2
+	github.com/cert-manager/cert-manager v1.18.2
 	github.com/fluxcd/helm-controller/api v1.3.0
 	github.com/fluxcd/source-controller/api v1.6.0
 	github.com/go-logr/logr v1.4.3
