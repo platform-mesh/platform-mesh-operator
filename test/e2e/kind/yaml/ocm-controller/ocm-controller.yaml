@@ -1,0 +1,25 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: ocm-controller
+  namespace: default
+spec:
+  interval: 5m
+  url: oci://ghcr.io/open-component-model/helm/ocm-controller
+  ref:
+    semver: v0.26.0
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ocm-controller
+  namespace: default
+spec:
+  interval: 1m
+  chartRef:
+    kind: OCIRepository
+    name: ocm-controller
+  releaseName: ocm-controller
+  targetNamespace: ocm-system

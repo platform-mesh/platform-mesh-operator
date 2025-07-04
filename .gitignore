@@ -34,3 +34,7 @@ kcp.log
 
 # OS files
 .DS_Store
+test/e2e/kind/certs/
+*.srl
+*.crt
+*.key

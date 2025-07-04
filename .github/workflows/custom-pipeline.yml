@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  pipe:
+    concurrency:
+      group: ${{ github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/pipeline.yml
+    secrets: inherit
+    with:
+      imageTagName: ghcr.io/openmfp/openmfp-operator
+      useTask: true
+      useLocalCoverageConfig: true
+      coverageThresholdTotal: 45
+      coverageThresholdPackage: 60
+      coverageThresholdFile: 30

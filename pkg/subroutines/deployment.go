@@ -38,7 +38,6 @@ type DeploymentSubroutine struct {
 }
 
 func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
-
 	sub := &DeploymentSubroutine{
 		cfg:                cfg,
 		client:             client,
@@ -115,20 +114,22 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	// At he boostrap time of the cluster the operator will install istio. Later in the Process the operator needs
 	// to communicate via the proxy with KCP. Once Istio is up and running the operator will be restarted to ensure
 	// this communication will work
-	hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "openmfp-operator", "openmfp-system")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-	// When running the operator locally there will never be a proxy
-	if !r.cfg.IsLocal && !hasProxy {
-		err := r.client.Delete(ctx, pod)
+	if !r.cfg.IsLocal {
+		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "openmfp-operator", "openmfp-system")
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
+			log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
-		// Forcing a pod restart
-		os.Exit(0)
+		// When running the operator locally there will never be a proxy
+		if !r.cfg.IsLocal && !hasProxy {
+			err := r.client.Delete(ctx, pod)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
+			// Forcing a pod restart
+			os.Exit(0)
+		}
 	}
 
 	// Wait for kcp release to be ready before continuing

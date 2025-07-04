@@ -1,24 +1,138 @@
-name: ci
+name: pipeline
+permissions:
+  contents: read
+  pull-requests: write
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types:
-      - opened
-      - synchronize
+  workflow_call:
+    inputs:
+      imageTagName:
+        required: true
+        type: string
+        default: false
+      coverageThresholdFile:
+        required: false
+        type: number
+        default: 80
+      coverageThresholdPackage:
+        required: false
+        type: number
+        default: 80
+      coverageThresholdTotal:
+        required: false
+        type: number
+        default: 95
+      useLocalCoverageConfig:
+        required: false
+        type: boolean
+        default: false
+      release_branch:
+        required: false
+        type: string
+        default: 'main'
+      repoVersionUpdate:
+        required: false
+        type: string
+        default: 'openmfp/helm-charts-priv'
+      doubleTagging:
+        required: false
+        type: boolean
+        default: false
+      useTask:
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      version:
+        description: "The created Version"
+        value: ${{ jobs.createVersion.outputs.version }}
+  workflow_dispatch:
+    inputs:
+      imageTagName:
+        required: true
+        type: string
+      useTask:
+        required: false
+        type: boolean
+        default: false
+      coverageThresholdFile:
+        required: false
+        type: number
+        default: 80
+      coverageThresholdPackage:
+        required: false
+        type: number
+        default: 80
+      coverageThresholdTotal:
+        required: false
+        type: number
+        default: 95
+      useLocalCoverageConfig:
+        required: false
+        type: boolean
+        default: false
+      release_branch:
+        required: false
+        type: string
+        default: 'main'
+      repoVersionUpdate:
+        required: false
+        type: string
+        default: 'openmfp/helm-charts-priv'
+
 
 jobs:
-  pipe:
-    concurrency:
-      group: ${{ github.ref }}
-      cancel-in-progress: true
-    uses: openmfp/gha/.github/workflows/pipeline-golang-app.yml@main
+  auto-labeler:
+    if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+    uses: openmfp/gha/.github/workflows/job-auto-labeler.yml@main
+    secrets: inherit
+
+  createVersion:
+    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    uses: openmfp/gha/.github/workflows/job-create-version.yml@main
+    secrets: inherit
+
+  lint:
+    uses: openmfp/gha/.github/workflows/job-golang-lint.yml@main
+    with:
+      useTask: ${{ inputs.useTask }}
+
+  testSource:
+    uses: ./.github/workflows/job-golang-test-source.yml
     secrets: inherit
     with:
-      imageTagName: ghcr.io/openmfp/openmfp-operator
-      useTask: true
-      useLocalCoverageConfig: true
-      coverageThresholdTotal: 45
-      coverageThresholdPackage: 60
-      coverageThresholdFile: 30
+      runsOn: 'ubuntu-latest-large'
+      useTask: ${{ inputs.useTask }}
+      useLocalCoverageConfig: ${{ inputs.useLocalCoverageConfig }}
+      coverageThresholdFile: ${{ inputs.coverageThresholdFile }}
+      coverageThresholdPackage: ${{ inputs.coverageThresholdPackage }}
+      coverageThresholdTotal: ${{ inputs.coverageThresholdTotal }}
+
+  dockerBuild:
+    if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+    uses: openmfp/gha/.github/workflows/job-docker-build-push.yml@main
+    with:
+      imageTagName: ${{ inputs.imageTagName }}
+      release_branch: ${{ inputs.release_branch }}
+      multiarch: false
+    secrets: inherit
+
+  dockerBuildAndPush:
+    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    needs: [createVersion,lint,testSource]
+    uses: openmfp/gha/.github/workflows/job-docker-build-push.yml@main
+    with:
+      imageTagName: ${{ inputs.imageTagName }}
+      version: ${{ needs.createVersion.outputs.version }}
+      release_branch: ${{ inputs.release_branch }}
+      multiarch: true
+    secrets: inherit
+
+  updateVersion:
+    needs: [createVersion, dockerBuildAndPush]
+    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    uses: openmfp/gha/.github/workflows/job-chart-version-update.yml@main
+    secrets: inherit
+    with:
+      appVersion: ${{ needs.createVersion.outputs.version }}
+      chart: ${{ github.event.repository.name }}
+      targetRepository: ${{ inputs.repoVersionUpdate }}

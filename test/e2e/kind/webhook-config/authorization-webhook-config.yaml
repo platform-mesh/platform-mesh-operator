@@ -1,0 +1,25 @@
+apiVersion: apiserver.config.k8s.io/v1beta1
+kind: AuthorizationConfiguration
+authorizers:
+  - type: RBAC
+    name: rbac
+  - type: Node
+    name: node
+  - type: Webhook
+    name: authz-webhook
+    webhook:
+      authorizedTTL: 30s
+      unauthorizedTTL: 30s
+      # Timeout for the webhook request
+      # Maximum allowed is 30s.
+      # Required, with no default.
+      timeout: 3s
+      subjectAccessReviewVersion: v1
+      matchConditionSubjectAccessReviewVersion: v1
+      failurePolicy: NoOpinion
+      matchConditions:
+        - expression: has(request.resourceAttributes)
+        - expression: request.resourceAttributes.group != "rbac.authorization.k8s.io" # Skip RBAC requests
+      connectionInfo:
+        type: KubeConfigFile
+        kubeConfigFile: /config/authz-webhook-kubeconfig.yaml

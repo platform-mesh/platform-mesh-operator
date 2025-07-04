@@ -4,14 +4,13 @@ dotenv: ['.taskenv', '.secret/.env', '{{.HOME}}/.env' ]
 vars:
   LOCAL_BIN: bin
   CONTROLLER_TOOLS_VERSION: v0.14.0
-  ENVTEST_K8S_VERSION: "1.29.0"
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
   TEST_SETUP_DIRECTORY: setup/01-openmfp-system
-  KCP_VERSION: 0.27.1
   GOMPLATE_VERSION: v4.3.0
   KUSTOMIZE_VERSION: v5.4.3
   OCM_VERSION: 0.24.0
+  KIND_VERSION: v0.29.0
   KUBECTL: kubectl
   GOARCH:
     sh: go env GOARCH
@@ -28,15 +27,6 @@ tasks:
     internal: true
     cmds:
       - test -s {{.LOCAL_BIN}}/go-test-coverage || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vladopajic/go-test-coverage/v2@latest
-  setup:kcp:
-    internal: true
-    cmds:
-      - test -s {{.LOCAL_BIN}}/kcp || GOBIN=$(pwd)/{{.LOCAL_BIN}} ./hack/download-tool.sh https://github.com/kcp-dev/kcp/releases/download/v{{ .KCP_VERSION }}/kcp_{{ .KCP_VERSION }}_{{ .GOOS }}_{{ .GOARCH }}.tar.gz kcp {{.KCP_VERSION}}
-  setup:envtest:
-    internal: true
-    deps: [setup:kcp]
-    cmds:
-      - test -s {{.LOCAL_BIN}}/setup-envtest || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/controller-runtime/tools/setup-envtest@{{.ENVTEST_VERSION}}
   setup:kustomize:
     internal: true
     cmds:
@@ -53,24 +43,63 @@ tasks:
     internal: true
     cmds:
       - test -s {{.LOCAL_BIN}}/golangci-lint || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
   setup:ocm:
     internal: true
     cmds:
       - test -s {{.LOCAL_BIN}}/ocm || (curl -o {{.LOCAL_BIN}}/ocm.tar.gz -sSL https://github.com/open-component-model/ocm/releases/download/v{{ .OCM_VERSION }}/ocm-{{ .OCM_VERSION }}-{{ .GOOS }}-{{ .GOARCH }}.tar.gz && tar -xzf {{ .LOCAL_BIN }}/ocm.tar.gz -C {{ .LOCAL_BIN }} && rm {{ .LOCAL_BIN }}/ocm.tar.gz && chmod +x {{.LOCAL_BIN}}/ocm && chmod 755 {{.LOCAL_BIN}}/ocm)
+  setup:mkcert:
+    internal: true
+    cmds:
+      - test -s {{.LOCAL_BIN}}/mkcert || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install filippo.io/mkcert@latest
+      - export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
+  setup:kind:
+    internal: true
+    cmds:
+      - test -s {{.LOCAL_BIN}}/kind || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/kind@{{ .KIND_VERSION }}
+      - export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
   
   ## Development
   mockery:
     deps: [setup:mockery]
     cmds:
       - "{{.LOCAL_BIN}}/mockery"
-  test:
-    deps: [mockery, setup:envtest]
+  
+  kindtest:
+    deps: [setup:mkcert, setup:kind]
     env:
       GO111MODULE: on
     cmds:
-      - $(pwd)/{{.LOCAL_BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir $(pwd)/{{.LOCAL_BIN}} -p path
-      - go test -timeout 120s -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+      - |
+        export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
+        go test -timeout 25m -coverprofile=cover.out github.com/openmfp/openmfp-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+
+
+  test:
+    deps: [mockery, setup:kind, setup:mkcert]
+    env:
+      GO111MODULE: on
+      # GH_TOKEN: "{{.WORKFLOW_GITHUB_PAT}}"
+    cmds:
+      - |
+        if [ "$GITHUB_WORKFLOW" = "ci" ]; then
+          echo "Running tests in Github Actions"
+          echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
+          GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+        else
+          # test if portal.dev.local and kcp.api.portal.dev.local are in /etc/hosts
+          if ! grep -q "portal.dev.local" /etc/hosts; then
+            echo "Missing portal.dev.local in /etc/hosts"
+            exit 1
+          fi
+          if ! grep -q "kcp.api.portal.dev.local" /etc/hosts;
+          then
+            echo "Missing kcp.api.portal.dev.local in /etc/hosts"
+            exit 1
+          fi
+          export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
+          go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+        fi
+        
   manifests:
     deps: [setup:controller-gen]
     cmds:
@@ -111,10 +140,6 @@ tasks:
     cmds:
       - task: lint
       - task: test
-  start-kcp:
-    deps: [setup:kcp]
-    cmds:
-      - "{{ .LOCAL_BIN}}/kcp start"
   install:
     deps: [setup:kustomize]
     cmds:
@@ -122,12 +147,10 @@ tasks:
   run:
     cmds:
       - source .env && go run ./main.go operator
-  
   bump-versions:
     deps: [setup:ocm]
     cmds:
       - task: bump-versions-internal
-
   bump-versions-internal:
     internal: true
     vars:
@@ -159,4 +182,3 @@ tasks:
       - for:
           var: SERVICES
         cmd: COMP_VERSION=$(echo "{{ .OPENMFP_PRIV_COMP }}" | yq -r '.items[0].component.componentReferences[] | select(.name == "{{ .ITEM }}").version') yq -i ".spec.sourceRef.resourceRef.version = strenv(COMP_VERSION)" deployment/{{ range splitList "-" .ITEM }}{{ . }}{{ end }}/resource.yaml
-

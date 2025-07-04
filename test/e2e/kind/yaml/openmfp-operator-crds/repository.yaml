@@ -1,0 +1,13 @@
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: openmfp-operator-crds
+  namespace: default
+spec:
+  interval: 5m
+  url: oci://ghcr.io/openmfp/helm-charts-priv/openmfp-operator-crds
+  ref:
+    # renovate: datasource=docker registryUrl=https://ghcr.io depName=ghcr.io/openmfp/helm-charts-priv/openmfp-priv-crds
+    semver: 0.1.10
+  secretRef:
+    name: github
