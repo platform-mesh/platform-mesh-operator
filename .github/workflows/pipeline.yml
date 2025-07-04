@@ -2,6 +2,7 @@ name: pipeline
 permissions:
   contents: write
   pull-requests: write
+  packages: write
 on:
   workflow_call:
     inputs:
