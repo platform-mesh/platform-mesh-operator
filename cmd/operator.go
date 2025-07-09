@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
+	"net/http"
 	"os"
 
 	openmfpcontext "github.com/openmfp/golang-commons/context"
@@ -28,11 +29,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"net/http"
-
 	"github.com/openmfp/golang-commons/traces"
-	"github.com/openmfp/openmfp-operator/internal/controller"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/openmfp/openmfp-operator/internal/controller"
 )
 
 var operatorCmd = &cobra.Command{
@@ -107,7 +107,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, defaultCfg, "/operator")
+	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
 	if err := openmfpReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenMFP")
 		os.Exit(1)

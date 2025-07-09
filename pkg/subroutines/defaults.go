@@ -23,6 +23,16 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Path:              "root:openmfp-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 	},
+	{
+		EndpointSliceName: "core.openmfp.org",
+		Path:              "root:openmfp-system",
+		Secret:            "extension-manager-operator-kubeconfig",
+	},
+	{
+		EndpointSliceName: "",
+		Path:              "root:openmfp-system",
+		Secret:            "portal-kubeconfig",
+	},
 }
 var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
 	{

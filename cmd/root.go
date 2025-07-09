@@ -43,22 +43,12 @@ func init() {
 		panic(err)
 	}
 
-	cobra.OnInitialize(initConfig)
-
 	err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
 	if err != nil {
 		panic(err)
 	}
 
 	cobra.OnInitialize(initLog)
-}
-
-func initConfig() {
-	v.SetDefault("subroutines-deployment-enabled", true)
-	v.SetDefault("subroutines-kcp-setup-enabled", true)
-	v.SetDefault("subroutines-provider-secret-enabled", true)
-	v.SetDefault("workspace-dir", "/operator/")
-
 }
 
 func initLog() { // coverage-ignore

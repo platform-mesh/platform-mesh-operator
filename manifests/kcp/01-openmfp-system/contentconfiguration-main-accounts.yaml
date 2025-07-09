@@ -1,0 +1,121 @@
+apiVersion: core.openmfp.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    portal.openmfp.org/entity: main
+  name: main-account-ui
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+          "name": "accounts",
+          "creationTimestamp": "2022-05-17T11:37:17Z",
+          "luigiConfigFragment": {
+              "data": {
+                  "nodes": [
+                      {
+                          "pathSegment": "accounts",
+                          "navigationContext": "accounts",
+                          "label": "Accounts",
+                          "entityType": "main",
+                          "loadingIndicator": {
+                              "enabled": false
+                          },
+                          "keepSelectedForChildren": true,
+                          "url": "/assets/openmfp-portal-ui-wc.js#generic-list-view",
+                          "webcomponent": {
+                              "selfRegistered": true
+                          },
+                          "context": {
+                              "resourceDefinition": {
+                                  "group": "core.openmfp.org",
+                                  "plural": "accounts",
+                                  "singular": "account",
+                                  "kind": "Account",
+                                  "scope": "Cluster",
+                                  "namespace": null,
+                                  "ui": {
+                                      "logoUrl": "https://www.kcp.io/icons/logo.svg",
+                                      "listView": {
+                                          "fields": [
+                                              {
+                                                  "label": "Name",
+                                                  "property": "metadata.name"
+                                              },
+                                              {
+                                                  "label": "Display Name",
+                                                  "property": "spec.displayName"
+                                              },
+                                              {
+                                                  "label": "Type",
+                                                  "property": "spec.type"
+                                              }
+                                          ]
+                                      },
+                                      "detailView": {
+                                          "fields": [
+                                              {
+                                                  "label": "Description",
+                                                  "property": "spec.description"
+                                              },
+                                              {
+                                                  "label": "Display Name",
+                                                  "property": "spec.displayName"
+                                              }
+                                          ]
+                                      },
+                                      "createView": {
+                                          "fields": [
+                                              {
+                                                  "label": "Name",
+                                                  "property": "metadata.name",
+                                                  "required": true
+                                              },
+                                              {
+                                                  "label": "Type",
+                                                  "property": "spec.type",
+                                                  "required": true,
+                                                  "values": [
+                                                      "account"
+                                                  ]
+                                              },
+                                              {
+                                                  "label": "Display Name",
+                                                  "property": "spec.displayName"
+                                              },
+                                              {
+                                                  "label": "Description",
+                                                  "property": "spec.description"
+                                              }
+                                          ]
+                                      }
+                                  }
+                              }
+                          },
+                          "children": [
+                              {
+                                  "pathSegment": ":accountId",
+                                  "hideFromNav": true,
+                                  "keepSelectedForChildren": false,
+                                  "defineEntity": {
+                                      "id": "account",
+                                      "contextKey": "accountId",
+                                      "dynamicFetchId": "account",
+                                      "graphqlEntity": {
+                                          "group": "core.openmfp.org",
+                                          "kind": "Account",
+                                          "query": "{ metadata { name annotations\n      } }"
+                                      }
+                                  },
+                                  "context": {
+                                      "accountId": ":accountId",
+                                      "resourceId": ":accountId"
+                                  }
+                              }
+                          ]
+                      }
+                  ]
+              }
+          }
+      }
+    contentType: json

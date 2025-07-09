@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -176,26 +177,37 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
-	var slice kcpapiv1alpha.APIExportEndpointSlice
-	err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
+	var u *url.URL
 
-	if len(slice.Status.APIExportEndpoints) == 0 {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
-	}
+	if len(pc.EndpointSliceName) > 0 {
+		var slice kcpapiv1alpha.APIExportEndpointSlice
+		err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
+			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		}
 
-	endpointURL := slice.Status.APIExportEndpoints[0].URL
-	u, err := url.Parse(endpointURL)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse endpoint URL")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		if len(slice.Status.APIExportEndpoints) == 0 {
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
+		}
+
+		endpointURL := slice.Status.APIExportEndpoints[0].URL
+		u, err = url.Parse(endpointURL)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to parse endpoint URL")
+			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		}
+	} else {
+		kcpUrl, err := url.Parse(cfg.Host)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to parse KCP URL")
+			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		}
+		kcpUrl.Path = path.Join("/clusters", pc.Path)
+		u = kcpUrl
 	}
 
 	newConfig := rest.CopyConfig(cfg)
-
 	if pc.External {
 		newConfig.Host = fmt.Sprintf("%s://%s%s/", u.Scheme, u.Host, u.Path)
 	} else {

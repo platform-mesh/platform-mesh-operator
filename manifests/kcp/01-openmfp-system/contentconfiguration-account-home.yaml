@@ -1,0 +1,36 @@
+apiVersion: core.openmfp.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    portal.openmfp.org/entity: account
+  name: account-home
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "overview",
+        "creationTimestamp": "2022-05-17T11:37:17Z",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "entityType": "main.account",
+                "pathSegment": "dashboard",
+                "label": "Dashboard",
+                "url": "/assets/openmfp-portal-ui-wc.js#generic-detail-view",
+                "webcomponent": {
+                  "selfRegistered": true
+                },
+                "defineEntity": {
+                    "id": "dashboard"
+                },
+                "compound": {
+                    "children": []
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json
+
