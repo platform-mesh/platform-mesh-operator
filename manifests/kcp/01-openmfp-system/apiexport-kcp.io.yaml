@@ -8,6 +8,10 @@ spec:
       group: apis.kcp.io
       all: true
       identityHash: ""
+    - resource: apiexports
+      group: apis.kcp.io
+      all: true
+      identityHash: ""
     - resource: workspaces
       group: tenancy.kcp.io
       all: true
