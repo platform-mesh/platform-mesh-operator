@@ -4,7 +4,7 @@ metadata:
   name: account
 spec:
   defaultAPIBindings:
-    - export: core.openmfp.org
+    - export: core.platform-mesh.io
       path: root:openmfp-system
     - export: tenancy.kcp.io
       path: root

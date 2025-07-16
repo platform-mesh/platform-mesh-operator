@@ -4,19 +4,9 @@ metadata:
   name: core.openmfp.org
 spec:
   latestResourceSchemas:
-    - v250517-3127093.accountinfos.core.openmfp.org
-    - v250226-290f38d.accounts.core.openmfp.org
     - v250704-6d57f16.contentconfigurations.core.openmfp.io
     - v250715-52c3ed0.providermetadatas.core.openmfp.io
   permissionClaims:
     - all: true
       resource: namespaces
-    - all: true
-      group: tenancy.kcp.io
-      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
-      resource: workspaces
-    - all: true
-      group: tenancy.kcp.io
-      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
-      resource: workspacetypes
 status: {}

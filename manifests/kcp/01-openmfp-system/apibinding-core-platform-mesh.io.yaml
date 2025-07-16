@@ -1,0 +1,20 @@
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIBinding
+metadata:
+  name: core.platform-mesh.io
+spec:
+  permissionClaims:
+  - all: true
+    resource: workspaces
+    group: tenancy.kcp.io
+    state: Accepted
+    identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
+  - all: true
+    resource: workspacetypes
+    group: tenancy.kcp.io
+    state: Accepted
+    identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
+  reference:
+    export:
+      name: core.platform-mesh.io
+      path: root:openmfp-system

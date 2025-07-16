@@ -2,9 +2,9 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250226-290f38d.accounts.core.openmfp.org
+  name: v250715-5b899f6.accounts.core.platform-mesh.io
 spec:
-  group: core.openmfp.org
+  group: core.platform-mesh.io
   names:
     kind: Account
     listKind: AccountList
@@ -15,9 +15,6 @@ spec:
   - additionalPrinterColumns:
     - jsonPath: .spec.displayName
       name: Display Name
-      type: string
-    - jsonPath: .status.namespace
-      name: Account Workspace
       type: string
     - jsonPath: .spec.type
       name: Type

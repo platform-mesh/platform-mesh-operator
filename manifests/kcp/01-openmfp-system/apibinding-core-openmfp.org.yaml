@@ -3,6 +3,10 @@ kind: APIBinding
 metadata:
   name: core.openmfp.org
 spec:
+  permissionClaims:
+  - all: true
+    resource: namespaces
+    state: Accepted
   reference:
     export:
       name: core.openmfp.org

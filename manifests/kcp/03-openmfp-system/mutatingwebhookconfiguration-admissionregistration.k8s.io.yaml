@@ -12,7 +12,7 @@ webhooks:
     name: maccount.kb.io
     rules:
       - apiGroups:
-          - core.openmfp.org
+          - core.platform-mesh.io
         apiVersions:
           - v1alpha1
         operations:

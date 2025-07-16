@@ -9,7 +9,7 @@ var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.openmfp
 var AccountOperatorWorkspace = "root:openmfp-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		EndpointSliceName: "core.openmfp.org",
+		EndpointSliceName: "core.platform-mesh.io",
 		Path:              "root:openmfp-system",
 		Secret:            "account-operator-kubeconfig",
 	},
