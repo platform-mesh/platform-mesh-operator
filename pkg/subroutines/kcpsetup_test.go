@@ -109,7 +109,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	s.Assert().Equal(string(expectedCaData), inventory[defaultKey])
 
 	// Check secondary webhook CA bundle
-	secondaryKey := "account-operator.webhooks.core.openmfp.org.ca-bundle"
+	secondaryKey := "account-operator.webhooks.core.platform-mesh.io.ca-bundle"
 	s.Assert().Contains(inventory, secondaryKey)
 	s.Assert().Equal(string(expectedCaData), inventory[secondaryKey])
 
@@ -481,7 +481,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	templateData := map[string]string{
-		".account-operator.webhooks.core.openmfp.org.ca-bundle": "CABundle",
+		".account-operator.webhooks.platform-mesh.io.ca-bundle": "CABundle",
 	}
 	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/03-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:openmfp-system", &corev1alpha1.OpenMFP{})
 	s.Assert().Nil(err)

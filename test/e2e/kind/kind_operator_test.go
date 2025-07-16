@@ -7,8 +7,9 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 )
 
 func TestKindSuite(t *testing.T) {
@@ -35,6 +36,6 @@ func (s *KindTestSuite) TestResourceReady() {
 			}
 		}
 		return false
-	}, 25*time.Minute, 10*time.Second)
+	}, 10*time.Minute, 10*time.Second)
 
 }

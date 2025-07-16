@@ -7,6 +7,8 @@ spec:
   latestResourceSchemas:
   - v250715-5b899f6.accountinfos.core.platform-mesh.io
   - v250715-5b899f6.accounts.core.platform-mesh.io
+  - v250704-6d57f16.contentconfigurations.core.openmfp.io
+  - v250715-52c3ed0.providermetadatas.core.openmfp.io
   permissionClaims:
     - all: true
       group: tenancy.kcp.io

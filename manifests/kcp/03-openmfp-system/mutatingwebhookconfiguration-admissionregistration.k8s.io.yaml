@@ -6,7 +6,7 @@ webhooks:
   - admissionReviewVersions:
       - v1
     clientConfig:
-      caBundle: {{ index . "account-operator.webhooks.core.openmfp.org.ca-bundle" }}
+      caBundle: {{ index . "account-operator.webhooks.core.platform-mesh.io.ca-bundle" }}
       url: https://account-operator-webhook.openmfp-system.svc:9443/mutate-core-openmfp-org-v1alpha1-account
     failurePolicy: Fail
     name: maccount.kb.io

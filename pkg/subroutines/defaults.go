@@ -5,7 +5,7 @@ import corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 var AccountOperatorMutatingWebhookSecretName = "account-operator-webhook-server-cert"
 var AccountOperatorMutatingWebhookSecretNamespace = "openmfp-system"
 var DefaultCASecretKey = "ca.crt"
-var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.openmfp.org"
+var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:openmfp-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
@@ -24,7 +24,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 	},
 	{
-		EndpointSliceName: "core.openmfp.org",
+		EndpointSliceName: "core.platform-mesh.io",
 		Path:              "root:openmfp-system",
 		Secret:            "extension-manager-operator-kubeconfig",
 	},
