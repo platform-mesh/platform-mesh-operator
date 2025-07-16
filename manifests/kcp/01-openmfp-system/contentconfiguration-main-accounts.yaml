@@ -28,7 +28,7 @@ spec:
                           },
                           "context": {
                               "resourceDefinition": {
-                                  "group": "core.openmfp.org",
+                                  "group": "core.platform-mesh.io",
                                   "plural": "accounts",
                                   "singular": "account",
                                   "kind": "Account",
@@ -102,7 +102,7 @@ spec:
                                       "contextKey": "accountId",
                                       "dynamicFetchId": "account",
                                       "graphqlEntity": {
-                                          "group": "core.openmfp.org",
+                                          "group": "core.platform-mesh.io",
                                           "kind": "Account",
                                           "query": "{ metadata { name annotations\n      } }"
                                       }
