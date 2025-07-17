@@ -12,21 +12,17 @@ import (
 	"github.com/openmfp/golang-commons/logger"
 	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/clientcmd"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/openmfp/openmfp-operator/internal/config"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
@@ -173,37 +169,6 @@ func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, 
 		}
 	}
 
-	// Create kubeconfig and store secret
-	url := "https://kcp.openmfp-system:6443/clusters/root"
-	newConfig, err := buildKubeconfig(r.client, url, "kcp-system-masters-client-cert-iam-authorization-webhook")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
-	}
-	apiConfig := restConfigToAPIConfig(newConfig)
-	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to write kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-
-	iamWebhookSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "iam-authorization-webhook-kubeconfig",
-			Namespace: "openmfp-system",
-		},
-	}
-
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, iamWebhookSecret, func() error {
-		iamWebhookSecret.Data = map[string][]byte{
-			"kubeconfig": kcpConfigBytes,
-		}
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
 	return ctrl.Result{}, nil
 }
 

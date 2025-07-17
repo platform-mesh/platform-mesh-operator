@@ -136,7 +136,7 @@ func GetWorkspaceName(dir string) (string, error) {
 	validWorkspaceName := regexp.MustCompile(`.*[0-9]{2}-([a-zA-Z0-9-]+)$`)
 	matches := validWorkspaceName.FindAllSubmatch([]byte(dir), -1)
 	if matches == nil {
-		return "", fmt.Errorf("Invalid workspace name: %s", dir)
+		return "", fmt.Errorf("invalid workspace name: %s", dir)
 	}
 	last := matches[len(matches)-1]
 	return string(last[1]), nil

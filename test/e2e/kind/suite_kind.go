@@ -23,7 +23,6 @@ import (
 	"github.com/openmfp/golang-commons/logger"
 	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/stretchr/testify/suite"
-	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -158,7 +157,7 @@ func (s *KindTestSuite) CreateKindCluster() {
 	s.Require().NoError(err, "Error retrieving kubeconfig")
 
 	// register scheme
-	s.scheme = k8sruntime.NewScheme()
+	s.scheme = runtime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
 	utilruntime.Must(helmv2.AddToScheme(s.scheme))
 	utilruntime.Must(helmv2beta.AddToScheme(s.scheme))

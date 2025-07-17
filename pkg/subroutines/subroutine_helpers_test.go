@@ -61,7 +61,7 @@ func (s *HelperTestSuite) TestListFiles() {
 	// Create a temporary directory
 	dir, err := os.MkdirTemp("", "listfiles-test")
 	s.Require().NoError(err)
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	// Create some files and subdirectories
 	files := []string{"file1.txt", "file2.yaml", "file3"}
@@ -69,7 +69,7 @@ func (s *HelperTestSuite) TestListFiles() {
 	for _, fname := range files {
 		f, err := os.CreateTemp(dir, fname)
 		s.Require().NoError(err)
-		f.Close()
+		f.Close() //nolint:errcheck
 	}
 	for _, dname := range subdirs {
 		_, err := os.MkdirTemp(dir, dname)
@@ -103,7 +103,7 @@ func (s *HelperTestSuite) TestListFiles_DirectoryNotExist() {
 func (s *HelperTestSuite) TestListFiles_EmptyDirectory() {
 	dir, err := os.MkdirTemp("", "listfiles-empty")
 	s.Require().NoError(err)
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	result, err := subroutines.ListFiles(dir)
 	s.NoError(err)

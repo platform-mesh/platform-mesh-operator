@@ -14,6 +14,11 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "account-operator-kubeconfig",
 	},
 	{
+		EndpointSliceName: "core.platform-mesh.io",
+		Path:              "root:openmfp-system",
+		Secret:            "iam-authorization-webhook-kubeconfig",
+	},
+	{
 		EndpointSliceName: "fga.openmfp.org",
 		Path:              "root:openmfp-system",
 		Secret:            "fga-operator-kubeconfig",
