@@ -4,7 +4,7 @@ metadata:
   name: provider
 spec:
   defaultAPIBindings:
-    - export: fga.openmfp.org
+    - export: core.platform-mesh.io
       path: root:openmfp-system
   limitAllowedParents:
     types:

@@ -1,6 +1,6 @@
 apiVersion: tenancy.kcp.io/v1alpha1
 kind: WorkspaceType
 metadata:
-  name: fga
+  name: security
 spec:
   initializer: true

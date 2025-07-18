@@ -32,7 +32,7 @@ spec:
             kcpFrontProxy:
               service:
                 clusterIP: "10.96.0.100"
-    fga-operator:
+    security-operator:
       values:
         hostAliases:
           enabled: true

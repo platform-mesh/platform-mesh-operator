@@ -8,8 +8,6 @@ spec:
       path: root:openmfp-system
     - export: kcp.io
       path: root:openmfp-system
-    - export: fga.openmfp.org
-      path: root:openmfp-system
   defaultChildWorkspaceType:
     name: org
     path: root

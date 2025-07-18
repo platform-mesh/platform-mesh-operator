@@ -5,7 +5,7 @@ metadata:
 spec:
   extend:
     with:
-    - name: fga
+    - name: security
       path: root
   defaultAPIBindings:
     - export: core.platform-mesh.io

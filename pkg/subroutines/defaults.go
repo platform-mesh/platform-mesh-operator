@@ -19,9 +19,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "iam-authorization-webhook-kubeconfig",
 	},
 	{
-		EndpointSliceName: "fga.openmfp.org",
+		EndpointSliceName: "core.platform-mesh.io",
 		Path:              "root:openmfp-system",
-		Secret:            "fga-operator-kubeconfig",
+		Secret:            "security-operator-kubeconfig",
 	},
 	{
 		EndpointSliceName: "kcp.io",
@@ -41,9 +41,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 }
 var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
 	{
-		WorkspaceTypeName: "fga",
+		WorkspaceTypeName: "security",
 		Path:              "root",
-		Secret:            "fga-initializer-kubeconfig",
+		Secret:            "security-initializer-kubeconfig",
 	},
 }
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{

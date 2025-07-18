@@ -2,9 +2,9 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250401-5769f6b.stores.fga.openmfp.org
+  name: v250718-a64f278.stores.core.platform-mesh.io
 spec:
-  group: fga.openmfp.org
+  group: core.platform-mesh.io
   names:
     kind: Store
     listKind: StoreList
@@ -12,7 +12,11 @@ spec:
     singular: store
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       description: Store is the Schema for the stores API.
       properties:
