@@ -6,8 +6,6 @@ spec:
   defaultAPIBindings:
     - export: core.platform-mesh.io
       path: root:openmfp-system
-    - export: kcp.io
-      path: root:openmfp-system
   defaultChildWorkspaceType:
     name: org
     path: root

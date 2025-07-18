@@ -10,8 +10,6 @@ spec:
       path: root
     - export: topology.kcp.io
       path: root
-    - export: kcp.io
-      path: root:openmfp-system
   defaultChildWorkspaceType:
     name: account
     path: root

@@ -24,7 +24,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "security-operator-kubeconfig",
 	},
 	{
-		EndpointSliceName: "kcp.io",
+		EndpointSliceName: "core.platform-mesh.io",
 		Path:              "root:openmfp-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 	},

@@ -20,4 +20,12 @@ spec:
       group: tenancy.kcp.io
       identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
       resource: workspacetypes
+    - resource: apibindings
+      group: apis.kcp.io
+      all: true
+      identityHash: ""
+    - resource: apiexports
+      group: apis.kcp.io
+      all: true
+      identityHash: ""
 status: {}
