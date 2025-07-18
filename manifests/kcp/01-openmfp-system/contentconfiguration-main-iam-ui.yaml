@@ -1,0 +1,64 @@
+apiVersion: core.openmfp.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    portal.openmfp.org/entity: main
+  name: main-iam-ui
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "iam-ui",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "members",
+                "label": "{{members}}",
+                "icon": "company-view",
+                "entityType": "main",
+                "url": "https://REPLACEME/ui/iam/#/organization/members",
+                "context": {
+                  "entityType": "account",
+                  "entityContext": {
+                    "account": {
+                      "policies": ["iamAdmin", "projectAdmin", "projectMember"]
+                    }
+                  }
+                }
+              },
+              {
+                "pathSegment": "add-members",
+                "entityType": "main",
+                "label": "{{members}}",
+                "hideFromNav": true,
+                "url": "https://REPLACEME/ui/iam/#/organization/add-members",
+                "context": {
+                  "entityType": "account"
+                }
+              }
+            ],
+            "texts": [
+              {
+                "locale": "",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "en",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "de",
+                "textDictionary": {
+                  "members": "Mitglieder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json
