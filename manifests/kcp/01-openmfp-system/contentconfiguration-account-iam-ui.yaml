@@ -14,7 +14,7 @@ spec:
             "nodes": [
               {
                 "pathSegment": "members",
-                "label": "{{members}}",
+                "label": "Members",
                 "icon": "company-view",
                 "entityType": "main.account",
                 "url": "https://REPLACEME/ui/iam#/:accountId/members",
@@ -29,7 +29,7 @@ spec:
               {
                 "pathSegment": "add-members",
                 "entityType": "main.account",
-                "label": "{{members}}",
+                "label": "Members",
                 "hideFromNav": true,
                 "url": "https://REPLACEME/ui/iam/#/:accountId/add-members",
                 "context": {
@@ -38,26 +38,7 @@ spec:
                 }
               }
             ],
-            "texts": [
-              {
-                "locale": "",
-                "textDictionary": {
-                  "members": "Members"
-                }
-              },
-              {
-                "locale": "en",
-                "textDictionary": {
-                  "members": "Members"
-                }
-              },
-              {
-                "locale": "de",
-                "textDictionary": {
-                  "members": "Mitglieder"
-                }
-              }
-            ]
+            "texts": []
           }
         }
       }
