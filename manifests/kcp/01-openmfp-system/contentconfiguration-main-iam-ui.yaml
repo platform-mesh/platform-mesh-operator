@@ -14,7 +14,7 @@ spec:
             "nodes": [
               {
                 "pathSegment": "members",
-               "label": "{{"{{"}}Members{{"}}"}}",
+               "label": "{{"{{"}}members{{"}}"}}",
                 "icon": "company-view",
                 "entityType": "main",
                 "url": "https://{{ .baseDomain }}/ui/iam/ui/#/organization/members",
@@ -30,7 +30,7 @@ spec:
               {
                 "pathSegment": "add-members",
                 "entityType": "main",
-                "label": "{{"{{"}}Members{{"}}"}}",
+                "label": "{{"{{"}}members{{"}}"}}",
                 "hideFromNav": true,
                 "url": "https://{{ .baseDomain }}/ui/iam/ui/#/organization/add-members",
                 "context": {

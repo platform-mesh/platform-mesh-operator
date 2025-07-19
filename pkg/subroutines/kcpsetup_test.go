@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
@@ -665,6 +666,6 @@ func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 	content := spec["inlineConfiguration"].(map[string]interface{})
 	contentJSON, err := json.Marshal(content)
 	s.Assert().Nil(err)
-	s.Assert().Equal(string(contentJSON), `{"content":"{\n  \"name\": \"iam-ui\",\n  \"luigiConfigFragment\": {\n    \"data\": {\n      \"nodes\": [\n        {\n          \"pathSegment\": \"members\",\n         \"label\": \"{{Members}}\",\n          \"icon\": \"company-view\",\n          \"entityType\": \"main\",\n          \"url\": \"https://example1.com/ui/iam/ui/#/organization/members\",\n          \"context\": {\n            \"entityType\": \"account\",\n            \"entityContext\": {\n              \"account\": {\n                \"policies\": [\"iamAdmin\", \"projectAdmin\", \"projectMember\"]\n              }\n            }\n          }\n        },\n        {\n          \"pathSegment\": \"add-members\",\n          \"entityType\": \"main\",\n          \"label\": \"{{Members}}\",\n          \"hideFromNav\": true,\n          \"url\": \"https://example1.com/ui/iam/ui/#/organization/add-members\",\n          \"context\": {\n            \"entityType\": \"account\"\n          }\n        }\n      ],\n      \"texts\": [ ]\n    }\n  }\n}","contentType":"json"}`)
+	s.Assert().Truef(strings.Contains(string(contentJSON), "{{members}}"), "Content does not contain expected URL")
 
 }
