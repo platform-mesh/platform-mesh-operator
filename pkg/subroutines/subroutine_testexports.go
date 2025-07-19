@@ -5,6 +5,7 @@ import (
 
 	"github.com/openmfp/golang-commons/logger"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -57,4 +58,8 @@ func (s *DeploymentSubroutine) ApplyManifestFromFileWithMergedValues(ctx context
 
 func (s *DeploymentSubroutine) ApplyReleaseWithValues(ctx context.Context, path string, k8sClient client.Client, values apiextensionsv1.JSON) error {
 	return applyReleaseWithValues(ctx, path, k8sClient, values)
+}
+
+func (s *KcpsetupSubroutine) UnstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
+	return unstructuredFromFile(path, templateData, log)
 }

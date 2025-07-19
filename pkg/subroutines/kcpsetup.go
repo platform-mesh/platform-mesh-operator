@@ -210,6 +210,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	for k, v := range apiExportHashes {
 		templateData[k] = v
 	}
+	templateData["baseDomain"] = r.getBaseDomainInventory(inst)
 
 	err = r.applyDirStructure(ctx, dir, "root", config, templateData, inst)
 	if err != nil {
@@ -219,6 +220,13 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 
 	return nil
 
+}
+
+func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.OpenMFP) string {
+	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
+		return "portal.dev.local"
+	}
+	return inst.Spec.Exposure.BaseDomain
 }
 
 func (r *KcpsetupSubroutine) getCABundleInventory(

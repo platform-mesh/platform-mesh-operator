@@ -2,6 +2,7 @@ package subroutines_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -640,4 +641,30 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply manifest file")
+}
+
+func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
+
+	path := "../../manifests/kcp/01-openmfp-system/contentconfiguration-main-iam-ui.yaml"
+	templateData := map[string]string{
+		"baseDomain": "example1.com",
+	}
+	logcfg := logger.DefaultConfig()
+	// logcfg.Level = defaultCfg.Log.Level
+	// logcfg.NoJSON = defaultCfg.Log.NoJson
+	var err error
+	log, err := logger.New(logcfg)
+	if err != nil {
+		panic(err)
+	}
+
+	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
+	s.Assert().Nil(err)
+	s.Assert().Equal(obj.GetKind(), "ContentConfiguration")
+	spec := obj.Object["spec"].(map[string]interface{})
+	content := spec["inlineConfiguration"].(map[string]interface{})
+	contentJSON, err := json.Marshal(content)
+	s.Assert().Nil(err)
+	s.Assert().Equal(string(contentJSON), `{"content":"{\n  \"name\": \"iam-ui\",\n  \"luigiConfigFragment\": {\n    \"data\": {\n      \"nodes\": [\n        {\n          \"pathSegment\": \"members\",\n          \"label\": \"Members\",\n          \"icon\": \"company-view\",\n          \"entityType\": \"main\",\n          \"url\": \"https://example1.com/ui/iam/#/organization/members\",\n          \"context\": {\n            \"entityType\": \"account\",\n            \"entityContext\": {\n              \"account\": {\n                \"policies\": [\"iamAdmin\", \"projectAdmin\", \"projectMember\"]\n              }\n            }\n          }\n        },\n        {\n          \"pathSegment\": \"add-members\",\n          \"entityType\": \"main\",\n          \"label\": \"Members\",\n          \"hideFromNav\": true,\n          \"url\": \"https://example1.com/ui/iam/#/organization/add-members\",\n          \"context\": {\n            \"entityType\": \"account\"\n          }\n        }\n      ],\n      \"texts\": [ ]\n    }\n  }\n}","contentType":"json"}`)
+
 }
