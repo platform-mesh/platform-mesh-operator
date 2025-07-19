@@ -17,7 +17,7 @@ spec:
                 "label": "Members",
                 "icon": "company-view",
                 "entityType": "main",
-                "url": "https://{{ .baseDomain }}/ui/iam/#/organization/members",
+                "url": "https://{{ .baseDomain }}/ui/iam/ui/#/organization/members",
                 "context": {
                   "entityType": "account",
                   "entityContext": {
@@ -32,7 +32,7 @@ spec:
                 "entityType": "main",
                 "label": "Members",
                 "hideFromNav": true,
-                "url": "https://{{ .baseDomain }}/ui/iam/#/organization/add-members",
+                "url": "https://{{ .baseDomain }}/ui/iam/ui/#/organization/add-members",
                 "context": {
                   "entityType": "account"
                 }

@@ -17,7 +17,7 @@ spec:
                 "label": "Members",
                 "icon": "company-view",
                 "entityType": "main.account",
-                "url": "https://{{ .baseDomain }}/ui/iam#/:accountId/members",
+                "url": "https://{{ .baseDomain }}/ui/iam/ui#/:accountId/members",
                 "context": {
                   "accountId": ":accountId",
                   "entityType": "account"
@@ -31,7 +31,7 @@ spec:
                 "entityType": "main.account",
                 "label": "Members",
                 "hideFromNav": true,
-                "url": "https://{{ .baseDomain }}/ui/iam/#/:accountId/add-members",
+                "url": "https://{{ .baseDomain }}/ui/iam/ui/#/:accountId/add-members",
                 "context": {
                   "accountId": ":accountId",
                   "entityType": "account"
