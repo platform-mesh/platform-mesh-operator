@@ -16,7 +16,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		EndpointSliceName: "core.platform-mesh.io",
 		Path:              "root:openmfp-system",
-		Secret:            "iam-authorization-webhook-kubeconfig",
+		Secret:            "rebac-authz-webhook-kubeconfig",
 	},
 	{
 		EndpointSliceName: "core.platform-mesh.io",
