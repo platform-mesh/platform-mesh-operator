@@ -147,7 +147,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 
 func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, inst *v1alpha1.OpenMFP) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
-	obj, err := unstructuredFromFile(fmt.Sprintf("%s/iam-authorization-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
+	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-authz-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -160,7 +160,7 @@ func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, 
 
 	// Select Secret
 	secret := &corev1.Secret{}
-	err = r.client.Get(ctx, types.NamespacedName{Name: "kcp-system-masters-client-cert-iam-authorization-webhook", Namespace: "openmfp-system"}, secret)
+	err = r.client.Get(ctx, types.NamespacedName{Name: "kcp-system-masters-client-cert-rebac-authz-webhook", Namespace: "openmfp-system"}, secret)
 
 	if err != nil {
 		if kerrors.IsNotFound(err) {

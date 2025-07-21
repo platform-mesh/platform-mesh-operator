@@ -261,11 +261,11 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client)
 
 	var secret corev1.Secret
 	err := cl.Get(ctx, client.ObjectKey{
-		Name:      "iam-authorization-webhook-cert",
+		Name:      "rebac-authz-webhook-cert",
 		Namespace: inst.Namespace,
 	}, &secret)
 	if err != nil && !kerrors.IsNotFound(err) {
-		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret iam-authorization-webhook-cert")
+		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret rebac-authz-webhook-cert")
 	}
 
 	values := map[string]interface{}{

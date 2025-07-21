@@ -162,7 +162,7 @@ tasks:
         - portal
         - extension-manager-operator
         - fga-operator
-        - iam-authorization-webhook
+        - rebac-authz-webhook
         - iam-service
         - infra
         - kcp

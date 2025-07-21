@@ -310,7 +310,7 @@ func (s *KindTestSuite) CreateSecrets(ctx context.Context, dirRootPath []byte) {
 
 	iamWebhookSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "iam-authorization-webhook-webhook-ca",
+			Name:      "rebac-authz-webhook-webhook-ca",
 			Namespace: "openmfp-system",
 		},
 		Data: map[string][]byte{
@@ -353,7 +353,7 @@ func (s *KindTestSuite) CreateSecrets(ctx context.Context, dirRootPath []byte) {
 	}
 	err = s.client.Create(ctx, iamWebhookSecret)
 	if err != nil {
-		if !s.Assert().EqualError(err, "secrets \"iam-authorization-webhook-webhook-ca\" already exists") {
+		if !s.Assert().EqualError(err, "secrets \"rebac-authz-webhook-webhook-ca\" already exists") {
 			s.FailNow("unexpected error")
 		}
 	}

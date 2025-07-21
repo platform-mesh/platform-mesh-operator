@@ -1,7 +1,7 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: kcp-system-masters-client-cert-iam-authorization-webhook
+  name: kcp-system-masters-client-cert-rebac-authz-webhook
   namespace: openmfp-system
 spec:
   commonName: authz-webhook
@@ -10,7 +10,7 @@ spec:
   privateKey:
     algorithm: RSA
     size: 2048
-  secretName: kcp-system-masters-client-cert-iam-authorization-webhook
+  secretName: kcp-system-masters-client-cert-rebac-authz-webhook
   subject:
     organizations:
       - system:masters

@@ -60,7 +60,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	}
 
 	// mocks
-	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "iam-authorization-webhook-cert"}, mock.Anything).Return(nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).Return(nil).Once()
 	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			// Simulate a successful patch operation
