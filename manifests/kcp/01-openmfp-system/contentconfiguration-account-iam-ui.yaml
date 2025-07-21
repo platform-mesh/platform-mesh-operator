@@ -17,7 +17,7 @@ spec:
                 "label": "{{"{{"}}members{{"}}"}}",
                 "icon": "company-view",
                 "entityType": "main.account",
-                "url": "https://{{ .baseDomain }}/ui/iam/ui#/:accountId/members",
+                "url": "https://{{ .baseDomain }}/ui/iam/ui/#/:accountId/members",
                 "context": {
                   "accountId": ":accountId",
                   "entityType": "account"
