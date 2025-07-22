@@ -14,6 +14,14 @@ spec:
     group: tenancy.kcp.io
     state: Accepted
     identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
+  - resource: apibindings
+    group: apis.kcp.io
+    all: true
+    state: Accepted
+  - resource: apiexports
+    group: apis.kcp.io
+    all: true
+    state: Accepted
   reference:
     export:
       name: core.platform-mesh.io
