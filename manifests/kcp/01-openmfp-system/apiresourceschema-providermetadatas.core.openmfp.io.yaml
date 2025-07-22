@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250715-52c3ed0.providermetadatas.core.openmfp.io
+  name: v250722-a326e1d.providermetadatas.core.openmfp.io
 spec:
   group: core.openmfp.io
   names:
@@ -10,7 +10,7 @@ spec:
     listKind: ProviderMetadataList
     plural: providermetadatas
     singular: providermetadata
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
