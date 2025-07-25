@@ -35,7 +35,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	},
 	{
 		EndpointSliceName: "",
-		Path:              "root:openmfp-system",
+		Path:              "/services/contentconfigurations/",
 		Secret:            "portal-kubeconfig",
 	},
 }

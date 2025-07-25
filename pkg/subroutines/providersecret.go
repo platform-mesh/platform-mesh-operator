@@ -171,15 +171,15 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
-	kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create KCP client")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-
 	var u *url.URL
 
-	if len(pc.EndpointSliceName) > 0 {
+	if pc.EndpointSliceName != "" {
+		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create KCP client")
+			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		}
+
 		var slice kcpapiv1alpha.APIExportEndpointSlice
 		err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
 		if err != nil {
@@ -203,7 +203,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			log.Error().Err(err).Msg("Failed to parse KCP URL")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
-		kcpUrl.Path = path.Join("/clusters", pc.Path)
+		if pc.RawPath != "" {
+			kcpUrl.Path = pc.RawPath
+		} else {
+			kcpUrl.Path = path.Join("/clusters", pc.Path)
+		}
 		u = kcpUrl
 	}
 

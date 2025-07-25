@@ -499,41 +499,10 @@ func (s *KindTestSuite) CreateReleases(ctx context.Context) {
 	time.Sleep(10 * time.Second) // Wait for HelmRelease to be created
 
 	// Install the OpenMFP operator CRDs
-	err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/openmfp-operator-crds/repository.yaml", s.client, make(map[string]string))
-	s.Assert().NoError(err, "Error applying openmfp-operator-crds/repository.yaml manifest")
-	err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/openmfp-operator-crds/release.yaml", s.client, make(map[string]string))
-	s.Assert().NoError(err, "Error applying openmfp-operator-crds/release.yaml manifest")
+	err = ApplyManifestFromFile(ctx, "../../../config/crd/core.openmfp.org_openmfps.yaml", s.client, make(map[string]string))
+	s.Assert().NoError(err, "Error applying config/crd/core.openmfp.org_openmfps.yaml manifest")
 
 	time.Sleep(10 * time.Second) // Wait for HelmRelease to be created
-
-	avail = s.Eventually(func() bool {
-		helmRelease := helmv2.HelmRelease{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "openmfp-operator-crds",
-				Namespace: "default",
-			},
-		}
-		err := s.client.Get(ctx, client.ObjectKeyFromObject(&helmRelease), &helmRelease)
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("Not getting openmfp-operator-crds HelmRelease")
-			return false
-		}
-		for _, cond := range helmRelease.Status.Conditions {
-			if cond.Type == "Ready" && cond.Status == "True" {
-				s.logger.Info().Msg("openmfp-operator-crds HelmRelease ready")
-				return true
-			} else {
-				s.logger.Debug().Any("helmRelease", helmRelease).Msgf("openmfp-operator-crds HelmRelease not ready yet")
-			}
-		}
-		return false
-	}, 240*time.Second, 10*time.Second, "openmfp-operator-crds HelmRelease did not become ready")
-
-	if !avail {
-		s.logger.Error().Msg("openmfp-operator-crds HelmRelease is not available")
-		s.T().FailNow()
-	}
-
 }
 
 // SetupSuite sets up the Kind cluster and deploys the operator for testing.

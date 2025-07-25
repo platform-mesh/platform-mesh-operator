@@ -80,7 +80,8 @@ type SecretReference struct {
 
 type ProviderConnection struct {
 	EndpointSliceName string `json:"endpointSliceName"`
-	Path              string `json:"path"`
+	Path              string `json:"path,omitempty"`
+	RawPath           string `json:"rawPath,omitempty"`
 	Secret            string `json:"secret,omitempty"`
 	External          bool   `json:"external,omitempty"`
 }

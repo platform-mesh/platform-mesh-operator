@@ -3,7 +3,7 @@ version: '3'
 dotenv: ['.taskenv', '.secret/.env', '{{.HOME}}/.env' ]
 vars:
   LOCAL_BIN: bin
-  CONTROLLER_TOOLS_VERSION: v0.14.0
+  CONTROLLER_TOOLS_VERSION: v0.18.0
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
   TEST_SETUP_DIRECTORY: setup/01-openmfp-system
