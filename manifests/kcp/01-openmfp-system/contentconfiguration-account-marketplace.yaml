@@ -14,14 +14,14 @@ spec:
             "nodes": [
               {
                 "pathSegment": "marketplace",
-                "entityType": "main",
+                "entityType": "main.account",
                 "label": "{{"{{"}}marketplace{{"}}"}}",
                 "icon": "retail-store",
                 "url": "https://{{ .baseDomain }}/ui/marketplace/ui/#/entity/:accountId/marketplace"
               },
               {
                 "pathSegment": "provider",
-                "entityType": "main",
+                "entityType": "main.account",
                 "hideFromNav": true,
                 "children": [
                   {
