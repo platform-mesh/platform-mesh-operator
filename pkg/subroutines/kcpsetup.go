@@ -212,6 +212,11 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 	templateData["baseDomain"] = r.getBaseDomainInventory(inst)
 
+	templateData["port"] = "443"
+	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Port != 0 {
+		templateData["port"] = fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	}
+
 	err = r.applyDirStructure(ctx, dir, "root", config, templateData, inst)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
