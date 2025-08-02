@@ -17,7 +17,7 @@ spec:
                 "entityType": "main.account",
                 "label": "{{"{{"}}marketplace{{"}}"}}",
                 "icon": "retail-store",
-                "url": "https://{{ .baseDomain }}/ui/marketplace/ui/#/entity/:accountId/marketplace"
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:accountId/marketplace"
               },
               {
                 "pathSegment": "provider",
@@ -27,7 +27,7 @@ spec:
                   {
                     "pathSegment": ":providerName",
                     "hideFromNav": true,
-                    "url": "https://{{ .baseDomain }}/ui/marketplace/ui/#/provider/:providerName",
+                    "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
                       "providerName": ":providerName"
                     }
