@@ -13,58 +13,19 @@ spec:
       relations
         define assignee: [user, user:*]
 
-    type core_platform-mesh_io_account
+    type tenancy_kcp_io_workspace
       relations
-        define parent: [core_platform-mesh_io_account]
-        define owner: [role#assignee] or owner from parent
-        define member: [role#assignee] or owner or member from parent
-
-        define update: member or update from parent
-        define delete: owner or delete from parent
-        define get: member or get from parent
+        define owner: [role#assignee]
+        define member: [role#assignee]
 
         define create_core_platform-mesh_io_accounts: member
         define list_core_platform-mesh_io_accounts: member
         define watch_core_platform-mesh_io_accounts: member
 
-        define member_manage: owner or owner from parent
-
-        define watch: member or watch from parent
-
-        define create: member or create from parent
-        define list: member or list from parent
-
-        define create_core_namespaces: member
-        define list_core_namespaces: member
-        define watch_core_namespaces: member
-
-        define create_core_platform-mesh_io_accountinfos: member
-        define list_core_platform-mesh_io_accountinfos: member
-        define watch_core_platform-mesh_io_accountinfos: member
-
-    type core_namespace
-      relations
-        define create: create from parent
-        define delete: delete from parent
-        define get: get from parent
-        define list: list from parent
-        define member: member from parent
-        define owner: owner from parent
-        define parent: [core_platform-mesh_io_account]
-        define update: update from parent
-        define watch: watch from parent
-
-    type core_platform-mesh_io_accountinfo
-      relations
-        define create: create from parent
-        define delete: delete from parent
-        define get: get from parent
-        define list: list from parent
-        define parent: [core_platform-mesh_io_account]
-        define update: update from parent
-        define watch: watch from parent
-
   tuples:
   - object: role:authenticated
     relation: assignee
     user: user:*
+  - object: tenancy_kcp_io_workspace:orgs
+    relation: member
+    user: role:authenticated#assigne
