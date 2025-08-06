@@ -28,4 +28,4 @@ spec:
     user: user:*
   - object: tenancy_kcp_io_workspace:orgs
     relation: member
-    user: role:authenticated#assigne
+    user: role:authenticated#assignee
