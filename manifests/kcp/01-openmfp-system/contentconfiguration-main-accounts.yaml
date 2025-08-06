@@ -17,6 +17,7 @@ spec:
                           "pathSegment": "accounts",
                           "navigationContext": "accounts",
                           "label": "Accounts",
+                          "order": 300,
                           "entityType": "main",
                           "loadingIndicator": {
                               "enabled": false

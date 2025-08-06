@@ -17,6 +17,7 @@ spec:
                 "entityType": "main.account",
                 "pathSegment": "dashboard",
                 "label": "Dashboard",
+                "order": 100,
                 "url": "/assets/openmfp-portal-ui-wc.js#generic-detail-view",
                 "webcomponent": {
                   "selfRegistered": true

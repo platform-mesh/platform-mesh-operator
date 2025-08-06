@@ -17,6 +17,7 @@ spec:
                 "label": "{{"{{"}}members{{"}}"}}",
                 "icon": "company-view",
                 "entityType": "main.account",
+                "order": 800,
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/:accountId/members",
                 "context": {
                   "accountId": ":accountId",

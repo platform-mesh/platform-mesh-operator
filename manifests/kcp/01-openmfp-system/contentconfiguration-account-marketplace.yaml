@@ -15,6 +15,7 @@ spec:
               {
                 "pathSegment": "marketplace",
                 "entityType": "main.account",
+                "order": 700,
                 "label": "{{"{{"}}marketplace{{"}}"}}",
                 "icon": "retail-store",
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:accountId/marketplace"

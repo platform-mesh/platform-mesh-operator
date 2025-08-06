@@ -16,6 +16,7 @@ spec:
                 "pathSegment": "members",
                 "label": "{{"{{"}}members{{"}}"}}",
                 "icon": "company-view",
+                "order": 800,
                 "entityType": "main",
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/organization/members",
                 "context": {
