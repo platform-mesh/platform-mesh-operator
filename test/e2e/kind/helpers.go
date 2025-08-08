@@ -28,6 +28,9 @@ func ApplyManifestFromFile(
 
 	var errRet error = nil
 	for _, obj := range objs {
+		if obj.Object == nil {
+			continue
+		}
 		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
 		if err != nil {
 			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())

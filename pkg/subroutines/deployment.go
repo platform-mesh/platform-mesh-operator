@@ -94,7 +94,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
-	// Wait for kcp release to be ready before continuing
+	// Wait for istiod release to be ready before continuing
 	rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get istio-istiod Release")

@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	goruntime "runtime"
 	"strings"
 	"time"
-
-	goruntime "runtime"
 
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -21,18 +20,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openmfp/golang-commons/logger"
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 	"github.com/stretchr/testify/suite"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/openmfp/openmfp-operator/api/v1alpha1"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	openmfpconfig "github.com/openmfp/golang-commons/config"
+	"k8s.io/client-go/rest"
+
 	"github.com/openmfp/openmfp-operator/internal/config"
 	"github.com/openmfp/openmfp-operator/internal/controller"
-	"k8s.io/client-go/rest"
 )
 
 type KindTestSuite struct {
@@ -121,6 +122,7 @@ func (s *KindTestSuite) CreateKindCluster() {
 	if clusterExists {
 		s.logger.Info().Msg("Kind cluster already exists, using existing cluster...")
 	} else {
+		s.logger.Info().Msg("Creating Kind cluster...")
 		out, err := runCommand("docker", "system", "prune", "-f")
 		if err != nil {
 			s.logger.Error().Err(err).Msg("Error pruning Docker system")

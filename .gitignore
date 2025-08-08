@@ -31,6 +31,7 @@ bin/*
 kcp.log
 .vscode/*
 .idea
+.secret
 
 # OS files
 .DS_Store

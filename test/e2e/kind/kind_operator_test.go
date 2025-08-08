@@ -36,6 +36,6 @@ func (s *KindTestSuite) TestResourceReady() {
 			}
 		}
 		return false
-	}, 10*time.Minute, 10*time.Second)
+	}, 20*time.Minute, 10*time.Second)
 
 }

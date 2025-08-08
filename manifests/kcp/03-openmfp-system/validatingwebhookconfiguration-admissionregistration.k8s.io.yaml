@@ -1,0 +1,24 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: organization-validator.webhooks.core.platform-mesh.io
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      caBundle: {{ index . "organization-validator.webhooks.core.platform-mesh.io.ca-bundle" }}
+      url: https://account-operator-webhook.openmfp-system.svc:9443/validate-core-platform-mesh-io-v1alpha1-account
+    failurePolicy: Fail
+    name: organization.validation.openmfp.org
+    rules:
+      - apiGroups:
+          - core.platform-mesh.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - accounts
+    sideEffects: None
+    timeoutSeconds: 30

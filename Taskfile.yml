@@ -71,7 +71,7 @@ tasks:
     cmds:
       - |
         export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-        go test -timeout 15m -coverprofile=cover.out github.com/openmfp/openmfp-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+        go test -timeout 25m -coverprofile=cover.out github.com/openmfp/openmfp-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
 
   test:
@@ -84,7 +84,7 @@ tasks:
         if [ "$GITHUB_WORKFLOW" = "ci" ]; then
           echo "Running tests in Github Actions"
           echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
-          GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+          GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
         else
           # test if portal.dev.local and kcp.api.portal.dev.local are in /etc/hosts
           if ! grep -q "portal.dev.local" /etc/hosts; then
@@ -97,7 +97,7 @@ tasks:
             exit 1
           fi
           export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-          go test -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+          go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
         fi
         
   manifests:

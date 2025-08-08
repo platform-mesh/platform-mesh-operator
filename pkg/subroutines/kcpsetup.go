@@ -7,10 +7,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/openmfp/golang-commons/controller/lifecycle"
 	"github.com/openmfp/golang-commons/errors"
 	"github.com/openmfp/golang-commons/logger"
+	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -258,6 +262,18 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	b64Data := base64.StdEncoding.EncodeToString(caData)
 	caBundles[key] = b64Data
 
+	// Get validating webhook CA bundle
+	validatingWebhookConfig := DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION
+	validatingCaData, err := r.getCaBundle(ctx, &validatingWebhookConfig)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get ValidatingWebhook CA bundle")
+		return nil, errors.Wrap(err, "Failed to get ValidatingWebhook CA bundle")
+	}
+
+	validatingKey := fmt.Sprintf("%s.ca-bundle", validatingWebhookConfig.WebhookRef.Name)
+	validatingB64Data := base64.StdEncoding.EncodeToString(validatingCaData)
+	caBundles[validatingKey] = validatingB64Data
+
 	// Cache the results
 	r.caBundleCache = caBundles
 
@@ -413,6 +429,9 @@ func applyManifestFromFile(
 	if err != nil {
 		return err
 	}
+	if obj.Object == nil {
+		return nil
+	}
 
 	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
 		extraDefaultApiBindings := getExtraDefaultApiBindings(obj, wsPath, inst)
@@ -438,11 +457,80 @@ func applyManifestFromFile(
 		}
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
-	if err != nil {
-		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+	existingObj := obj.DeepCopy()
+	err = k8sClient.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}, existingObj)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrap(err, "Failed to get existing object: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+	}
+
+	if apierrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+		if err != nil {
+			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+		}
+		log.Info().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied manifest file")
 	}
 	return nil
+}
+
+func needsPatch(existingObj, obj unstructured.Unstructured, log *logger.Logger) bool {
+	sanitize := func(u *unstructured.Unstructured, expected *unstructured.Unstructured) {
+		if u == nil {
+			return
+		}
+		// Remove system-generated fields
+		meta, ok := u.Object["metadata"].(map[string]interface{})
+		if ok {
+			delete(meta, "resourceVersion")
+			delete(meta, "generation")
+			delete(meta, "creationTimestamp")
+			delete(meta, "uid")
+			delete(meta, "managedFields")
+			delete(meta, "selfLink")
+			delete(meta, "finalizers")
+			delete(meta, "ownerReferences")
+
+			// Remove extra labels/annotations not present in expected
+			if expected != nil {
+				expectedMeta, ok2 := expected.Object["metadata"].(map[string]interface{})
+				if ok2 {
+					for _, field := range []string{"labels", "annotations"} {
+						existingField, _ := meta[field].(map[string]interface{})
+						expectedField, _ := expectedMeta[field].(map[string]interface{})
+						if existingField != nil && expectedField != nil {
+							for k := range existingField {
+								if _, found := expectedField[k]; !found {
+									delete(existingField, k)
+								}
+							}
+							meta[field] = existingField
+						}
+						if existingField != nil && expectedField == nil {
+							// Remove all if expected has none
+							delete(meta, field)
+						}
+					}
+				}
+			}
+			u.Object["metadata"] = meta
+		}
+		delete(u.Object, "status")
+	}
+
+	existingCopy := existingObj.DeepCopy()
+	desiredCopy := obj.DeepCopy()
+	sanitize(existingCopy, desiredCopy)
+	sanitize(desiredCopy, desiredCopy)
+
+	if !equality.Semantic.DeepEqual(existingCopy.Object, desiredCopy.Object) {
+		// Log the diff if there is a difference and debug is enabled
+		if log.GetLevel() <= zerolog.DebugLevel {
+			diff := cmp.Diff(desiredCopy.Object, existingCopy.Object)
+			log.Debug().Msgf("Resource difference detected:\n%s", diff)
+		}
+		return true
+	}
+	return false
 }
 
 func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.OpenMFP) []corev1alpha1.DefaultAPIBindingConfiguration {
@@ -466,7 +554,6 @@ func unstructuredFromFile(path string, templateData map[string]string, log *logg
 	if err != nil {
 		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
 	}
-	log.Debug().Str("file", path).Str("template", string(manifestBytes)).Str("templateData", fmt.Sprintf("%+v", templateData)).Msg("Replacing template")
 
 	res, err := ReplaceTemplate(templateData, manifestBytes)
 	if err != nil {

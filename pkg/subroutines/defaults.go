@@ -2,10 +2,12 @@ package subroutines
 
 import corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
 
-var AccountOperatorMutatingWebhookSecretName = "account-operator-webhook-server-cert"
-var AccountOperatorMutatingWebhookSecretNamespace = "openmfp-system"
+var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"
+var AccountOperatorWebhookSecretNamespace = "openmfp-system"
+
 var DefaultCASecretKey = "ca.crt"
 var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.platform-mesh.io"
+var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:openmfp-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
@@ -48,14 +50,28 @@ var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
 }
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
-		Name:      AccountOperatorMutatingWebhookSecretName,
-		Namespace: AccountOperatorMutatingWebhookSecretNamespace,
+		Name:      AccountOperatorWebhookSecretName,
+		Namespace: AccountOperatorWebhookSecretNamespace,
 	},
 	SecretData: DefaultCASecretKey,
 	WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
 		ApiVersion: "admissionregistration.k8s.io/v1",
 		Kind:       "MutatingWebhookConfiguration",
 		Name:       AccountOperatorMutatingWebhookName,
+		Path:       AccountOperatorWorkspace,
+	},
+}
+
+var DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
+	SecretRef: corev1alpha1.SecretReference{
+		Name:      AccountOperatorWebhookSecretName,
+		Namespace: AccountOperatorWebhookSecretNamespace,
+	},
+	SecretData: DefaultCASecretKey,
+	WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
+		ApiVersion: "admissionregistration.k8s.io/v1",
+		Kind:       "ValidatingWebhookConfiguration",
+		Name:       AccountOperatorValidatingWebhookName,
 		Path:       AccountOperatorWorkspace,
 	},
 }
