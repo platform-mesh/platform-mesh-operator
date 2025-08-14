@@ -21,7 +21,6 @@ spec:
         define create_core_platform-mesh_io_accounts: member
         define list_core_platform-mesh_io_accounts: member
         define watch_core_platform-mesh_io_accounts: member
-        define get_core_platform-mesh_io_accounts: member
 
   tuples:
   - object: role:authenticated
