@@ -9,7 +9,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 func TestKindSuite(t *testing.T) {
@@ -19,7 +19,7 @@ func TestKindSuite(t *testing.T) {
 func (s *KindTestSuite) TestResourceReady() {
 	ctx := context.TODO()
 	s.Eventually(func() bool {
-		openmfp := corev1alpha1.OpenMFP{}
+		openmfp := corev1alpha1.PlatformMesh{}
 		err := s.client.Get(ctx, client.ObjectKey{
 			Name:      "openmfp",
 			Namespace: "openmfp-system",

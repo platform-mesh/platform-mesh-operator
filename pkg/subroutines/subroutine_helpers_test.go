@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 type HelperTestSuite struct {

@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 // HelmGetter is an interface for getting Helm releases
@@ -81,7 +81,7 @@ func (r *ProvidersecretSubroutine) Process(
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("client scheme is nil"), true, false)
 	}
 
-	instance := runtimeObj.(*corev1alpha1.OpenMFP)
+	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Wait for kcp release to be ready before continuing
@@ -167,7 +167,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.OpenMFP, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -249,7 +249,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.OpenMFP, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 

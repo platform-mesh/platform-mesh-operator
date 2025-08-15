@@ -28,7 +28,7 @@ import (
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 type KcpHelper interface {
@@ -242,7 +242,7 @@ func MergeValuesAndServices(values, services apiextensionsv1.JSON) (apiextension
 
 }
 
-func TemplateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (apiextensionsv1.JSON, error) {
+func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
 	port := 8443
 	baseDomain := "portal.dev.local"
 	protocol := "https"

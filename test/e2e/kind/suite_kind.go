@@ -24,7 +24,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
@@ -32,8 +32,8 @@ import (
 	openmfpconfig "github.com/openmfp/golang-commons/config"
 	"k8s.io/client-go/rest"
 
-	"github.com/openmfp/openmfp-operator/internal/config"
-	"github.com/openmfp/openmfp-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
 )
 
 type KindTestSuite struct {
@@ -528,7 +528,7 @@ func (s *KindTestSuite) SetupSuite() {
 	}
 
 	avail := s.Eventually(func() bool {
-		openmfp := v1alpha1.OpenMFP{}
+		openmfp := v1alpha1.PlatformMesh{}
 		err := s.client.Get(ctx, client.ObjectKey{
 			Name:      "openmfp",
 			Namespace: "openmfp-system",

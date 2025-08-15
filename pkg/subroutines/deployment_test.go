@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/openmfp/golang-commons/logger"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	openmfpconfig "github.com/openmfp/golang-commons/config"
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 type DeployTestSuite struct {

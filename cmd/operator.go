@@ -32,7 +32,7 @@ import (
 	"github.com/openmfp/golang-commons/traces"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/openmfp/openmfp-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
 )
 
 var operatorCmd = &cobra.Command{

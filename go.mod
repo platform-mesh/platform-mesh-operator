@@ -1,4 +1,4 @@
-module github.com/openmfp/openmfp-operator
+module github.com/platform-mesh/platform-mesh-operator
 
 go 1.24.3
 

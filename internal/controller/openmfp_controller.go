@@ -25,9 +25,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 var (
@@ -54,13 +54,13 @@ type OpenMFPReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *OpenMFPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.OpenMFP{})
+	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.PlatformMesh{})
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfig.CommonServiceConfig,
 	log *logger.Logger, eventPredicates ...predicate.Predicate) error {
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, openmfpReconcilerName, &corev1alpha1.OpenMFP{},
+	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, openmfpReconcilerName, &corev1alpha1.PlatformMesh{},
 		cfg.DebugLabelValue, log, eventPredicates...)
 	if err != nil {
 		return err

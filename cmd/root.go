@@ -11,8 +11,8 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 var (

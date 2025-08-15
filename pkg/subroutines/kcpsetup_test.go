@@ -23,9 +23,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 )
 
 var ManifestStructureTest = "../../manifests/kcp"
@@ -77,7 +77,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 			return nil
 		}).Times(10)
 
-	err := s.testObj.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.OpenMFP{})
+	err := s.testObj.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{})
 
 	s.Assert().Nil(err)
 }
@@ -381,7 +381,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		Return(nil).Times(100)
 
 	// Call Process
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.OpenMFP{})
+	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
 
 	// Assertions
 	s.Assert().Nil(opErr)
@@ -487,7 +487,7 @@ func (s *KcpsetupTestSuite) TestGetName() {
 }
 
 func (s *KcpsetupTestSuite) TestFinalize() {
-	res, err := s.testObj.Finalize(context.Background(), &corev1alpha1.OpenMFP{})
+	res, err := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 	s.Assert().Equal(res, ctrl.Result{})
 }
@@ -499,25 +499,25 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string), "root:openmfp-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:openmfp-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
@@ -526,7 +526,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	templateData := map[string]string{
 		".account-operator.webhooks.platform-mesh.io.ca-bundle": "CABundle",
 	}
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/03-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:openmfp-system", &corev1alpha1.OpenMFP{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/03-openmfp-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:openmfp-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 }
 
@@ -536,7 +536,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(nil, errors.New("failed to create client"))
 	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest, "")
 
-	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
+	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to get APIExport hash inventory")
 
@@ -617,7 +617,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// Mock patch calls for applying manifests (flexible count)
 	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
-	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
+	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	// test err2 - expect error when Patch fails
@@ -682,7 +682,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// Mock patch calls for applying manifests (flexible count) - but they should fail
 	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed")).Times(100)
-	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.OpenMFP{})
+	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply")
 }

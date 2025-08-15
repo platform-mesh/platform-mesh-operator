@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -64,7 +64,7 @@ func (r *KcpsetupSubroutine) GetName() string {
 func (r *KcpsetupSubroutine) Finalize(
 	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
-	instance := runtimeObj.(*corev1alpha1.OpenMFP)
+	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	_ = instance
 
 	return ctrl.Result{}, nil // TODO: Implement
@@ -77,7 +77,7 @@ func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	inst := runtimeObj.(*corev1alpha1.OpenMFP)
+	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing OpenMFP resource")
 
 	// Wait for kcp release to be ready before continuing
@@ -194,7 +194,7 @@ func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*r
 	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 
-func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.OpenMFP) error {
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
@@ -231,7 +231,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 
 }
 
-func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.OpenMFP) string {
+func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
 	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
 		return "portal.dev.local"
 	}
@@ -346,7 +346,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	kcpPath string,
 	config *rest.Config,
 	templateData map[string]string,
-	inst *corev1alpha1.OpenMFP,
+	inst *corev1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -421,7 +421,7 @@ func (r *KcpsetupSubroutine) waitForWorkspace(
 
 func applyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.OpenMFP,
+	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -533,7 +533,7 @@ func needsPatch(existingObj, obj unstructured.Unstructured, log *logger.Logger) 
 	return false
 }
 
-func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.OpenMFP) []corev1alpha1.DefaultAPIBindingConfiguration {
+func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.PlatformMesh) []corev1alpha1.DefaultAPIBindingConfiguration {
 	if inst.Spec.Kcp.ExtraDefaultAPIBindings == nil {
 		return nil
 	}

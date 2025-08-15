@@ -21,8 +21,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
@@ -56,7 +56,7 @@ func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
 }
 
 func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	inst := runtimeObj.(*v1alpha1.OpenMFP)
+	inst := runtimeObj.(*v1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Create DeploymentComponents Version
@@ -145,7 +145,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	return result, operatorError
 }
 
-func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, inst *v1alpha1.OpenMFP) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-authz-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
 	if err != nil {

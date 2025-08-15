@@ -21,8 +21,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// OpenMFPSpec defines the desired state of OpenMFP
-type OpenMFPSpec struct {
+// PlatformMeshSpec defines the desired state of PlatformMesh
+type PlatformMeshSpec struct {
 	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
 	Kcp              Kcp                  `json:"kcp,omitempty"`
 	ChartVersion     string               `json:"chartVersion,omitempty"`
@@ -86,8 +86,8 @@ type ProviderConnection struct {
 	External          bool   `json:"external,omitempty"`
 }
 
-// OpenMFPStatus defines the observed state of OpenMFP
-type OpenMFPStatus struct {
+// PlatformMeshStatus defines the observed state of PlatformMesh
+type PlatformMeshStatus struct {
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 	ObservedGeneration int64              `json:"observedGeneration,omitempty" protobuf:"varint,3,opt,name=observedGeneration"`
 	NextReconcileTime  metav1.Time        `json:"nextReconcileTime,omitempty"`
@@ -109,27 +109,27 @@ type KcpWorkspace struct {
 // +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason",name="DEPLOYMENT_REASON",type=string,description="Deployment reason if status is Unknown",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='Ready')].status",name="Ready",type=string,description="Shows if resource is ready",priority=0
 
-// OpenMFP is the Schema for the openmfps API
-type OpenMFP struct {
+// PlatformMesh is the Schema for the platform-mesh API
+type PlatformMesh struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   OpenMFPSpec   `json:"spec,omitempty"`
-	Status OpenMFPStatus `json:"status,omitempty"`
+	Spec   PlatformMeshSpec   `json:"spec,omitempty"`
+	Status PlatformMeshStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// OpenMFPList contains a list of OpenMFP
-type OpenMFPList struct {
+// PlatformMeshList contains a list of PlatformMesh
+type PlatformMeshList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []OpenMFP `json:"items"`
+	Items           []PlatformMesh `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&OpenMFP{}, &OpenMFPList{})
+	SchemeBuilder.Register(&PlatformMesh{}, &PlatformMeshList{})
 }
 
-func (i *OpenMFP) GetConditions() []metav1.Condition           { return i.Status.Conditions }
-func (i *OpenMFP) SetConditions(conditions []metav1.Condition) { i.Status.Conditions = conditions }
+func (i *PlatformMesh) GetConditions() []metav1.Condition           { return i.Status.Conditions }
+func (i *PlatformMesh) SetConditions(conditions []metav1.Condition) { i.Status.Conditions = conditions }

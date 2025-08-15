@@ -1,6 +1,6 @@
 package subroutines
 
-import corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+import corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 
 var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"
 var AccountOperatorWebhookSecretNamespace = "openmfp-system"
