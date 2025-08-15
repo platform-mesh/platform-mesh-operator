@@ -1,7 +1,7 @@
 apiVersion: core.platform-mesh.io/v1alpha1
 kind: Account
 metadata:
-  name: openmfp
+  name: default
 spec:
   type: org
-  displayName: OpenMFP Root Organization
+  displayName: Default Root Organization

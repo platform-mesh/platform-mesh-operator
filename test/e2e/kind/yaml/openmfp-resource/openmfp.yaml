@@ -1,10 +1,10 @@
-apiVersion: core.openmfp.org/v1alpha1
-kind: OpenMFP
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: PlatformMesh
 metadata:
-  name: openmfp
-  namespace: openmfp-system
+  name: platform-mesh
+  namespace: platform-mesh-system
 spec:
-  # renovate: datasource=docker registryUrl=https://ghcr.io depName=ghcr.io/openmfp/helm-charts-priv/openmfp-operator-components
+  # renovate: datasource=docker registryUrl=https://ghcr.io depName=ghcr.io/platform-mesh/helm-charts/platform-mesh-operator-components
   chartVersion: 0.1.28
   values:
     apeiro-portal:
@@ -58,7 +58,7 @@ spec:
             - name: JAVA_OPTS_APPEND
               value: |-
                 -Xms512m -Xmx1G
-                -Djgroups.dns.query=keycloak-headless.openmfp-system.svc.cluster.local
+                -Djgroups.dns.query=keycloak-headless.platform-mesh-system.svc.cluster.local
             - name: KC_PROXY_HEADERS
               value: xforwarded
             - name: KC_HOSTNAME_STRICT

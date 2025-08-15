@@ -1,8 +1,8 @@
-apiVersion: core.openmfp.io/v1alpha1
+apiVersion: core.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
-    portal.openmfp.org/entity: account
+    ui.platform-mesh.io/entity: account
   name: account-home
 spec:
   inlineConfiguration:

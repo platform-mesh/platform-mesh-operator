@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: openmfp-system
+  name: platform-mesh-system
   labels:
     istio-injection: enabled
 ---

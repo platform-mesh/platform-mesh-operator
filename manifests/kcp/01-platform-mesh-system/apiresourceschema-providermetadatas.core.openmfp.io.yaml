@@ -2,9 +2,9 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250722-a326e1d.providermetadatas.core.openmfp.io
+  name: v250722-a326e1d.providermetadatas.core.platform-mesh.io
 spec:
-  group: core.openmfp.io
+  group: core.platform-mesh.io
   names:
     kind: ProviderMetadata
     listKind: ProviderMetadataList

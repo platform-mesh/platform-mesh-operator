@@ -1,9 +1,9 @@
-apiVersion: core.openmfp.io/v1alpha1
+apiVersion: core.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
-    portal.openmfp.org/entity: main
-  name: main-marketplace
+    ui.platform-mesh.io/entity: account
+  name: account-marketplace
 spec:
   inlineConfiguration:
     content: |-
@@ -14,23 +14,15 @@ spec:
             "nodes": [
               {
                 "pathSegment": "marketplace",
-                "entityType": "main",
-                "label": "{{"{{"}}marketplace{{"}}"}}",
+                "entityType": "main.account",
                 "order": 700,
+                "label": "{{"{{"}}marketplace{{"}}"}}",
                 "icon": "retail-store",
-                "hideFromNav": false,
-                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/org/marketplace",
-                "context": {
-                  "entityContext": {
-                    "account": {
-                      "policies": ["providerAdmin", "projectAdmin", "projectMember"]
-                    }
-                  }
-                }
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:accountId/marketplace"
               },
               {
                 "pathSegment": "provider",
-                "entityType": "main",
+                "entityType": "main.account",
                 "hideFromNav": true,
                 "children": [
                   {
@@ -41,14 +33,7 @@ spec:
                       "providerName": ":providerName"
                     }
                   }
-                ],
-                "context": {
-                  "entityContext": {
-                    "account": {
-                      "policies": ["providerAdmin", "projectAdmin", "projectMember"]
-                    }
-                  }
-                }
+                ]
               }
             ],
             "texts": [

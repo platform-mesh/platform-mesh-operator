@@ -1,8 +1,8 @@
-apiVersion: core.openmfp.io/v1alpha1
+apiVersion: core.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
-    portal.openmfp.org/entity: main
+    ui.platform-mesh.org/entity: main
   name: main-iam-ui
 spec:
   inlineConfiguration:

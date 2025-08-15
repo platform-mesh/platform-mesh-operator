@@ -5,7 +5,7 @@ metadata:
 spec:
   defaultAPIBindings:
     - export: core.platform-mesh.io
-      path: root:openmfp-system
+      path: root:platform-mesh-system
     - export: tenancy.kcp.io
       path: root
     - export: topology.kcp.io

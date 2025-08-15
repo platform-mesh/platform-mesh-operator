@@ -25,4 +25,4 @@ spec:
   reference:
     export:
       name: core.platform-mesh.io
-      path: root:openmfp-system
+      path: root:platform-mesh-system

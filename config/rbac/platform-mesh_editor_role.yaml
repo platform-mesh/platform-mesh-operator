@@ -1,16 +1,16 @@
-# permissions for end users to edit openmfps.
+# permissions for end users to edit platformeshs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: openmfp-operator
+    app.kubernetes.io/name: platform-mesh-operator
     app.kubernetes.io/managed-by: kustomize
-  name: openmfp-editor-role
+  name: platform-mesh-editor-role
 rules:
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps
+  - platformeshs
   verbs:
   - create
   - delete
@@ -20,8 +20,8 @@ rules:
   - update
   - watch
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps/status
+  - platformeshs/status
   verbs:
   - get

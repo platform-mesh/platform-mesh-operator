@@ -7,9 +7,9 @@ webhooks:
       - v1
     clientConfig:
       caBundle: {{ index . "organization-validator.webhooks.core.platform-mesh.io.ca-bundle" }}
-      url: https://account-operator-webhook.openmfp-system.svc:9443/validate-core-platform-mesh-io-v1alpha1-account
+      url: https://account-operator-webhook.platform-mesh-system.svc:9443/validate-core-platform-mesh-io-v1alpha1-account
     failurePolicy: Fail
-    name: organization.validation.openmfp.org
+    name: organization.validation.platform-mesh.ui
     rules:
       - apiGroups:
           - core.platform-mesh.io

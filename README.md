@@ -1,22 +1,22 @@
-# openmfp-operator
+# platform-mesh-operator
 
-The openmfp-operator helps bootstrap new openmfp environment during initial setup. It does so by reconciling and `Kind: OpenMFP` resource which looks like this
+The platform-mesh-operator helps bootstrap new platform-mesh environment during initial setup. It does so by reconciling and `Kind: PlatformMesh` resource which looks like this
 
 ```yaml
-apiVersion: core.openmfp.org/v1alpha1
-kind: OpenMFP
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: PlatformMesh
 metadata:
   labels:
-  name: openmfp-sample
-  namespace: openmfp-system
+  name: platform-mesh-sample
+  namespace: platform-mesh-system
 spec:
   kcp:
     adminSecretRef:
-      name: openmfp-kcp-internal-admin-kubeconfig
+      name: platform-mesh-kcp-internal-admin-kubeconfig
     providerConnections:
-    - endpointSliceName: core.openmfp.org
-      path: root:openmfp-system
-      secret: openmfp-operator-kubeconfig
+    - endpointSliceName: core.platform-mesh.io
+      path: root:platform-mesh-system
+      secret: platform-mesh-operator-kubeconfig
 ```
 
 The `adminSecretRef` points to a secret containking a KCP kubeconfig, which is used by the operator to create the KCP workspaces and exports. After the operator finishes with the setup stage of KCP, it creates additional secrets for each `providerConnection` object configured in the resource above.

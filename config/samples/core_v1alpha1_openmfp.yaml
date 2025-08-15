@@ -1,16 +1,16 @@
-apiVersion: core.openmfp.org/v1alpha1
-kind: OpenMFP
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: PlatformMesh
 metadata:
   labels:
-    app.kubernetes.io/name: openmfp-operator
+    app.kubernetes.io/name: platform-mesh-operator
     app.kubernetes.io/managed-by: kustomize
-  name: openmfp-sample
-  namespace: openmfp-system
+  name: platform-mesh-sample
+  namespace: platform-mesh-system
 spec:
   kcp:
     adminSecretRef:
-      name: openmfp-kcp-internal-admin-kubeconfig
+      name: platform-mesh-kcp-internal-admin-kubeconfig
     providerConnections:
-    - endpointSliceName: core.openmfp.org
-      path: root:openmfp-system
-      secret: openmfp-operator-kubeconfig
+    - endpointSliceName: core.platform-mesh.io
+      path: root:platform-mesh-system
+      secret: platform-mesh-operator-kubeconfig

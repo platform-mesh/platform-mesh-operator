@@ -1,23 +1,23 @@
-# permissions for end users to view openmfps.
+# permissions for end users to view platformmeshs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: openmfp-operator
+    app.kubernetes.io/name: platform-mesh-operator
     app.kubernetes.io/managed-by: kustomize
-  name: openmfp-viewer-role
+  name: platform-mesh-viewer-role
 rules:
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps
+  - platformmeshs
   verbs:
   - get
   - list
   - watch
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps/status
+  - platformmeshs/status
   verbs:
   - get

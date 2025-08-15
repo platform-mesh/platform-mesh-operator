@@ -1,4 +1,4 @@
 ## Append samples of your project ##
 resources:
-- core_v1alpha1_openmfp.yaml
+- core_v1alpha1_platform-mesh.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

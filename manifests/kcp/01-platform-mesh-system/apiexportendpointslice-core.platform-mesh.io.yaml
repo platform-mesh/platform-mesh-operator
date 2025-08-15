@@ -4,5 +4,5 @@ metadata:
   name: core.platform-mesh.io
 spec:
   export:
-    path: root:openmfp-system
+    path: root:platform-mesh-system
     name: core.platform-mesh.io

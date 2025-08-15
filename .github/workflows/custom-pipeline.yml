@@ -16,7 +16,7 @@ jobs:
     uses: ./.github/workflows/pipeline.yml
     secrets: inherit
     with:
-      imageTagName: ghcr.io/openmfp/openmfp-operator
+      imageTagName: ghcr.io/platform-mesh/platform-mesh-operator
       useTask: true
       useLocalCoverageConfig: true
       coverageThresholdTotal: 45

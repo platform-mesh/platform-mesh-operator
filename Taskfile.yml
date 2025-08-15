@@ -6,7 +6,7 @@ vars:
   CONTROLLER_TOOLS_VERSION: v0.18.0
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
-  TEST_SETUP_DIRECTORY: setup/01-openmfp-system
+  TEST_SETUP_DIRECTORY: setup/01-platform-mesh-system
   GOMPLATE_VERSION: v4.3.0
   KUSTOMIZE_VERSION: v5.4.3
   OCM_VERSION: 0.24.0
@@ -71,7 +71,7 @@ tasks:
     cmds:
       - |
         export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-        go test -timeout 25m -coverprofile=cover.out github.com/openmfp/openmfp-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+        go test -timeout 25m -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
 
   test:
@@ -175,10 +175,10 @@ tasks:
         - istio-gateway
         - istio-base
         - example-resources
-      OPENMFP_PRIV_COMP:
-        sh: "{{.LOCAL_BIN}}/ocm get componentversions --latest github.com/openmfp/openmfp-priv --repo ghcr.io/openmfp/ocm -o json"
+      PLATFORM_MESH_COMP:
+        sh: "{{.LOCAL_BIN}}/ocm get componentversions --latest github.com/platform-mesh/platform-mesh --repo ghcr.io/platform-mesh -o json"
     cmds:
-      - OPENMFP_PRIV_COMP_VERSION=$(echo "{{ .OPENMFP_PRIV_COMP }}" | yq -r '.items[0].component.version') yq -i ".spec.version.semver = strenv(OPENMFP_PRIV_COMP_VERSION)" deployment/component-version.yaml
+      - PLATFORM_MESH_COMP_VERSION=$(echo "{{ .PLATFORM_MESH_COMP }}" | yq -r '.items[0].component.version') yq -i ".spec.version.semver = strenv(PLATFORM_MESH_COMP_VERSION)" deployment/component-version.yaml
       - for:
           var: SERVICES
-        cmd: COMP_VERSION=$(echo "{{ .OPENMFP_PRIV_COMP }}" | yq -r '.items[0].component.componentReferences[] | select(.name == "{{ .ITEM }}").version') yq -i ".spec.sourceRef.resourceRef.version = strenv(COMP_VERSION)" deployment/{{ range splitList "-" .ITEM }}{{ . }}{{ end }}/resource.yaml
+        cmd: COMP_VERSION=$(echo "{{ .PLATFORM_MESH_COMP }}" | yq -r '.items[0].component.componentReferences[] | select(.name == "{{ .ITEM }}").version') yq -i ".spec.sourceRef.resourceRef.version = strenv(COMP_VERSION)" deployment/{{ range splitList "-" .ITEM }}{{ . }}{{ end }}/resource.yaml
