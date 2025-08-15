@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	openmfpconfig "github.com/platform-mesh/golang-commons/config"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
@@ -29,11 +29,11 @@ const DeploymentSubroutineName = "DeploymentSubroutine"
 
 type DeploymentSubroutine struct {
 	client             client.Client
-	cfg                *openmfpconfig.CommonServiceConfig
+	cfg                *pmconfig.CommonServiceConfig
 	workspaceDirectory string
 }
 
-func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
+func NewDeploymentSubroutine(client client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
 	sub := &DeploymentSubroutine{
 		cfg:                cfg,
 		client:             client,
@@ -76,7 +76,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	log.Debug().Msgf("Merged values: %s", string(mergedValues.Raw))
 
 	// apply repository
-	path := r.workspaceDirectory + "openmfp-operator-components/repository.yaml"
+	path := r.workspaceDirectory + "platform-mesh-operator-components/repository.yaml"
 	tplValues := map[string]string{
 		"chartVersion": inst.Spec.ChartVersion,
 	}
@@ -87,7 +87,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	log.Debug().Str("path", path).Msgf("Applied repository path: %s", path)
 
 	// apply release and merge values from spec.values
-	path = r.workspaceDirectory + "openmfp-operator-components/release.yaml"
+	path = r.workspaceDirectory + "platform-mesh-operator-components/release.yaml"
 	err = applyReleaseWithValues(ctx, path, r.client, mergedValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
@@ -111,7 +111,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	// to communicate via the proxy with KCP. Once Istio is up and running the operator will be restarted to ensure
 	// this communication will work
 	if !r.cfg.IsLocal {
-		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "openmfp-operator", "openmfp-system")
+		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -153,14 +153,14 @@ func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, 
 	}
 
 	// create system masters secret
-	err = r.client.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	err = r.client.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
 	// Select Secret
 	secret := &corev1.Secret{}
-	err = r.client.Get(ctx, types.NamespacedName{Name: "kcp-system-masters-client-cert-rebac-authz-webhook", Namespace: "openmfp-system"}, secret)
+	err = r.client.Get(ctx, types.NamespacedName{Name: "kcp-system-masters-client-cert-rebac-authz-webhook", Namespace: "platform-mesh-system"}, secret)
 
 	if err != nil {
 		if kerrors.IsNotFound(err) {
@@ -221,7 +221,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
@@ -237,7 +237,7 @@ func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.C
 	}
 	obj.Object["spec"].(map[string]interface{})["values"] = values
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}

@@ -28,18 +28,18 @@ func (s *HelperTestSuite) TestGetWorkspaceName() {
 		expected    string
 		expectError bool
 	}{
-		{"01-openmfp-system", "openmfp-system", false},
+		{"01-platform-mesh-system", "platform-mesh-system", false},
 		{"99-abc123", "abc123", false},
 		{"00-", "", true},
-		{"openmfp-system", "", true},
-		{"01openmfp-system", "01openmfp-system", true},
-		{"01-openmfp_system", "01-openmfp_system", true},
-		{"01-openmfp-system-extra", "openmfp-system-extra", false},
-		{"1-openmfp-system", "1-openmfp-system", true},
+		{"platform-mesh-system", "", true},
+		{"01platform-mesh-system", "01platform-mesh-system", true},
+		{"01-platform-mesh_system", "01-platform-mesh_system", true},
+		{"01-platform-mesh-system-extra", "platform-mesh-system-extra", false},
+		{"1-platform-mesh-system", "1-platform-mesh-system", true},
 		{"01-", "-", true},
 		{"", "", true},
-		{"01-OpenMFP-System", "OpenMFP-System", false},
-		{"01-openmfp-system/", "01-openmfp-system/", true},
+		{"01-Platform-Mesh-System", "Platform-Mesh-System", false},
+		{"01-platform-mesh/", "01-platform-mesh/", true},
 		{"../../manifests/kcp/02-orgs", "orgs", false},
 		{"/operator/manifests/kcp/02-orgs", "orgs", false},
 	}
@@ -115,18 +115,18 @@ func (s *HelperTestSuite) TestIsWorkspace() {
 		dir      string
 		expected bool
 	}{
-		{"01-openmfp-system", true},
+		{"01-platform-mesh-system", true},
 		{"99-abc123", true},
 		{"00-", false},
-		{"openmfp-system", false},
-		{"01openmfp-system", false},
-		{"01-openmfp_system", false},
-		{"01-openmfp-system-extra", true},
-		{"1-openmfp-system", false},
+		{"platform-mesh-system", false},
+		{"01platform-mesh-system", false},
+		{"01-platform-mesh_system", false},
+		{"01-platform-mesh-system-extra", true},
+		{"1-platform-mesh-system", false},
 		{"01-", false},
 		{"", false},
-		{"01-OpenMFP-System", true},
-		{"01-openmfp-system/", false},
+		{"01-PlatformMesh-System", true},
+		{"01-platform-mesh-system/", false},
 	}
 
 	for _, tt := range tests {

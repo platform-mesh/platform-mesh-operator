@@ -111,7 +111,7 @@ func ConvertToUnstructured(webhook admissionv1.MutatingWebhookConfiguration) (*u
 
 func GetWorkspaceDirs(dir string) []string {
 	workspaces := []string{}
-	// find all subdirectories named "dd-name", e.g. "01-openmfp-system"
+	// find all subdirectories named "dd-name", e.g. "01-platform-mesh-system"
 	dirs, err := os.ReadDir(dir)
 	if err != nil {
 		// TODO: print error

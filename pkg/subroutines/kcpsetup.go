@@ -43,7 +43,7 @@ type KcpsetupSubroutine struct {
 
 const (
 	KcpsetupSubroutineName      = "KcpsetupSubroutine"
-	KcpsetupSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
+	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
 
 func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
@@ -78,7 +78,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
-	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing OpenMFP resource")
+	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing Platform Mesh resource")
 
 	// Wait for kcp release to be ready before continuing
 	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
@@ -109,7 +109,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	// update workspace status
 	inst.Status.KcpWorkspaces = []corev1alpha1.KcpWorkspace{
 		{
-			Name:  "root:openmfp-system",
+			Name:  "root:platform-mesh-system",
 			Phase: "Ready",
 		},
 		{
@@ -145,30 +145,30 @@ func isReady(release *unstructured.Unstructured) bool {
 }
 
 func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*rest.Config, error) {
-	secret, err := GetSecret(client, secretName, "openmfp-system")
+	secret, err := GetSecret(client, secretName, "platform-mesh-system")
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/openmfp-system: %w", secretName, err)
+		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/openmfp-system is nil", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/openmfp-system has no Data", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
 	}
 
 	caData, ok := secret.Data["ca.crt"]
 	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"ca.crt\"", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
 	}
 
 	tlsCrt, ok := secret.Data["tls.crt"]
 	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"tls.crt\"", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
 	}
 
 	tlsKey, ok := secret.Data["tls.key"]
 	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"tls.key\"", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
 	}
 
 	cfg := clientcmdapi.NewConfig()
@@ -464,7 +464,7 @@ func applyManifestFromFile(
 	}
 
 	if apierrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}

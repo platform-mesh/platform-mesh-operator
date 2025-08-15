@@ -89,8 +89,8 @@ func (suite *ProvidersecretTestSuite) TearDownTest() {
 func (s *ProvidersecretTestSuite) TestProcess() {
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -101,7 +101,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
 				},
@@ -109,7 +109,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
-				{Name: "root:openmfp-system", Phase: "Ready"},
+				{Name: "root:platform-mesh-system", Phase: "Ready"},
 				{Name: "root:orgs", Phase: "Ready"},
 			},
 		},
@@ -196,7 +196,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			cluster := kubeconfig.Clusters[currentContext.Cluster]
 
 			// Test that the URL is passed correctly form the endpoint slice
-			expectedURL := "http://example.com/clusters/root:openmfp-system"
+			expectedURL := "http://example.com/clusters/root:platform-mesh-system"
 			if cluster.Server != expectedURL {
 				s.T().Logf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
 				return false
@@ -258,8 +258,8 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -270,7 +270,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -279,7 +279,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
 				},
 				{
@@ -351,8 +351,8 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	s.T().Skip("Skipping test temporarily")
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -363,7 +363,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -371,7 +371,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		},
 		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
-				{Name: "root:openmfp-system", Phase: "Ready"},
+				{Name: "root:platform-mesh-system", Phase: "Ready"},
 			},
 		},
 	}
@@ -454,8 +454,8 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	s.T().Skip("Skipping test temporarily")
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -466,7 +466,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -475,7 +475,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
 				},
 				{
@@ -536,8 +536,8 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 	s.T().Skip("Skipping test temporarily")
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -548,7 +548,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -557,7 +557,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
 				},
 				{
@@ -599,8 +599,8 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 	s.T().Skip("Skipping test temporarily")
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -611,7 +611,7 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
@@ -620,7 +620,7 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "NotReady",
 				},
 				{
@@ -652,7 +652,7 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 	_ = res
 
 	// assert
-	s.Assert().Error(opErr.Err(), "Workspace root:openmfp-system is not ready")
+	s.Assert().Error(opErr.Err(), "Workspace root:platform-mesh-system is not ready")
 }
 
 func (s *ProvidersecretTestSuite) TestFinalizers() {
@@ -679,8 +679,8 @@ func (s *ProvidersecretTestSuite) TestFinalize() {
 func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
 	return &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
@@ -691,7 +691,7 @@ func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
 				},
@@ -1321,7 +1321,7 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	// Setup mock expectations for Get and Create
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "openmfp-system"},
+		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
 		mock.Anything,
 	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
 
@@ -1548,7 +1548,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 	// Setup mock expectations for Get and Create
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "openmfp-system"},
+		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
 		mock.Anything,
 	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
 

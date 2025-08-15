@@ -19,7 +19,7 @@ package controller
 import (
 	"context"
 
-	openmfpconfig "github.com/platform-mesh/golang-commons/config"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
@@ -32,36 +32,36 @@ import (
 )
 
 var (
-	openmfpReconcilerName = "OpenMFPReconciler"
-	operatorName          = "openmfp-operator"
+	pmReconcilerName = "PlatformMeshReconciler"
+	operatorName     = "platform-mesh-operator"
 )
 
-// OpenMFPReconciler reconciles a OpenMFP object
-type OpenMFPReconciler struct {
+// PlatformMeshReconciler reconciles a PlatformMesh object
+type PlatformMeshReconciler struct {
 	lifecycle *controllerruntime.LifecycleManager
 }
 
-// +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps/finalizers,verbs=update
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshs/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the OpenMFP object against the actual cluster state, and then
+// the PlatformMesh object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
-func (r *OpenMFPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *PlatformMeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.PlatformMesh{})
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfig.CommonServiceConfig,
+func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.CommonServiceConfig,
 	log *logger.Logger, eventPredicates ...predicate.Predicate) error {
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, openmfpReconcilerName, &corev1alpha1.PlatformMesh{},
+	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, pmReconcilerName, &corev1alpha1.PlatformMesh{},
 		cfg.DebugLabelValue, log, eventPredicates...)
 	if err != nil {
 		return err
@@ -69,8 +69,8 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfi
 	return builder.Complete(r)
 }
 
-func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *openmfpconfig.CommonServiceConfig, dir string) *OpenMFPReconciler {
-	kcpUrl := "https://kcp-front-proxy.openmfp-system:8443"
+func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) *PlatformMeshReconciler {
+	kcpUrl := "https://kcp-front-proxy.platform-mesh-system:8443"
 	if cfg.KCPUrl != "" {
 		kcpUrl = cfg.KCPUrl
 	}
@@ -85,8 +85,8 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))
 	}
-	return &OpenMFPReconciler{
+	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
-			openmfpReconcilerName, mgr.GetClient(), log).WithConditionManagement(),
+			pmReconcilerName, mgr.GetClient(), log).WithConditionManagement(),
 	}
 }

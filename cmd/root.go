@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/go-logr/logr"
-	openmfpconfig "github.com/platform-mesh/golang-commons/config"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -19,14 +19,14 @@ var (
 	scheme      = runtime.NewScheme()
 	setupLog    logr.Logger
 	operatorCfg config.OperatorConfig
-	defaultCfg  *openmfpconfig.CommonServiceConfig
+	defaultCfg  *pmconfig.CommonServiceConfig
 	v           *viper.Viper
 	log         *logger.Logger
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "openmfp-operator",
-	Short: "operator to setup OpenMFP",
+	Use:   "platform-mesh-operator",
+	Short: "operator to setup Platform Mesh",
 }
 
 func init() {
@@ -38,12 +38,12 @@ func init() {
 	rootCmd.AddCommand(operatorCmd)
 
 	var err error
-	v, defaultCfg, err = openmfpconfig.NewDefaultConfig(rootCmd)
+	v, defaultCfg, err = pmconfig.NewDefaultConfig(rootCmd)
 	if err != nil {
 		panic(err)
 	}
 
-	err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
+	err = pmconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
 	if err != nil {
 		panic(err)
 	}

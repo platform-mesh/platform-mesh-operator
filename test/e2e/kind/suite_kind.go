@@ -29,7 +29,7 @@ import (
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
-	openmfpconfig "github.com/platform-mesh/golang-commons/config"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/client-go/rest"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -47,7 +47,7 @@ type KindTestSuite struct {
 	cancel context.CancelFunc
 }
 
-var clusterName = "openmfp"
+var clusterName = "platform-mesh"
 
 // runCommand executes a shell command and returns its output.
 func runCommand(name string, args ...string) ([]byte, error) {
@@ -192,14 +192,14 @@ func (s *KindTestSuite) CreateKindCluster() {
 		Namespace: "kube-system",
 	})
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to list pods in openmfp-system namespace")
+		s.logger.Error().Err(err).Msg("Failed to list pods in platform-mesh-system namespace")
 		s.T().FailNow()
 	}
 	if len(pods.Items) == 0 {
 		s.logger.Error().Msg("No pods found in kube-system namespace, this might be an issue")
 		s.T().FailNow()
 	}
-	s.logger.Info().Msgf("Found %d pods in openmfp-system namespace", len(pods.Items))
+	s.logger.Info().Msgf("Found %d pods in platform-mesh-system namespace", len(pods.Items))
 }
 
 func (s *KindTestSuite) CreateCerts() []byte {
@@ -250,8 +250,8 @@ func (s *KindTestSuite) CreateSecrets(ctx context.Context, dirRootPath []byte) {
 	// create docker secrets
 	dockerCfg := map[string]interface{}{
 		"auths": map[string]interface{}{
-			"ghcr.io/openmfp": map[string]string{
-				"auth": base64.StdEncoding.EncodeToString([]byte("openmfp-technical-user:" + os.Getenv("GH_TOKEN"))),
+			"ghcr.io/platform-mesh": map[string]string{
+				"auth": base64.StdEncoding.EncodeToString([]byte("platform-mesh-technical-user:" + os.Getenv("GH_TOKEN"))),
 			},
 		},
 	}
@@ -270,7 +270,7 @@ func (s *KindTestSuite) CreateSecrets(ctx context.Context, dirRootPath []byte) {
 	secretGithub2 := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "github",
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			".dockerconfigjson": jsonBytes,
@@ -280,7 +280,7 @@ func (s *KindTestSuite) CreateSecrets(ctx context.Context, dirRootPath []byte) {
 	secretKeycloakAdmin := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "keycloak-admin",
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"secret": []byte("admin"),
@@ -313,7 +313,7 @@ func (s *KindTestSuite) CreateSecrets(ctx context.Context, dirRootPath []byte) {
 	iamWebhookSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rebac-authz-webhook-webhook-ca",
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"ca.crt":  caIamRootCABytes,
@@ -500,9 +500,9 @@ func (s *KindTestSuite) CreateReleases(ctx context.Context) {
 
 	time.Sleep(10 * time.Second) // Wait for HelmRelease to be created
 
-	// Install the OpenMFP operator CRDs
-	err = ApplyManifestFromFile(ctx, "../../../config/crd/core.openmfp.org_openmfps.yaml", s.client, make(map[string]string))
-	s.Assert().NoError(err, "Error applying config/crd/core.openmfp.org_openmfps.yaml manifest")
+	// Install the Platform Mesh operator CRDs
+	err = ApplyManifestFromFile(ctx, "../../../config/crd/core.platform-mesh.io_platform-mesh.yaml", s.client, make(map[string]string))
+	s.Assert().NoError(err, "Error applying config/crd/core.platform-mesh.io_platform-mesh.yaml manifest")
 
 	time.Sleep(10 * time.Second) // Wait for HelmRelease to be created
 }
@@ -518,36 +518,36 @@ func (s *KindTestSuite) SetupSuite() {
 	s.CreateSecrets(ctx, dirRootPath)
 	s.CreateReleases(ctx)
 
-	// add OpenMFP resource
-	err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/openmfp-resource/openmfp.yaml", s.client, make(map[string]string))
-	s.Assert().NoError(err, "Error applying openmfp-resource/openmfp.yaml manifest")
+	// add Platform Mesh resource
+	err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client, make(map[string]string))
+	s.Assert().NoError(err, "Error applying platform-mesh-resource/platform-mesh.yaml manifest")
 	if err != nil {
-		s.FailNow("Failed to apply OpenMFP resource manifest")
+		s.FailNow("Failed to apply PlatformMesh resource manifest")
 	} else {
-		s.logger.Info().Msg("Added OpenMFP resource")
+		s.logger.Info().Msg("Added PlatformMesh resource")
 	}
 
 	avail := s.Eventually(func() bool {
-		openmfp := v1alpha1.PlatformMesh{}
+		pm := v1alpha1.PlatformMesh{}
 		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      "openmfp",
-			Namespace: "openmfp-system",
-		}, &openmfp)
+			Name:      "platform-mesh",
+			Namespace: "platform-mesh-system",
+		}, &pm)
 		if err != nil {
-			s.logger.Warn().Err(err).Msg("Failed to get OpenMFP resource")
+			s.logger.Warn().Err(err).Msg("Failed to get PlatformMesh resource")
 			return false
 		}
 		return true
-	}, 15*time.Second, 2*time.Second, "OpenMFP resource did not become available")
+	}, 15*time.Second, 2*time.Second, "PlatformMesh resource did not become available")
 
 	if !avail {
-		s.logger.Error().Msg("OpenMFP resource is not available")
+		s.logger.Error().Msg("PlatformMesh resource is not available")
 		s.T().FailNow()
 	}
 
-	s.logger.Info().Msg("OpenMFP resource is available")
+	s.logger.Info().Msg("PlatformMesh resource is available")
 
-	// Run the OpenMFP operator
+	// Run the PlatformMesh operator
 	s.logger.Info().Msg("starting operator ...")
 	s.runOperator(ctx)
 
@@ -578,18 +578,18 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.WorkspaceDir = "../../../"
 	appConfig.KCPUrl = "https://kcp.api.portal.dev.local:8443"
 
-	commonConfig := &openmfpconfig.CommonServiceConfig{}
+	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../")
-	err = openmfpReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
+	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../")
+	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to setup OpenMFP reconciler with manager")
+		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
 	go s.startController()
-	s.logger.Info().Msg("OpenMFP operator started")
+	s.logger.Info().Msg("PlatformMesh operator started")
 }
 
 func (suite *KindTestSuite) startController() {

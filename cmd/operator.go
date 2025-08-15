@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"os"
 
-	openmfpcontext "github.com/platform-mesh/golang-commons/context"
+	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -37,7 +37,7 @@ import (
 
 var operatorCmd = &cobra.Command{
 	Use:   "operator",
-	Short: "operator to setup OpenMFP",
+	Short: "operator to setup platform-mesh",
 	Run:   RunController,
 }
 
@@ -46,10 +46,10 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
 
-	log.Info().Msg("Starting OpenMFP Operator")
-	defer log.Info().Msg("Shutting down OpenMFP Operator")
+	log.Info().Msg("Starting PlatformMesh Operator")
+	defer log.Info().Msg("Shutting down PlatformMesh Operator")
 
-	ctx, _, shutdown := openmfpcontext.StartContext(log, operatorCfg, defaultCfg.ShutdownTimeout)
+	ctx, _, shutdown := pmcontext.StartContext(log, operatorCfg, defaultCfg.ShutdownTimeout)
 	defer shutdown()
 
 	disableHTTP2 := func(c *tls.Config) {
@@ -97,7 +97,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		BaseContext:                   func() context.Context { return ctx },
 		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
 		LeaderElection:                defaultCfg.LeaderElection.Enabled,
-		LeaderElectionID:              "81924e50.openmfp.org",
+		LeaderElectionID:              "81924e50.platform-mesh.org",
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
@@ -107,9 +107,9 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
-	openmfpReconciler := controller.NewOpenmfpReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
-	if err := openmfpReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OpenMFP")
+	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
+	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 

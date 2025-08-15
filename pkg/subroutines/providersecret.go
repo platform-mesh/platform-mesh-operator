@@ -64,7 +64,7 @@ type ProvidersecretSubroutine struct {
 
 const (
 	ProvidersecretSubroutineName      = "ProvidersecretSubroutine"
-	ProvidersecretSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
+	ProvidersecretSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
 
 func (r *ProvidersecretSubroutine) Finalize(
@@ -215,7 +215,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	if pc.External {
 		newConfig.Host = fmt.Sprintf("%s://%s%s/", u.Scheme, u.Host, u.Path)
 	} else {
-		newConfig.Host = fmt.Sprintf("https://kcp-front-proxy.openmfp-system:8443%s/", u.Path)
+		newConfig.Host = fmt.Sprintf("https://kcp-front-proxy.platform-mesh-system:8443%s/", u.Path)
 	}
 
 	apiConfig := restConfigToAPIConfig(newConfig)
@@ -228,7 +228,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pc.Secret,
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 	}
 
@@ -285,7 +285,7 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	initializerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ic.Secret,
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 	}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {

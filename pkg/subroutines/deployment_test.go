@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -15,7 +13,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	openmfpconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+
+	pmconfig "github.com/platform-mesh/golang-commons/config"
+
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
@@ -37,7 +39,7 @@ func (s *DeployTestSuite) SetupTest() {
 	s.helperMock = new(mocks.KcpHelper)
 	s.log, _ = logger.New(logger.DefaultConfig())
 
-	cfg := openmfpconfig.CommonServiceConfig{}
+	cfg := pmconfig.CommonServiceConfig{}
 	operatorCfg := config.OperatorConfig{
 		WorkspaceDir: "../../",
 	}
@@ -48,12 +50,12 @@ func (s *DeployTestSuite) SetupTest() {
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	ctx := context.TODO()
 
-	inst := &v1alpha1.OpenMFP{
+	inst := &v1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-openmfp",
+			Name:      "test-platform-mesh",
 			Namespace: "default",
 		},
-		Spec: v1alpha1.OpenMFPSpec{
+		Spec: v1alpha1.PlatformMeshSpec{
 			ChartVersion:     "v1.0.0",
 			ComponentVersion: "v2.0.0",
 		},
@@ -83,7 +85,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","componentVersion":{"semver":"v2.0.0"},"iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"openmfp-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.dev.local","componentVersion":{"semver":"v2.0.0"},"iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil
@@ -95,11 +97,11 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
 	services := apiextensionsv1.JSON{}
-	services.Raw = []byte(`{"services": {"openmfp-operator": {"version": "v1.0.0"}}}`)
+	services.Raw = []byte(`{"services": {"platform-mesh-operator": {"version": "v1.0.0"}}}`)
 
 	mergedValues, err := subroutines.MergeValuesAndServices(values, services)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
-	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/openmfp-operator-components/release.yaml", s.clientMock, mergedValues)
+	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
 }
