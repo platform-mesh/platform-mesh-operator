@@ -7,7 +7,7 @@ rules:
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformmeshs
+  - platformmeshes
   verbs:
   - create
   - delete
@@ -19,13 +19,13 @@ rules:
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformmeshs/finalizers
+  - platformmeshes/finalizers
   verbs:
   - update
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformmeshs/status
+  - platformmeshes/status
   verbs:
   - get
   - patch

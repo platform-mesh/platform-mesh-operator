@@ -10,7 +10,7 @@ rules:
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformmeshs
+  - platformmeshes
   verbs:
   - get
   - list
@@ -18,6 +18,6 @@ rules:
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformmeshs/status
+  - platformmeshes/status
   verbs:
   - get

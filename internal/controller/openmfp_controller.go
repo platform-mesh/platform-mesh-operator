@@ -41,9 +41,9 @@ type PlatformMeshReconciler struct {
 	lifecycle *controllerruntime.LifecycleManager
 }
 
-// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
