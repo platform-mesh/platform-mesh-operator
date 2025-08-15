@@ -22,14 +22,14 @@ import (
 	"net/http"
 	"os"
 
-	openmfpcontext "github.com/openmfp/golang-commons/context"
+	openmfpcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/openmfp/golang-commons/traces"
+	"github.com/platform-mesh/golang-commons/traces"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"

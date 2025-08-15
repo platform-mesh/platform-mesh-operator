@@ -19,9 +19,10 @@ package controller
 import (
 	"context"
 
-	openmfpconfig "github.com/openmfp/golang-commons/config"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/logger"
+	openmfpconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
+	"github.com/platform-mesh/golang-commons/logger"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -37,7 +38,7 @@ var (
 
 // OpenMFPReconciler reconciles a OpenMFP object
 type OpenMFPReconciler struct {
-	lifecycle *lifecycle.LifecycleManager
+	lifecycle *controllerruntime.LifecycleManager
 }
 
 // +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps,verbs=get;list;watch;create;update;patch;delete
@@ -74,7 +75,7 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 		kcpUrl = cfg.KCPUrl
 	}
 
-	var subs []lifecycle.Subroutine
+	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
 		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), commonCfg, cfg))
 	}
@@ -85,7 +86,7 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))
 	}
 	return &OpenMFPReconciler{
-		lifecycle: lifecycle.NewLifecycleManager(log, operatorName,
-			openmfpReconcilerName, mgr.GetClient(), subs).WithConditionManagement(),
+		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
+			openmfpReconcilerName, mgr.GetClient(), log).WithConditionManagement(),
 	}
 }

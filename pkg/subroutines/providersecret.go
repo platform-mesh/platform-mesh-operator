@@ -7,15 +7,15 @@ import (
 	"path"
 	"time"
 
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/errors"
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -68,13 +68,13 @@ const (
 )
 
 func (r *ProvidersecretSubroutine) Finalize(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
+	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
 func (r *ProvidersecretSubroutine) Process(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
+	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
 	scheme := r.client.Scheme()
 	if scheme == nil {

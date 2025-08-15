@@ -33,7 +33,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/logger"
 	"gopkg.in/yaml.v3"
 )
 

@@ -3,7 +3,7 @@ package merge
 import (
 	"testing"
 
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
 )
 

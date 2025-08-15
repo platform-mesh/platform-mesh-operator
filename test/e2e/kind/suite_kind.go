@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,7 +29,7 @@ import (
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
-	openmfpconfig "github.com/openmfp/golang-commons/config"
+	openmfpconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/client-go/rest"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"

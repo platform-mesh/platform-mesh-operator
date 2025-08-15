@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/errors"
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -62,7 +62,7 @@ func (r *KcpsetupSubroutine) GetName() string {
 }
 
 func (r *KcpsetupSubroutine) Finalize(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
+	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
 	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	_ = instance
@@ -74,7 +74,7 @@ func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
-func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/logger"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/testing/kcpenvtest/process"
 )
