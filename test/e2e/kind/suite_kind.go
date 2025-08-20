@@ -576,7 +576,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.Subroutines.KcpSetup.Enabled = true
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
-	appConfig.KCPUrl = "https://kcp.api.portal.dev.local:8443"
+	appConfig.KCP.Url = "https://kcp.api.portal.dev.local:8443"
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true

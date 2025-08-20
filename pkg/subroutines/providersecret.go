@@ -7,7 +7,9 @@ import (
 	"path"
 	"time"
 
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -25,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 // HelmGetter is an interface for getting Helm releases
@@ -76,6 +79,7 @@ func (r *ProvidersecretSubroutine) Finalize(
 func (r *ProvidersecretSubroutine) Process(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	scheme := r.client.Scheme()
 	if scheme == nil {
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("client scheme is nil"), true, false)
@@ -85,16 +89,25 @@ func (r *ProvidersecretSubroutine) Process(
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get KCP Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	if !isReady(rel) {
-		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	// Wait for root shard to be ready
+	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	if err != nil || !matchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
+
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+
+	if err != nil || !matchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
 	// Determine which provider connections to use based on configuration:
 	var providers []corev1alpha1.ProviderConnection
 	hasProv := len(instance.Spec.Kcp.ProviderConnections) > 0
@@ -116,7 +129,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(r.client, r.kcpUrl, "kcp-cluster-admin-client-cert")
+	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -170,6 +183,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	var u *url.URL
 
@@ -215,7 +229,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	if pc.External {
 		newConfig.Host = fmt.Sprintf("%s://%s%s/", u.Scheme, u.Host, u.Path)
 	} else {
-		newConfig.Host = fmt.Sprintf("https://kcp-front-proxy.platform-mesh-system:8443%s/", u.Path)
+		newConfig.Host = fmt.Sprintf("https://%s-front-proxy:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort, u.Path)
 	}
 
 	apiConfig := restConfigToAPIConfig(newConfig)

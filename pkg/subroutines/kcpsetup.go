@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
@@ -16,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -24,6 +27,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -76,24 +80,31 @@ func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 
 func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing Platform Mesh resource")
 
-	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get KCP Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	// Wait for root shard to be ready
+	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	if err != nil || !matchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	if !isReady(rel) {
-		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+	if err != nil || !matchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(r.client, r.kcpUrl, "kcp-cluster-admin-client-cert")
+	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -124,8 +135,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 }
 
-// isReady checks the Ready Condition if it has status true
-func isReady(release *unstructured.Unstructured) bool {
+// matchesCondition checks the Ready Condition if it has status true
+func matchesCondition(release *unstructured.Unstructured, conditionType string) bool {
 	if release == nil {
 		return false
 	}
@@ -136,7 +147,7 @@ func isReady(release *unstructured.Unstructured) bool {
 
 	for _, condition := range conditions {
 		c := condition.(map[string]interface{})
-		if c["type"] == "Ready" && c["status"] == "True" {
+		if c["type"] == conditionType && c["status"] == "True" {
 			return true
 		}
 	}
@@ -144,8 +155,10 @@ func isReady(release *unstructured.Unstructured) bool {
 	return false
 }
 
-func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*rest.Config, error) {
-	secret, err := GetSecret(client, secretName, "platform-mesh-system")
+func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	secretName := operatorCfg.KCP.ClusterAdminSecretName
+	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
 		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
 	}
@@ -362,7 +375,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	}
 	var errApplyManifests error = nil
 	for _, file := range files {
-		path := dir + "/" + file
+		path := filepath.Join(dir, file)
 		err := applyManifestFromFile(ctx, path, k8sClient, templateData, kcpPath, inst)
 		if err != nil {
 			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continueing to next file in directory")

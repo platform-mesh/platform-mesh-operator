@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -37,7 +38,7 @@ func NewDeploymentSubroutine(client client.Client, cfg *pmconfig.CommonServiceCo
 	sub := &DeploymentSubroutine{
 		cfg:                cfg,
 		client:             client,
-		workspaceDirectory: operatorCfg.WorkspaceDir + "/manifests/k8s/",
+		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/"),
 	}
 
 	return sub
@@ -58,6 +59,7 @@ func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
 func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	inst := runtimeObj.(*v1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Create DeploymentComponents Version
 	values, err := TemplateVars(ctx, inst, r.client)
@@ -76,7 +78,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	log.Debug().Msgf("Merged values: %s", string(mergedValues.Raw))
 
 	// apply repository
-	path := r.workspaceDirectory + "platform-mesh-operator-components/repository.yaml"
+	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/repository.yaml")
 	tplValues := map[string]string{
 		"chartVersion": inst.Spec.ChartVersion,
 	}
@@ -87,7 +89,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	log.Debug().Str("path", path).Msgf("Applied repository path: %s", path)
 
 	// apply release and merge values from spec.values
-	path = r.workspaceDirectory + "platform-mesh-operator-components/release.yaml"
+	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/release.yaml")
 	err = applyReleaseWithValues(ctx, path, r.client, mergedValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
@@ -101,7 +103,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
-	if !isReady(rel) {
+	if !matchesCondition(rel, "Ready") {
 		log.Info().Msg("istio-istiod Release is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -118,6 +120,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		}
 		// When running the operator locally there will never be a proxy
 		if !r.cfg.IsLocal && !hasProxy {
+			log.Info().Msg("Restarting operator to ensure istio-proxy is injected")
 			err := r.client.Delete(ctx, pod)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
@@ -129,14 +132,21 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 
 	// Wait for kcp release to be ready before continuing
-	rel, err = getHelmRelease(ctx, r.client, "kcp", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get KCP Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	if err != nil || !matchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	if !isReady(rel) {
-		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+	if err != nil || !matchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
@@ -195,18 +205,26 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 		Namespace:     namespace,
 	})
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to list pods with label selector: " + labelSelector)
 		return false, nil, err
 	}
 
 	if len(pods.Items) > 0 {
 		pod := pods.Items[0]
-		containers := pod.Object["spec"].(map[string]interface{})["containers"].([]interface{})
-		for _, container := range containers {
-			containerMap := container.(map[string]interface{})
-			if containerMap["name"] == "istio-proxy" {
-				return true, &pod, nil
+		spec := pod.Object["spec"].(map[string]interface{})
+		if initContainersInt, ok := spec["initContainers"]; ok {
+			initContainers := initContainersInt.([]interface{})
+			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
+			for _, container := range initContainers {
+				containerMap := container.(map[string]interface{})
+				log.Debug().Msgf("Container name: %s", containerMap["name"].(string))
+				if containerMap["name"] == "istio-proxy" {
+					log.Info().Msgf("Found Istio proxy container: %s", containerMap["image"])
+					return true, &pod, nil
+				}
 			}
 		}
+		log.Info().Msgf("Istio proxy containers not found")
 		return false, &pod, nil
 	}
 

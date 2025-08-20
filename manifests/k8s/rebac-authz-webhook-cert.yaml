@@ -6,7 +6,7 @@ metadata:
 spec:
   commonName: authz-webhook
   issuerRef:
-    name: kcp-client-issuer
+    name: root-front-proxy-client-ca
   privateKey:
     algorithm: RSA
     size: 2048
