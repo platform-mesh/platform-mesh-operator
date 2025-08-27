@@ -290,6 +290,17 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	cluster := apiConfig.Contexts[curr].Cluster
 	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
 
+	var url *url.URL
+	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
+	if err != nil {
+		log.Error().Err(err).Msg("parsing virtual workspace URL")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
+	apiConfig.Clusters[cluster].Server = url.String()
+	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
+
 	data, err := clientcmd.Write(*apiConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("writing modified kubeconfig")
