@@ -375,10 +375,11 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	}
 	var errApplyManifests error = nil
 	for _, file := range files {
+		log.Debug().Str("file", file).Msg("Applying file")
 		path := filepath.Join(dir, file)
 		err := applyManifestFromFile(ctx, path, k8sClient, templateData, kcpPath, inst)
 		if err != nil {
-			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continueing to next file in directory")
+			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continuing to next file in directory")
 			errApplyManifests = err
 		}
 	}
