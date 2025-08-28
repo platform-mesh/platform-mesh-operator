@@ -26,4 +26,5 @@ The `adminSecretRef` points to a secret containking a KCP kubeconfig, which is u
 ### KcpSetup
 ### ProviderSecret
 ### Defaults
+
 ### Webhook
