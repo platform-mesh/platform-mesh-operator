@@ -39,3 +39,4 @@ test/e2e/kind/certs/
 *.srl
 *.crt
 *.key
+**/__debug_bin*

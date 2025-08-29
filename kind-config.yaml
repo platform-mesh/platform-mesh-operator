@@ -17,22 +17,30 @@ kind: Cluster
 nodes:
 - role: control-plane
   extraPortMappings:
-  - containerPort: 30000
-    hostPort: 8000
-    protocol: TCP
-    listenAddress: "127.0.0.1"
   - containerPort: 31000
     hostPort: 8443
-    protocol: TCP
-    listenAddress: "127.0.0.1"
-  - containerPort: 31000
-    hostPort: 443
     protocol: TCP
     listenAddress: "127.0.0.1"
   - containerPort: 32000
     hostPort: 15021
     protocol: TCP
     listenAddress: "127.0.0.1"
+  # - containerPort: 30000
+  #   hostPort: 8000
+  #   protocol: TCP
+  #   listenAddress: "127.0.0.1"
+  # - containerPort: 31000
+  #   hostPort: 8443
+  #   protocol: TCP
+  #   listenAddress: "127.0.0.1"
+  # - containerPort: 31000
+  #   hostPort: 443
+  #   protocol: TCP
+  #   listenAddress: "127.0.0.1"
+  # - containerPort: 32000
+  #   hostPort: 15021
+  #   protocol: TCP
+  #   listenAddress: "127.0.0.1"
   # extraMounts:
   # - hostPath: test/e2e/kind/webhook-config
   #   containerPath: /config

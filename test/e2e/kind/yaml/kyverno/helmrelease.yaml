@@ -1,0 +1,90 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kyverno
+  namespace: default
+spec:
+  releaseName: kyverno
+  targetNamespace: kyverno-system
+  interval: 1m
+  timeout: 5m
+  chart:
+    spec:
+      chart: kyverno
+      version: "3.5.1"
+      sourceRef:
+        kind: HelmRepository
+        name: kyverno
+  values:
+    backgroundController:
+      rbac:
+        clusterRole:
+          extraResources:
+            - apiGroups:
+              - source.toolkit.fluxcd.io
+              resources:
+                - ocirepositories
+                - helmrepositories
+                - gitrepositories
+              verbs:
+                - create
+                - update
+                - patch
+                - get
+                - delete
+            - apiGroups:
+                - helm.toolkit.fluxcd.io
+              resources:
+                - helmreleases
+              verbs:
+                - create
+                - update
+                - patch
+                - get
+                - delete
+            - apiGroups:
+              - delivery.ocm.software
+              resources:
+                - resources
+                - resources/status
+              verbs:
+                - get
+                - list
+                - watch
+
+    reportsController:
+      rbac:
+        clusterRole:
+          extraResources:
+            - apiGroups:
+                - source.toolkit.fluxcd.io
+              resources:
+                - ocirepositories
+                - helmrepositories
+                - gitrepositories
+              verbs:
+                - create
+                - update
+                - patch
+                - get
+                - delete
+            - apiGroups:
+                - helm.toolkit.fluxcd.io
+              resources:
+                - helmreleases
+              verbs:
+                - create
+                - update
+                - patch
+                - get
+                - delete
+            - apiGroups:
+                - delivery.ocm.software
+              resources:
+                - resources
+                - resources/status
+              verbs:
+                - get
+                - list
+                - watch
+

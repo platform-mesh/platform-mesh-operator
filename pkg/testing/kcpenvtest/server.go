@@ -24,7 +24,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 )
 
@@ -109,7 +109,7 @@ func (te *Environment) Start() (*rest.Config, string, error) {
 
 	if te.Scheme == nil {
 		te.Scheme = scheme.Scheme
-		utilruntime.Must(kcpapiv1alpha.AddToScheme(te.Scheme))
+		utilruntime.Must(kcpapiv1alpha2.AddToScheme(te.Scheme))
 		utilruntime.Must(kcptenancyv1alpha.AddToScheme(te.Scheme))
 	}
 	// wait for default namespace to actually be created and seen as available to the apiserver
@@ -286,7 +286,7 @@ func generateTemplateDataFile(config *rest.Config, dataFile string) error {
 	}
 
 	parameters := TemplateParameters{}
-	apiExport := kcpapiv1alpha.APIExport{}
+	apiExport := kcpapiv1alpha2.APIExport{}
 	err = cs.Get(context.Background(), types.NamespacedName{Name: "tenancy.kcp.io"}, &apiExport)
 	if err != nil {
 		return err
