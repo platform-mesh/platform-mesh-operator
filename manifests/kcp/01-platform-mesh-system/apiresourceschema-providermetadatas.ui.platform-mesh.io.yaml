@@ -2,9 +2,9 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250722-a326e1d.providermetadatas.core.platform-mesh.io
+  name: v250725-732d200.providermetadatas.ui.platform-mesh.io
 spec:
-  group: core.platform-mesh.io
+  group: ui.platform-mesh.io
   names:
     kind: ProviderMetadata
     listKind: ProviderMetadataList
@@ -60,16 +60,20 @@ spec:
             displayName:
               type: string
             documentation:
-              properties:
-                url:
-                  type: string
-              type: object
+              items:
+                properties:
+                  displayName:
+                    type: string
+                  url:
+                    type: string
+                type: object
+              type: array
             helpCenterData:
               items:
                 properties:
-                  URL:
-                    type: string
                   displayName:
+                    type: string
+                  url:
                     type: string
                 type: object
               type: array
@@ -96,18 +100,18 @@ spec:
             links:
               items:
                 properties:
-                  URL:
-                    type: string
                   displayName:
+                    type: string
+                  url:
                     type: string
                 type: object
               type: array
             preferredSupportChannels:
               items:
                 properties:
-                  URL:
-                    type: string
                   displayName:
+                    type: string
+                  url:
                     type: string
                 type: object
               type: array

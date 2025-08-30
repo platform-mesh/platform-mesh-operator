@@ -1,9 +1,9 @@
-apiVersion: core.platform-mesh.io/v1alpha1
+apiVersion: ui.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   generation: 1
   labels:
-    ui.platform-mesh.org/entity: main
+    ui.platform-mesh.io/entity: main
   name: main-home
 spec:
   inlineConfiguration:

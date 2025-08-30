@@ -1,4 +1,4 @@
-apiVersion: core.platform-mesh.io/v1alpha1
+apiVersion: ui.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
