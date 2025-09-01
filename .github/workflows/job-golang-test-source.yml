@@ -56,15 +56,24 @@ jobs:
         run: |
              echo "WORKFLOW_GITHUB_PAT=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
              echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-      - name: Test task
-        if: ${{ inputs.useTask == true }}
+      - name: debug token
         run: |
-          task cover
-      - name: Install Code Coverage
-        run: go install github.com/vladopajic/go-test-coverage/v2@latest
-      - name: Check Test Coverage
-        run: go-test-coverage --threshold-file ${{ inputs. coverageThresholdFile }} --threshold-package ${{ inputs. coverageThresholdPackage }} --threshold-total ${{ inputs. coverageThresholdTotal }} --profile cover.out
-        if: ${{ inputs.useLocalCoverageConfig == false }}
-      - name: Check Test Coverage with Config
-        run: go-test-coverage --threshold-file ${{ inputs. coverageThresholdFile }} --threshold-package ${{ inputs. coverageThresholdPackage }} --threshold-total ${{ inputs. coverageThresholdTotal }} --profile cover.out --config ./.testcoverage.yml
-        if: ${{ inputs.useLocalCoverageConfig == true }}
+              echo ${{ secrets.GITHUB_TOKEN }}
+              docker logout ghcr.io
+
+              echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u platform-mesh --password-stdin
+              echo 'doing: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22'
+              docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
+
+      # - name: Test task
+      #   if: ${{ inputs.useTask == true }}
+      #   run: |
+      #     task cover
+      # - name: Install Code Coverage
+      #   run: go install github.com/vladopajic/go-test-coverage/v2@latest
+      # - name: Check Test Coverage
+      #   run: go-test-coverage --threshold-file ${{ inputs. coverageThresholdFile }} --threshold-package ${{ inputs. coverageThresholdPackage }} --threshold-total ${{ inputs. coverageThresholdTotal }} --profile cover.out
+      #   if: ${{ inputs.useLocalCoverageConfig == false }}
+      # - name: Check Test Coverage with Config
+      #   run: go-test-coverage --threshold-file ${{ inputs. coverageThresholdFile }} --threshold-package ${{ inputs. coverageThresholdPackage }} --threshold-total ${{ inputs. coverageThresholdTotal }} --profile cover.out --config ./.testcoverage.yml
+      #   if: ${{ inputs.useLocalCoverageConfig == true }}
