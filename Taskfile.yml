@@ -83,7 +83,9 @@ tasks:
       - |
         echo ${#WORKFLOW_GITHUB_PAT}
         docker logout ghcr.io
-        docker login ghcr.io -u platform-mesh -p $WORKFLOW_GITHUB_PAT
+        
+        echo $WORKFLOW_GITHUB_PAT | docker login ghcr.io -u platform-mesh --password-stdin
+        echo 'doing: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22'
         docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
 
         # kubectl get pods -A -o wide
