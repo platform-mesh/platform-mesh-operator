@@ -29,8 +29,8 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 
-	kcpapisv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
-	kcptenancyv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -328,27 +328,27 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, conf
 		return inventory, err
 	}
 
-	exp := kcpapisv1alpha2.APIExport{}
-	err = cs.Get(ctx, types.NamespacedName{Name: "tenancy.kcp.io"}, &exp)
+	apiExport := kcpapiv1alpha.APIExport{}
+	err = cs.Get(ctx, types.NamespacedName{Name: "tenancy.kcp.io"}, &apiExport)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport for tenancy.kcp.io")
 		return inventory, errors.Wrap(err, "Failed to get APIExport for tenancy.kcp.io")
 	}
-	inventory["apiExportRootTenancyKcpIoIdentityHash"] = exp.Status.IdentityHash
+	inventory["apiExportRootTenancyKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
-	err = cs.Get(ctx, types.NamespacedName{Name: "shards.core.kcp.io"}, &exp)
+	err = cs.Get(ctx, types.NamespacedName{Name: "shards.core.kcp.io"}, &apiExport)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport for shards.core.kcp.io")
 		return inventory, errors.Wrap(err, "Failed to get APIExport for shards.core.kcp.io")
 	}
-	inventory["apiExportRootShardsKcpIoIdentityHash"] = exp.Status.IdentityHash
+	inventory["apiExportRootShardsKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
-	err = cs.Get(ctx, types.NamespacedName{Name: "topology.kcp.io"}, &exp)
+	err = cs.Get(ctx, types.NamespacedName{Name: "topology.kcp.io"}, &apiExport)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport for topology.kcp.io")
 		return inventory, errors.Wrap(err, "Failed to get APIExport for topology.kcp.io")
 	}
-	inventory["apiExportRootTopologyKcpIoIdentityHash"] = exp.Status.IdentityHash
+	inventory["apiExportRootTopologyKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
 	return inventory, nil
 }
@@ -418,7 +418,7 @@ func (r *KcpsetupSubroutine) waitForWorkspace(
 	err = wait.PollUntilContextTimeout(
 		ctx, time.Second, time.Second*15, true,
 		func(ctx context.Context) (bool, error) {
-			ws := &kcptenancyv1alpha1.Workspace{}
+			ws := &kcptenancyv1alpha.Workspace{}
 			if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
 				return false, nil //nolint:nilerr
 			}
@@ -454,7 +454,7 @@ func applyManifestFromFile(
 			currentDefAPiBindings = []interface{}{}
 		}
 		for _, v := range extraDefaultApiBindings {
-			newExport := kcptenancyv1alpha1.APIExportReference{Path: v.Path, Export: v.Export}
+			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}
 			var m map[string]interface{}
 			b, marshalErr := yaml.Marshal(newExport)
 			if marshalErr != nil {

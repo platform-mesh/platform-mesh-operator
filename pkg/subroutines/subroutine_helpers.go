@@ -12,7 +12,6 @@ import (
 	"text/template"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -52,7 +51,6 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
-	utilruntime.Must(kcpapiv1alpha2.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme))
 

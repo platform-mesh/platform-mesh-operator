@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
@@ -194,7 +194,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 
-		var slice kcpapiv1alpha1.APIExportEndpointSlice
+		var slice kcpapiv1alpha.APIExportEndpointSlice
 		err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")

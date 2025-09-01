@@ -20,9 +20,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 
-	"sigs.k8s.io/kustomize/api/filesys"
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/api/resmap"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	"sigs.k8s.io/yaml"
 )
