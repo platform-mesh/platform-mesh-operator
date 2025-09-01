@@ -50,6 +50,8 @@ jobs:
          app-id: "1415820"
          private-key: ${{ secrets.PM_PUBLISHER_PRIVATE_KEY }}
          owner: ${{ github.repository_owner }}
+         repositories: |
+           security-operator
       - name: export publisher token to env
         run: echo "WORKFLOW_GITHUB_PAT=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
       - name: Test task
