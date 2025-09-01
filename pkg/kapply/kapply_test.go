@@ -16,6 +16,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
@@ -213,7 +214,7 @@ data:
 `)
 
 	// Dynamic client with interceptor to capture Patch options.
-	delegate := dynamicfake.NewSimpleDynamicClient(nil)
+	delegate := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 	rec := &recorder{}
 	dyn := &interceptingDynamic{delegate: delegate, rec: rec}
 	mapper := newFakeRESTMapper()
@@ -256,7 +257,7 @@ data:
   a: b
 `)
 
-	delegate := dynamicfake.NewSimpleDynamicClient(nil)
+	delegate := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 	rec := &recorder{}
 	dyn := &interceptingDynamic{delegate: delegate, rec: rec}
 	mapper := newFakeRESTMapper()
@@ -296,7 +297,7 @@ spec:
         type: object
 `)
 
-	delegate := dynamicfake.NewSimpleDynamicClient(nil)
+	delegate := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 	rec := &recorder{}
 	dyn := &interceptingDynamic{delegate: delegate, rec: rec}
 	mapper := newFakeRESTMapper()
@@ -304,8 +305,13 @@ spec:
 	err := ApplyDir(context.Background(), td, Clients{Dynamic: dyn, Mapper: mapper}, WithWaitAfterCRDs(time.Nanosecond))
 	require.NoError(t, err)
 
-	require.Len(t, rec.records, 1)
-	require.Equal(t, "CustomResourceDefinition", rec.records[0].Kind)
+	// Accept one or more CRD applies (pre-apply + full apply).
+	require.GreaterOrEqual(t, len(rec.records), 1)
+	for _, r := range rec.records {
+		require.Equal(t, "CustomResourceDefinition", r.Kind)
+		require.Equal(t, "customresourcedefinitions", r.GVR.Resource)
+		require.Equal(t, "apiextensions.k8s.io/v1", r.APIVersion)
+	}
 
 	mapper.mu.Lock()
 	resets := mapper.resets
@@ -323,7 +329,7 @@ metadata:
   name: foo
 `)
 
-	delegate := dynamicfake.NewSimpleDynamicClient(nil)
+	delegate := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 	rec := &recorder{}
 	dyn := &interceptingDynamic{delegate: delegate, rec: rec}
 	mapper := newFakeRESTMapper()
