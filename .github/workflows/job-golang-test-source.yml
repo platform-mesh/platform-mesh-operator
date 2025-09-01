@@ -53,7 +53,9 @@ jobs:
          repositories: |
            security-operator
       - name: export publisher token to env
-        run: echo "WORKFLOW_GITHUB_PAT=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
+        run: |
+             echo "WORKFLOW_GITHUB_PAT=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
+             echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
       - name: Test task
         if: ${{ inputs.useTask == true }}
         run: |
