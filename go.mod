@@ -16,7 +16,7 @@ require (
 	github.com/fluxcd/source-controller/api v1.6.2
 	github.com/go-logr/logr v1.4.3
 	github.com/google/go-cmp v0.7.0
-	github.com/kcp-dev/kcp/sdk v0.28.0
+	github.com/kcp-dev/kcp/sdk v0.28.1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/openmfp/golang-commons v0.150.11
 	github.com/otiai10/copy v1.14.1
