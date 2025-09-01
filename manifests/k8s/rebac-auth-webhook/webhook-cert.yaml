@@ -1,0 +1,11 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: rebac-authz-webhook-webhook-cert
+  namespace: platform-mesh-system
+spec:
+  secretName: rebac-authz-webhook-webhook-cert
+  issuerRef:
+    name: rebac-authz-webhook-webhook-issuer
+  dnsNames:
+  - rebac-authz-webhook.platform-mesh-system.svc.cluster.local

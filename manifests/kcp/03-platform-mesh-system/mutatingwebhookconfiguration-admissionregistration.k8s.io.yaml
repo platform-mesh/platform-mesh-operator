@@ -7,7 +7,7 @@ webhooks:
       - v1
     clientConfig:
       caBundle: {{ index . "account-operator.webhooks.core.platform-mesh.io.ca-bundle" }}
-      url: https://account-operator-webhook.platform-mesh-system.svc:9443/mutate-core-platform-mesh-io-v1alpha1-account
+      url: https://account-operator-webhook.platform-mesh-system.svc.cluster.local:9443/mutate-core-platform-mesh-io-v1alpha1-account
     failurePolicy: Fail
     name: maccount.kb.io
     rules:

@@ -12,13 +12,13 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog/log"
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -150,34 +150,117 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	// Create IAM Webhook secret
-	result, operatorError := r.createIAMAuthzWebhookSecret(ctx, inst)
-	return result, operatorError
+	return r.manageAuthorizationWebhookSecrets(ctx, inst)
 }
 
-func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx)
-	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-authz-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
-	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
+	_, err := GetSecret(r.client, webhookSecret, inst.Namespace)
+	if err != nil && !kerrors.IsNotFound(err) {
+		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
+		return errors.NewOperatorError(err, true, true)
 	}
+	if err == nil {
+		return nil
+	}
+
+	// Continue to create the secret
+	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-auth-webhook/kcp-webhook-secret.yaml", r.workspaceDirectory), map[string]string{}, log)
+	if err != nil {
+		return errors.NewOperatorError(err, true, true)
+	}
+	obj.SetNamespace(inst.Namespace)
 
 	// create system masters secret
-	err = r.client.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+	err = r.client.Create(ctx, &obj)
 	if err != nil {
+		return errors.NewOperatorError(err, true, true)
+	}
+	return nil
+}
+
+func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
+	// Retrieve the ca.crt from the rebac-authz-webhook-cert secret
+	caSecretName := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretCAName
+	webhookCertSecret, err := GetSecret(r.client, caSecretName, inst.Namespace)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		log.Error().Err(err).Str("secret", caSecretName).Str("namespace", inst.Namespace).Msg("Failed to get webhook cert secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// Select Secret
-	secret := &corev1.Secret{}
-	err = r.client.Get(ctx, types.NamespacedName{Name: "kcp-system-masters-client-cert-rebac-authz-webhook", Namespace: "platform-mesh-system"}, secret)
+	caCrt, ok := webhookCertSecret.Data["tls.crt"]
+	if !ok || len(caCrt) == 0 {
+		err := fmt.Errorf("ca.crt not found or empty in secret %s/%s", inst.Namespace, caSecretName)
+		log.Error().Err(err).Msg("ca.crt missing from webhook cert secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
 
+	// Get the kcp-webhook-secret
+	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
+	kcpWebhookSecret, err := GetSecret(r.client, webhookSecret, inst.Namespace)
 	if err != nil {
-		if kerrors.IsNotFound(err) {
-			log.Info().Msg("IAM secret not found, waiting for it to be created")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Get the kubeconfig from the secret
+	kubeconfigData, ok := kcpWebhookSecret.Data["kubeconfig"]
+	if !ok || len(kubeconfigData) == 0 {
+		err := fmt.Errorf("kubeconfig not found or empty in secret %s/%s", inst.Namespace, webhookSecret)
+		log.Error().Err(err).Msg("kubeconfig missing from kcp webhook secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Parse the kubeconfig using clientcmd utilities
+	kubeconfig, err := clientcmd.Load(kubeconfigData)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Update the certificate-authority-data in all clusters
+	updated := false
+	for clusterName, cluster := range kubeconfig.Clusters {
+		if cluster != nil {
+			// Update the certificate-authority-data with the new ca.crt
+			cluster.CertificateAuthorityData = caCrt
+			kubeconfig.Clusters[clusterName] = cluster
+			updated = true
+			log.Debug().Str("cluster", clusterName).Msg("Updated certificate-authority-data in cluster")
 		}
 	}
+
+	if !updated {
+		log.Info().Msg("No clusters found in kubeconfig to update")
+		return ctrl.Result{}, nil
+	}
+
+	// Marshal the updated kubeconfig back to YAML using clientcmd
+	updatedKubeconfigData, err := clientcmd.Write(*kubeconfig)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to write updated kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Update the secret with the new kubeconfig
+	kcpWebhookSecret.Data["kubeconfig"] = updatedKubeconfigData
+
+	err = r.client.Update(ctx, kcpWebhookSecret)
+	if err != nil {
+		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	log.Info().Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Successfully updated kcp webhook secret with new certificate-authority-data")
 
 	return ctrl.Result{}, nil
 }
@@ -229,6 +312,44 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 	}
 
 	return false, nil, errors.New("pod not found")
+}
+
+func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+	// Create Issuer
+	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
+	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.client, map[string]string{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// Create Certificate
+	caCertPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-cert.yaml", r.workspaceDirectory)
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, caCertPath, r.client, map[string]string{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	issuerPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-issuer.yaml", r.workspaceDirectory)
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, issuerPath, r.client, map[string]string{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// Create Certificate
+	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.client, map[string]string{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// Prepare KCP Webhook secret
+	oErr := r.createKCPWebhookSecret(ctx, inst)
+	if oErr != nil {
+		return ctrl.Result{}, oErr
+	}
+
+	// Update KCP Webhook secret with the latest CA bundle
+	return r.udpateKcpWebhookSecret(ctx, inst)
 }
 
 func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]string) error {
