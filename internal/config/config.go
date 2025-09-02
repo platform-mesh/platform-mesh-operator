@@ -15,7 +15,7 @@ type OperatorConfig struct {
 		Deployment struct {
 			Enabled                          bool   `mapstructure:"subroutines-deployment-enabled" default:"true"`
 			AuthorizationWebhookSecretName   string `mapstructure:"authorization-webhook-secret-name" default:"kcp-webhook-secret"`
-			AuthorizationWebhookSecretCAName string `mapstructure:"authorization-webhook-secret-ca-name" default:"rebac-authz-webhook-webhook-cert"`
+			AuthorizationWebhookSecretCAName string `mapstructure:"authorization-webhook-secret-ca-name" default:"rebac-authz-webhook-cert"`
 		} `mapstructure:",squash"`
 		KcpSetup struct {
 			Enabled bool `mapstructure:"subroutines-kcp-setup-enabled" default:"true"`
