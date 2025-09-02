@@ -40,3 +40,4 @@ test/e2e/kind/certs/
 *.crt
 *.key
 **/__debug_bin*
+gha-logs.txt
