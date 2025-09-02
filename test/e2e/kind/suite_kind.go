@@ -257,7 +257,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 	}
 	jsonBytes, _ := json.Marshal(dockerCfg)
 
-	secretGithub := &corev1.Secret{
+	github := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "github",
 			Namespace: "default",
@@ -267,7 +267,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeDockerConfigJson,
 	}
-	secretGithub2 := &corev1.Secret{
+	github_pms := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "github",
 			Namespace: "platform-mesh-system",
@@ -277,7 +277,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeDockerConfigJson,
 	}
-	secretKeycloakAdmin := &corev1.Secret{
+	keycloak_admin := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "keycloak-admin",
 			Namespace: "platform-mesh-system",
@@ -287,7 +287,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeOpaque,
 	}
-	secretOcm := &corev1.Secret{
+	ocm := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ocm-oci-github-pull",
 			Namespace: "default",
@@ -297,7 +297,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeDockerConfigJson,
 	}
-	domainCertSecret := &corev1.Secret{
+	domain_certificate := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "domain-certificate",
 			Namespace: "istio-system",
@@ -309,7 +309,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
-	iamWebhookSecret := &corev1.Secret{
+	rbac_webhook_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rebac-authz-webhook-webhook-ca",
 			Namespace: "platform-mesh-system",
@@ -332,38 +332,28 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
-	if err = s.client.Create(ctx, secretGithub); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
+	createIfNotExists := func(obj client.Object) error {
+		if err := s.client.Create(ctx, obj); err != nil {
+			if k8serrors.IsAlreadyExists(err) {
+				return nil
+			}
 			return err
 		}
+		return nil
 	}
-	if err = s.client.Create(ctx, secretGithub2); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
-			return err
-		}
+
+	secrets := []client.Object{
+		github,
+		github_pms,
+		ocm,
+		keycloak_admin,
+		domain_certificate,
+		rbac_webhook_ca,
+		domain_certificate_ca,
 	}
-	if err = s.client.Create(ctx, secretOcm); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
-			return err
-		}
-	}
-	if err = s.client.Create(ctx, secretKeycloakAdmin); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
-			return err
-		}
-	}
-	if err = s.client.Create(ctx, domainCertSecret); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
-			return err
-		}
-	}
-	if err = s.client.Create(ctx, iamWebhookSecret); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
-			return err
-		}
-	}
-	if err = s.client.Create(ctx, domain_certificate_ca); err != nil {
-		if !k8serrors.IsAlreadyExists(err) {
+
+	for _, sec := range secrets {
+		if err := createIfNotExists(sec); err != nil {
 			return err
 		}
 	}
@@ -443,8 +433,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	}, 180*time.Second, 5*time.Second, "cert-manager helmrelease did not become ready")
 
 	if !avail {
-		s.logger.Error().Msg("cert-manager HelmRelease is not available")
-		s.T().FailNow()
+		return errors.New("cert-manager helmrelease is not available")
 	}
 
 	s.logger.Info().Msg("cert-manager, fluxcd helmreleases ready")
@@ -495,7 +484,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		return true
 	}, 60*time.Second, 2*time.Second, "kyverno deployments not ready")
 	if !ok {
-		s.T().FailNow()
+		return errors.New("kyverno deployments not ready")
 	}
 	s.logger.Info().Msg("kyverno HelmRelease applied")
 
