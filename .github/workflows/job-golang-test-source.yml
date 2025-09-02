@@ -57,13 +57,7 @@ jobs:
              echo "WORKFLOW_GITHUB_PAT=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
              echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
       - name: debug token
-        run: |
-              echo ${{ steps.generate-token.outputs.token }}
-              docker logout ghcr.io
-
-              echo ${{ steps.generate-token.outputs.token }} | docker login ghcr.io -u platform-mesh --password-stdin
-              echo 'doing: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22'
-              docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
+        run: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
 
       # - name: Test task
       #   if: ${{ inputs.useTask == true }}
