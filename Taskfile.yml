@@ -85,6 +85,18 @@ tasks:
               echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
               GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo $GH_TOKEN
+                echo "Listing HelmRepositories"
+                kubectl get helmrepositories -A
+                echo "Listing OCIRepositories"
+                kubectl get ocirepositories -A
+                echo "Listing pods"
+                kubectl get pods -A
+                echo "Listing deployments"
+                kubectl get deployments -A
+
+                
+                echo "Describing helmrepositories"
+                kubectl describe helmrepositories -A
                 echo "Describing pods"
                 kubectl describe pods -A
                 echo "Describing HelmReleases"
