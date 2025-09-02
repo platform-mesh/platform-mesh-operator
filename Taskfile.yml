@@ -96,20 +96,19 @@ tasks:
                 exit 1
               fi
               export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-              go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+              go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+                kubectl get pods -A -o wide
+                kubectl get helmreleases -A
+                kubectl get deployments -A
+                kubectl get svc -A
+                kubectl get secrets -A
+                kubectl get crds -A
+                kubectl get nodes -o wide
+                exit 1
+              }
             fi
-        ignore_error: true
+        ignore_error: false
         
-      - cmd: |
-          kubectl get pods -A -o wide
-          kubectl get helmreleases -A
-          kubectl get deployments -A
-          kubectl get svc -A
-          kubectl get secrets -A
-          kubectl get crds -A
-          kubectl get nodes -o wide
-        ignore_error: true
-
   manifests:
     deps: [setup:controller-gen]
     cmds:
