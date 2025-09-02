@@ -38,6 +38,8 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+
+	kyvernov1 "github.com/kyverno/kyverno/api/kyverno/v1"
 )
 
 type KindTestSuite struct {
@@ -164,6 +166,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
+	utilruntime.Must(kyvernov1.AddToScheme(s.scheme))
 
 	gvk := fluxcdv2.GroupVersion.WithKind("HelmRelease")
 	s.logger.Info().Msgf("Registering GVK: %s", gvk.String())
@@ -578,6 +581,40 @@ func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 		s.logger.Error().Err(err).Msg("Failed to apply components/policies kustomize manifests")
 		return err
 	}
+
+	// wait for all policies to become Ready
+	res := s.Eventually(func() bool {
+		policyList := &kyvernov1.ClusterPolicyList{}
+		if err := s.client.List(ctx, policyList); err != nil {
+			s.logger.Warn().Err(err).Msg("Failed to list ClusterPolicies")
+			return false
+		}
+
+		// Expect at least N policies; adjust if needed
+		if len(policyList.Items) < 4 {
+			s.logger.Debug().Int("count", len(policyList.Items)).Msg("Not all ClusterPolicies created yet")
+			return false
+		}
+
+		for i := range policyList.Items {
+			policy := &policyList.Items[i]
+			// Status.Ready is a *bool and may be nil until Kyverno updates status
+			for _, cond := range policy.Status.Conditions {
+				if cond.Type == "Ready" {
+					if cond.Status != metav1.ConditionTrue {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}, 180*time.Second, 2*time.Second, "policies not ready")
+
+	if res == false {
+		return fmt.Errorf("policies are not ready")
+	}
+
+	s.logger.Info().Msg("All kyverno policies are ready")
 
 	s.logger.Info().Msg("kapply finished successfully")
 	return nil
