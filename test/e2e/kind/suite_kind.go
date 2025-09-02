@@ -328,51 +328,42 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Data: map[string][]byte{
 			"tls.crt": caRootBytes,
+			"tls.key": keyBytes,
 		},
 		Type: corev1.SecretTypeTLS,
 	}
 	if err = s.client.Create(ctx, secretGithub); err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			s.logger.Info().Msg("Secret github already exists, skipping creation")
-		} else {
+		if !k8serrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
 	if err = s.client.Create(ctx, secretGithub2); err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			s.logger.Info().Msg("Secret github already exists, skipping creation")
-		} else {
+		if !k8serrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
 	if err = s.client.Create(ctx, secretOcm); err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			s.logger.Info().Msg("Secret github already exists, skipping creation")
-		} else {
+		if !k8serrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
 	if err = s.client.Create(ctx, secretKeycloakAdmin); err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			s.logger.Info().Msg("Secret github already exists, skipping creation")
-		} else {
+		if !k8serrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
 	if err = s.client.Create(ctx, domainCertSecret); err != nil {
-		return err
+		if !k8serrors.IsAlreadyExists(err) {
+			return err
+		}
 	}
 	if err = s.client.Create(ctx, iamWebhookSecret); err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			s.logger.Info().Msg("Secret github already exists, skipping creation")
-		} else {
+		if !k8serrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
 	if err = s.client.Create(ctx, domain_certificate_ca); err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			s.logger.Info().Msg("Secret github already exists, skipping creation")
-		} else {
+		if !k8serrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
