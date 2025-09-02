@@ -81,14 +81,6 @@ tasks:
       # GH_TOKEN: "{{.WORKFLOW_GITHUB_PAT}}"
     cmds:
       - |
-        echo ${#GITHUB_TOKEN}
-        docker logout ghcr.io
-        
-        echo $GITHUB_TOKEN | docker login ghcr.io -u platform-mesh --password-stdin
-        echo 'doing: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22'
-        docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
-
-      - |
         if [ "$GITHUB_WORKFLOW" = "ci" ]; then
           echo "Running tests in Github Actions"
           echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
