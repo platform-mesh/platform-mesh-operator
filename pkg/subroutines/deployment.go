@@ -197,7 +197,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	caCrt, ok := webhookCertSecret.Data["tls.crt"]
+	caCrt, ok := webhookCertSecret.Data["ca.crt"]
 	if !ok || len(caCrt) == 0 {
 		err := fmt.Errorf("ca.crt not found or empty in secret %s/%s", inst.Namespace, caSecretName)
 		log.Error().Err(err).Msg("ca.crt missing from webhook cert secret")
@@ -318,19 +318,6 @@ func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Con
 	// Create Issuer
 	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
 	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.client, map[string]string{})
-	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	// Create Certificate
-	caCertPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-cert.yaml", r.workspaceDirectory)
-	err = r.ApplyManifestFromFileWithMergedValues(ctx, caCertPath, r.client, map[string]string{})
-	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	issuerPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-issuer.yaml", r.workspaceDirectory)
-	err = r.ApplyManifestFromFileWithMergedValues(ctx, issuerPath, r.client, map[string]string{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}

@@ -6,6 +6,6 @@ metadata:
 spec:
   secretName: rebac-authz-webhook-webhook-cert
   issuerRef:
-    name: rebac-authz-webhook-webhook-issuer
+    name: rebac-authz-webhook-issuer
   dnsNames:
   - rebac-authz-webhook.platform-mesh-system.svc.cluster.local

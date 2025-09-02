@@ -1,8 +1,0 @@
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: rebac-authz-webhook-issuer
-  namespace: platform-mesh-system
-spec:
-  ca:
-    secretName: rebac-authz-webhook-webhook-ca
