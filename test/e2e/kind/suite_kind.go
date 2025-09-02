@@ -16,6 +16,7 @@ import (
 	"github.com/platform-mesh/golang-commons/context/keys"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
@@ -126,7 +127,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	}
 
 	if clusterExists {
-		return errors.New("Kind cluster already exists")
+		s.logger.Info().Msg("Kind cluster already exists, skipping creation")
 	} else {
 		s.logger.Info().Msg("Creating Kind cluster...")
 		if out, err := runCommand("docker", "system", "prune", "-f"); err != nil {
@@ -197,8 +198,7 @@ func (s *KindTestSuite) createCerts() ([]byte, error) {
 	// mkcert
 	_, err := runCommand("mkdir", "-p", "certs")
 	s.Require().NoError(err, "Error creating certs directory")
-	_, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "*.dev.local", "*.portal.dev.local")
-	if err != nil {
+	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "*.dev.local", "*.portal.dev.local"); err != nil {
 		return nil, err
 	}
 	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
@@ -309,7 +309,6 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
-
 	iamWebhookSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rebac-authz-webhook-webhook-ca",
@@ -322,24 +321,60 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
-
+	domain_certificate_ca := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "domain-certificate-ca",
+			Namespace: "platform-mesh-system",
+		},
+		Data: map[string][]byte{
+			"tls.crt": caRootBytes,
+		},
+		Type: corev1.SecretTypeTLS,
+	}
 	if err = s.client.Create(ctx, secretGithub); err != nil {
-		return err
+		if k8serrors.IsAlreadyExists(err) {
+			s.logger.Info().Msg("Secret github already exists, skipping creation")
+		} else {
+			return err
+		}
 	}
 	if err = s.client.Create(ctx, secretGithub2); err != nil {
-		return err
+		if k8serrors.IsAlreadyExists(err) {
+			s.logger.Info().Msg("Secret github already exists, skipping creation")
+		} else {
+			return err
+		}
 	}
 	if err = s.client.Create(ctx, secretOcm); err != nil {
-		return err
+		if k8serrors.IsAlreadyExists(err) {
+			s.logger.Info().Msg("Secret github already exists, skipping creation")
+		} else {
+			return err
+		}
 	}
 	if err = s.client.Create(ctx, secretKeycloakAdmin); err != nil {
-		return err
+		if k8serrors.IsAlreadyExists(err) {
+			s.logger.Info().Msg("Secret github already exists, skipping creation")
+		} else {
+			return err
+		}
 	}
 	if err = s.client.Create(ctx, domainCertSecret); err != nil {
 		return err
 	}
 	if err = s.client.Create(ctx, iamWebhookSecret); err != nil {
-		return err
+		if k8serrors.IsAlreadyExists(err) {
+			s.logger.Info().Msg("Secret github already exists, skipping creation")
+		} else {
+			return err
+		}
+	}
+	if err = s.client.Create(ctx, domain_certificate_ca); err != nil {
+		if k8serrors.IsAlreadyExists(err) {
+			s.logger.Info().Msg("Secret github already exists, skipping creation")
+		} else {
+			return err
+		}
 	}
 	return nil
 }
