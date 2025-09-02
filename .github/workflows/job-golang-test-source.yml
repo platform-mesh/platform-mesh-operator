@@ -50,12 +50,12 @@ jobs:
          app-id: "1415820"
          private-key: ${{ secrets.PM_PUBLISHER_PRIVATE_KEY }}
          owner: ${{ github.repository_owner }}
-        #  repositories: |
-        #    security-operator
-      - name: export publisher token to env
-        run: |
-             echo "WORKFLOW_GITHUB_PAT=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
-             echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: platform-mesh-publisher
+          password: ${{ steps.generate-token.outputs.token }}
       - name: debug token
         run: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
 
