@@ -54,8 +54,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: platform-mesh-publisher
-          password: ${{ steps.generate-token.outputs.token }}
+          username: gha
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: debug token
         run: docker pull ghcr.io/platform-mesh/security-operator:v0.0.22
 
