@@ -166,7 +166,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
-	utilruntime.Must(kyvernov1.AddToScheme(s.scheme))
+	utilruntime.Must(kyvernov1.Install(s.scheme))
 
 	gvk := fluxcdv2.GroupVersion.WithKind("HelmRelease")
 	s.logger.Info().Msgf("Registering GVK: %s", gvk.String())
@@ -610,7 +610,7 @@ func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 		return true
 	}, 180*time.Second, 2*time.Second, "policies not ready")
 
-	if res == false {
+	if !res {
 		return fmt.Errorf("policies are not ready")
 	}
 
