@@ -88,6 +88,7 @@ tasks:
                 kubectl get pods -A -o wide
                 kubectl get helmreleases -A
                 kubectl describe ocirepositories -A
+                kubectl describe clusterpolicies -A
                 kubectl get deployments -A
                 kubectl get svc -A
                 kubectl get secrets -A
