@@ -83,17 +83,27 @@ tasks:
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
               echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
-              GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 5m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 3m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo $GH_TOKEN
-                kubectl get pods -A -o wide
-                kubectl get helmreleases -A
+                echo "Describing pods"
+                kubectl describe pods -A -o wide
+                echo "Describing HelmReleases"
+                kubectl describe helmreleases -A
+                echo "Describing OCIRepositories"
                 kubectl describe ocirepositories -A
+                echo "Describing ClusterPolicies"
                 kubectl describe clusterpolicies -A
-                kubectl get deployments -A
-                kubectl get svc -A
-                kubectl get secrets -A
-                kubectl get crds -A
-                kubectl get nodes -o wide
+                echo "Describing Deployments"
+                kubectl describe deployments -A
+                echo "Describing Services"
+                kubectl describe svc -A
+                echo "Describing Secrets"
+                kubectl describe secrets -A
+                echo "Describing CRDs"
+                kubectl describe crds -A
+                echo "Describing Nodes"
+                kubectl describe nodes
+                kubectl get secret github -o yaml
                 exit 1
               }
             else
