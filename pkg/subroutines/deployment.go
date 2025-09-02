@@ -96,6 +96,12 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
+	_, oErr := r.manageAuthorizationWebhookSecrets(ctx, inst)
+	if oErr != nil {
+		log.Info().Msg("Failed to manage authorization webhook secrets")
+		return ctrl.Result{}, oErr
+	}
+
 	// Wait for istiod release to be ready before continuing
 	rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
 	if err != nil {
@@ -149,8 +155,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
-
-	return r.manageAuthorizationWebhookSecrets(ctx, inst)
+	return ctrl.Result{}, nil
 }
 
 func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) errors.OperatorError {
