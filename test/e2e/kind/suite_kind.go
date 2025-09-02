@@ -486,7 +486,8 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	if !ok {
 		return errors.New("kyverno deployments not ready")
 	}
-	s.logger.Info().Msg("kyverno HelmRelease applied")
+
+	time.Sleep(25 * time.Second)
 
 	return ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/istio-gateway/istio-gateway.yaml", s.client, make(map[string]string))
 }
