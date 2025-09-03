@@ -1,7 +1,7 @@
 apiVersion: tenancy.kcp.io/v1alpha1
 kind: Workspace
 metadata:
-  name: openmfp-system
+  name: platform-mesh-system
 spec:
   type:
     name: universal

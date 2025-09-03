@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"github.com/go-logr/logr"
-	openmfpconfig "github.com/openmfp/golang-commons/config"
-	"github.com/openmfp/golang-commons/logger"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -11,22 +11,22 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 var (
 	scheme      = runtime.NewScheme()
 	setupLog    logr.Logger
 	operatorCfg config.OperatorConfig
-	defaultCfg  *openmfpconfig.CommonServiceConfig
+	defaultCfg  *pmconfig.CommonServiceConfig
 	v           *viper.Viper
 	log         *logger.Logger
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "openmfp-operator",
-	Short: "operator to setup OpenMFP",
+	Use:   "platform-mesh-operator",
+	Short: "operator to setup Platform Mesh",
 }
 
 func init() {
@@ -38,12 +38,12 @@ func init() {
 	rootCmd.AddCommand(operatorCmd)
 
 	var err error
-	v, defaultCfg, err = openmfpconfig.NewDefaultConfig(rootCmd)
+	v, defaultCfg, err = pmconfig.NewDefaultConfig(rootCmd)
 	if err != nil {
 		panic(err)
 	}
 
-	err = openmfpconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
+	err = pmconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
 	if err != nil {
 		panic(err)
 	}

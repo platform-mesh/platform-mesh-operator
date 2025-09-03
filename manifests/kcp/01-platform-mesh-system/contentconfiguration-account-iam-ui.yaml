@@ -1,0 +1,65 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    ui.platform-mesh.io/entity: account
+  name: account-iam-ui
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "iam-ui",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "members",
+                "label": "{{"{{"}}members{{"}}"}}",
+                "icon": "company-view",
+                "entityType": "main.account",
+                "order": 800,
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/:accountId/members",
+                "context": {
+                  "accountId": ":accountId",
+                  "entityType": "account"
+                },
+                 "loadingIndicator": {
+                  "enabled": false
+                }
+              },
+              {
+                "pathSegment": "add-members",
+                "entityType": "main.account",
+                "label": "{{"{{"}}members{{"}}"}}",
+                "hideFromNav": true,
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/:accountId/add-members",
+                "context": {
+                  "accountId": ":accountId",
+                  "entityType": "account"
+                }
+              }
+            ],
+            "texts": [
+              {
+                "locale": "",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "en",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "de",
+                "textDictionary": {
+                  "members": "Mitglieder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

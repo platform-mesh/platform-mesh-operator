@@ -18,49 +18,51 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
-	openmfpconfig "github.com/openmfp/golang-commons/config"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/logger"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
+	"github.com/platform-mesh/golang-commons/logger"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 var (
-	openmfpReconcilerName = "OpenMFPReconciler"
-	operatorName          = "openmfp-operator"
+	pmReconcilerName = "PlatformMeshReconciler"
+	operatorName     = "platform-mesh-operator"
 )
 
-// OpenMFPReconciler reconciles a OpenMFP object
-type OpenMFPReconciler struct {
-	lifecycle *lifecycle.LifecycleManager
+// PlatformMeshReconciler reconciles a PlatformMesh object
+type PlatformMeshReconciler struct {
+	lifecycle *controllerruntime.LifecycleManager
 }
 
-// +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=core.openmfp.org,resources=openmfps/finalizers,verbs=update
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the OpenMFP object against the actual cluster state, and then
+// the PlatformMesh object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
-func (r *OpenMFPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.OpenMFP{})
+func (r *PlatformMeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.PlatformMesh{})
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfig.CommonServiceConfig,
+func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.CommonServiceConfig,
 	log *logger.Logger, eventPredicates ...predicate.Predicate) error {
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, openmfpReconcilerName, &corev1alpha1.OpenMFP{},
+	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, pmReconcilerName, &corev1alpha1.PlatformMesh{},
 		cfg.DebugLabelValue, log, eventPredicates...)
 	if err != nil {
 		return err
@@ -68,13 +70,15 @@ func (r *OpenMFPReconciler) SetupWithManager(mgr ctrl.Manager, cfg *openmfpconfi
 	return builder.Complete(r)
 }
 
-func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *openmfpconfig.CommonServiceConfig, dir string) *OpenMFPReconciler {
-	kcpUrl := "https://kcp-front-proxy.openmfp-system:8443"
-	if cfg.KCPUrl != "" {
-		kcpUrl = cfg.KCPUrl
+func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) *PlatformMeshReconciler {
+	//FIXME swith back to the commented out variation when the front-proxy certificate accepts it
+	//kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
+	kcpUrl := fmt.Sprintf("https://%s-front-proxy:%s", cfg.KCP.FrontProxyName, cfg.KCP.FrontProxyPort)
+	if cfg.KCP.Url != "" {
+		kcpUrl = cfg.KCP.Url
 	}
 
-	var subs []lifecycle.Subroutine
+	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
 		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), commonCfg, cfg))
 	}
@@ -84,8 +88,8 @@ func NewOpenmfpReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Oper
 	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))
 	}
-	return &OpenMFPReconciler{
-		lifecycle: lifecycle.NewLifecycleManager(log, operatorName,
-			openmfpReconcilerName, mgr.GetClient(), subs).WithConditionManagement(),
+	return &PlatformMeshReconciler{
+		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
+			pmReconcilerName, mgr.GetClient(), log).WithConditionManagement(),
 	}
 }

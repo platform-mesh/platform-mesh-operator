@@ -1,0 +1,50 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  generation: 1
+  labels:
+    ui.platform-mesh.io/entity: main
+  name: main-home
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "overview",
+        "creationTimestamp": "2022-05-17T11:37:17Z",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "entityType": "global",
+                "pathSegment": "home",
+                "hideFromNav": false,
+                "order": 100,
+                "label": "Home",
+                "icon": "account",
+                "defineEntity": {
+                  "id": "main"
+                },
+                "children": [
+                  {
+                    "pathSegment": "overview",
+                    "label": "Overview",
+                    "icon": "home",
+                    "defineEntity": {
+                      "id": "overview"
+                    },
+                    "compound": {
+                      "renderer": {
+                        "use": "grid",
+                        "config": {
+                          "columns": "1fr 1fr 1fr 1fr"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

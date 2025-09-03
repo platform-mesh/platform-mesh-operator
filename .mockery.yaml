@@ -1,7 +1,7 @@
 with-expecter: true
 packages:
   # internal
-  github.com/openmfp/openmfp-operator/pkg/subroutines:
+  github.com/platform-mesh/platform-mesh-operator/pkg/subroutines:
     config:
       dir: pkg/subroutines/mocks
       outpkg: mocks

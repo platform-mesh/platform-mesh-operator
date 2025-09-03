@@ -14,7 +14,7 @@ import (
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/openmfp/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/errors"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -28,7 +28,7 @@ import (
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 type KcpHelper interface {
@@ -111,7 +111,7 @@ func ConvertToUnstructured(webhook admissionv1.MutatingWebhookConfiguration) (*u
 
 func GetWorkspaceDirs(dir string) []string {
 	workspaces := []string{}
-	// find all subdirectories named "dd-name", e.g. "01-openmfp-system"
+	// find all subdirectories named "dd-name", e.g. "01-platform-mesh-system"
 	dirs, err := os.ReadDir(dir)
 	if err != nil {
 		// TODO: print error
@@ -242,7 +242,7 @@ func MergeValuesAndServices(values, services apiextensionsv1.JSON) (apiextension
 
 }
 
-func TemplateVars(ctx context.Context, inst *v1alpha1.OpenMFP, cl client.Client) (apiextensionsv1.JSON, error) {
+func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
 	port := 8443
 	baseDomain := "portal.dev.local"
 	protocol := "https"

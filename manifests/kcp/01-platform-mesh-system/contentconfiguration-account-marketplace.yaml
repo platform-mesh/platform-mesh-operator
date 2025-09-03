@@ -1,0 +1,62 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    ui.platform-mesh.io/entity: account
+  name: account-marketplace
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "marketplace",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "marketplace",
+                "entityType": "main.account",
+                "order": 700,
+                "label": "{{"{{"}}marketplace{{"}}"}}",
+                "icon": "retail-store",
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:accountId/marketplace"
+              },
+              {
+                "pathSegment": "provider",
+                "entityType": "main.account",
+                "hideFromNav": true,
+                "children": [
+                  {
+                    "pathSegment": ":providerName",
+                    "hideFromNav": true,
+                    "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/provider/:providerName",
+                    "context": {
+                      "providerName": ":providerName"
+                    }
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              {
+                "locale": "",
+                "textDictionary": {
+                  "marketplace": "Marketplace"
+                }
+              },
+              {
+                "locale": "en",
+                "textDictionary": {
+                  "marketplace": "Marketplace"
+                }
+              },
+              {
+                "locale": "de",
+                "textDictionary": {
+                  "marketplace": "Marktplatz"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

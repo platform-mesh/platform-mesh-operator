@@ -33,7 +33,7 @@ on:
       repoVersionUpdate:
         required: false
         type: string
-        default: 'openmfp/helm-charts-priv'
+        default: 'platform-mesh/helm-charts-priv'
       doubleTagging:
         required: false
         type: boolean
@@ -78,22 +78,22 @@ on:
       repoVersionUpdate:
         required: false
         type: string
-        default: 'openmfp/helm-charts-priv'
+        default: 'platform-mesh/helm-charts'
 
 
 jobs:
   auto-labeler:
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
-    uses: openmfp/gha/.github/workflows/job-auto-labeler.yml@main
+    uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
     secrets: inherit
 
   createVersion:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: openmfp/gha/.github/workflows/job-create-version.yml@main
+    uses: platform-mesh/.github/.github/workflows/job-create-version.yml@main
     secrets: inherit
 
   lint:
-    uses: openmfp/gha/.github/workflows/job-golang-lint.yml@main
+    uses: platform-mesh/.github/.github/workflows/job-golang-lint.yml@main
     with:
       useTask: ${{ inputs.useTask }}
 
@@ -110,7 +110,7 @@ jobs:
 
   dockerBuild:
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
-    uses: openmfp/gha/.github/workflows/job-docker-build-push.yml@main
+    uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
       release_branch: ${{ inputs.release_branch }}
@@ -120,7 +120,7 @@ jobs:
   dockerBuildAndPush:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     needs: [createVersion,lint,testSource]
-    uses: openmfp/gha/.github/workflows/job-docker-build-push.yml@main
+    uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
       version: ${{ needs.createVersion.outputs.version }}
@@ -131,7 +131,7 @@ jobs:
   updateVersion:
     needs: [createVersion, dockerBuildAndPush]
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: openmfp/gha/.github/workflows/job-chart-version-update.yml@main
+    uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@main
     secrets: inherit
     with:
       appVersion: ${{ needs.createVersion.outputs.version }}

@@ -1,0 +1,60 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: git-repos
+spec:
+  mutateExistingOnPolicyUpdate: true
+  rules:
+    - name: git-repos-generate
+      match:
+        any:
+          - resources:
+              kinds:
+                - "delivery.ocm.software/v1alpha1/Resource"
+              namespaces:
+                - default
+              selector:
+                matchLabels:
+                  repo: git
+                  artifact: chart
+      generate:
+        # Only used for initial creation, a mutation rule will be used for updates
+        synchronize: false
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: GitRepository
+        name: "{{request.object.metadata.name}}"
+        namespace: "{{request.object.metadata.namespace}}"
+        data:
+          spec:
+            interval: 1m
+            ref:
+              commit: abcd
+            timeout: 60s
+            url: https://local-url-will-be-here-soon
+    - name: git-repos-mutate
+      skipBackgroundRequests: false
+      match:
+        any:
+          - resources:
+              kinds:
+                - "delivery.ocm.software/v1alpha1/Resource/status"
+              namespaces:
+                - default
+              selector:
+                matchLabels:
+                  repo: git
+                  artifact: chart
+      mutate:
+        targets:
+          - apiVersion: source.toolkit.fluxcd.io/v1
+            kind: GitRepository
+            name: "{{request.object.metadata.name}}"
+            namespace: "{{request.object.metadata.namespace}}"
+        patchStrategicMerge:
+          spec:
+            ref:
+              commit: "{{ request.object.status.resource.access.commit }}"
+            url: "{{ request.object.status.resource.access.repoUrl }}"
+
+
+

@@ -5,17 +5,20 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/errors"
-	"github.com/openmfp/golang-commons/logger"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -23,7 +26,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -43,7 +47,7 @@ type KcpsetupSubroutine struct {
 
 const (
 	KcpsetupSubroutineName      = "KcpsetupSubroutine"
-	KcpsetupSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
+	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
 
 func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
@@ -62,9 +66,9 @@ func (r *KcpsetupSubroutine) GetName() string {
 }
 
 func (r *KcpsetupSubroutine) Finalize(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
+	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
-	instance := runtimeObj.(*corev1alpha1.OpenMFP)
+	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	_ = instance
 
 	return ctrl.Result{}, nil // TODO: Implement
@@ -74,26 +78,33 @@ func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
-func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	inst := runtimeObj.(*corev1alpha1.OpenMFP)
-	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing OpenMFP resource")
+	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
+	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing Platform Mesh resource")
 
-	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get KCP Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	// Wait for root shard to be ready
+	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	if err != nil || !matchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	if !isReady(rel) {
-		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+	if err != nil || !matchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(r.client, r.kcpUrl, "kcp-cluster-admin-client-cert")
+	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -109,7 +120,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 	// update workspace status
 	inst.Status.KcpWorkspaces = []corev1alpha1.KcpWorkspace{
 		{
-			Name:  "root:openmfp-system",
+			Name:  "root:platform-mesh-system",
 			Phase: "Ready",
 		},
 		{
@@ -124,8 +135,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj lifecycle.R
 
 }
 
-// isReady checks the Ready Condition if it has status true
-func isReady(release *unstructured.Unstructured) bool {
+// matchesCondition checks the Ready Condition if it has status true
+func matchesCondition(release *unstructured.Unstructured, conditionType string) bool {
 	if release == nil {
 		return false
 	}
@@ -136,7 +147,7 @@ func isReady(release *unstructured.Unstructured) bool {
 
 	for _, condition := range conditions {
 		c := condition.(map[string]interface{})
-		if c["type"] == "Ready" && c["status"] == "True" {
+		if c["type"] == conditionType && c["status"] == "True" {
 			return true
 		}
 	}
@@ -144,31 +155,33 @@ func isReady(release *unstructured.Unstructured) bool {
 	return false
 }
 
-func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*rest.Config, error) {
-	secret, err := GetSecret(client, secretName, "openmfp-system")
+func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	secretName := operatorCfg.KCP.ClusterAdminSecretName
+	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/openmfp-system: %w", secretName, err)
+		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/openmfp-system is nil", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/openmfp-system has no Data", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
 	}
 
 	caData, ok := secret.Data["ca.crt"]
 	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"ca.crt\"", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
 	}
 
 	tlsCrt, ok := secret.Data["tls.crt"]
 	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"tls.crt\"", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
 	}
 
 	tlsKey, ok := secret.Data["tls.key"]
 	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/openmfp-system missing or empty key \"tls.key\"", secretName)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
 	}
 
 	cfg := clientcmdapi.NewConfig()
@@ -194,7 +207,7 @@ func buildKubeconfig(client client.Client, kcpUrl string, secretName string) (*r
 	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 
-func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.OpenMFP) error {
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
@@ -231,7 +244,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 
 }
 
-func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.OpenMFP) string {
+func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
 	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
 		return "portal.dev.local"
 	}
@@ -346,7 +359,7 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	kcpPath string,
 	config *rest.Config,
 	templateData map[string]string,
-	inst *corev1alpha1.OpenMFP,
+	inst *corev1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -362,10 +375,11 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 	}
 	var errApplyManifests error = nil
 	for _, file := range files {
-		path := dir + "/" + file
+		log.Debug().Str("file", file).Msg("Applying file")
+		path := filepath.Join(dir, file)
 		err := applyManifestFromFile(ctx, path, k8sClient, templateData, kcpPath, inst)
 		if err != nil {
-			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continueing to next file in directory")
+			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continuing to next file in directory")
 			errApplyManifests = err
 		}
 	}
@@ -421,7 +435,7 @@ func (r *KcpsetupSubroutine) waitForWorkspace(
 
 func applyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.OpenMFP,
+	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -464,7 +478,7 @@ func applyManifestFromFile(
 	}
 
 	if apierrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}
@@ -533,7 +547,7 @@ func needsPatch(existingObj, obj unstructured.Unstructured, log *logger.Logger) 
 	return false
 }
 
-func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.OpenMFP) []corev1alpha1.DefaultAPIBindingConfiguration {
+func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.PlatformMesh) []corev1alpha1.DefaultAPIBindingConfiguration {
 	if inst.Spec.Kcp.ExtraDefaultAPIBindings == nil {
 		return nil
 	}

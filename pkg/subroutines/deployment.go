@@ -4,40 +4,41 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
-	openmfpconfig "github.com/openmfp/golang-commons/config"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/errors"
-	"github.com/openmfp/golang-commons/logger"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog/log"
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
 
 type DeploymentSubroutine struct {
 	client             client.Client
-	cfg                *openmfpconfig.CommonServiceConfig
+	cfg                *pmconfig.CommonServiceConfig
 	workspaceDirectory string
 }
 
-func NewDeploymentSubroutine(client client.Client, cfg *openmfpconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
+func NewDeploymentSubroutine(client client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
 	sub := &DeploymentSubroutine{
 		cfg:                cfg,
 		client:             client,
-		workspaceDirectory: operatorCfg.WorkspaceDir + "/manifests/k8s/",
+		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/"),
 	}
 
 	return sub
@@ -47,7 +48,7 @@ func (r *DeploymentSubroutine) GetName() string {
 	return DeploymentSubroutineName
 }
 
-func (r *DeploymentSubroutine) Finalize(_ context.Context, _ lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	return ctrl.Result{}, nil
 }
 
@@ -55,9 +56,10 @@ func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{}
 }
 
-func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	inst := runtimeObj.(*v1alpha1.OpenMFP)
+func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+	inst := runtimeObj.(*v1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Create DeploymentComponents Version
 	values, err := TemplateVars(ctx, inst, r.client)
@@ -76,7 +78,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	log.Debug().Msgf("Merged values: %s", string(mergedValues.Raw))
 
 	// apply repository
-	path := r.workspaceDirectory + "openmfp-operator-components/repository.yaml"
+	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/repository.yaml")
 	tplValues := map[string]string{
 		"chartVersion": inst.Spec.ChartVersion,
 	}
@@ -87,12 +89,18 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	log.Debug().Str("path", path).Msgf("Applied repository path: %s", path)
 
 	// apply release and merge values from spec.values
-	path = r.workspaceDirectory + "openmfp-operator-components/release.yaml"
+	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/release.yaml")
 	err = applyReleaseWithValues(ctx, path, r.client, mergedValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
+
+	_, oErr := r.manageAuthorizationWebhookSecrets(ctx, inst)
+	if oErr != nil {
+		log.Info().Msg("Failed to manage authorization webhook secrets")
+		return ctrl.Result{}, oErr
+	}
 
 	// Wait for istiod release to be ready before continuing
 	rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
@@ -101,7 +109,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
-	if !isReady(rel) {
+	if !matchesCondition(rel, "Ready") {
 		log.Info().Msg("istio-istiod Release is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -111,13 +119,14 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	// to communicate via the proxy with KCP. Once Istio is up and running the operator will be restarted to ensure
 	// this communication will work
 	if !r.cfg.IsLocal {
-		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "openmfp-operator", "openmfp-system")
+		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 		// When running the operator locally there will never be a proxy
 		if !r.cfg.IsLocal && !hasProxy {
+			log.Info().Msg("Restarting operator to ensure istio-proxy is injected")
 			err := r.client.Delete(ctx, pod)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
@@ -129,45 +138,137 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj lifecycle
 	}
 
 	// Wait for kcp release to be ready before continuing
-	rel, err = getHelmRelease(ctx, r.client, "kcp", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get KCP Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	if !isReady(rel) {
-		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	if err != nil || !matchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	// Create IAM Webhook secret
-	result, operatorError := r.createIAMAuthzWebhookSecret(ctx, inst)
-	return result, operatorError
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+	if err != nil || !matchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	return ctrl.Result{}, nil
 }
 
-func (r *DeploymentSubroutine) createIAMAuthzWebhookSecret(ctx context.Context, inst *v1alpha1.OpenMFP) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx)
-	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-authz-webhook-cert.yaml", r.workspaceDirectory), map[string]string{}, log)
-	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
+	_, err := GetSecret(r.client, webhookSecret, inst.Namespace)
+	if err != nil && !kerrors.IsNotFound(err) {
+		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
+		return errors.NewOperatorError(err, true, true)
+	}
+	if err == nil {
+		return nil
 	}
 
-	// create system masters secret
-	err = r.client.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	// Continue to create the secret
+	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-auth-webhook/kcp-webhook-secret.yaml", r.workspaceDirectory), map[string]string{}, log)
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return errors.NewOperatorError(err, true, true)
 	}
+	obj.SetNamespace(inst.Namespace)
 
-	// Select Secret
-	secret := &corev1.Secret{}
-	err = r.client.Get(ctx, types.NamespacedName{Name: "kcp-system-masters-client-cert-rebac-authz-webhook", Namespace: "openmfp-system"}, secret)
+	// create system masters secret (idempotent)
+	if err := r.client.Create(ctx, &obj); err != nil {
+		if kerrors.IsAlreadyExists(err) {
+			log.Info().Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("KCP webhook secret already exists, skipping create")
+			return nil
+		}
+		return errors.NewOperatorError(err, true, true)
+	}
+	return nil
+}
 
+func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
+	// Retrieve the ca.crt from the rebac-authz-webhook-cert secret
+	caSecretName := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretCAName
+	webhookCertSecret, err := GetSecret(r.client, caSecretName, inst.Namespace)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
-			log.Info().Msg("IAM secret not found, waiting for it to be created")
+			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
+		log.Error().Err(err).Str("secret", caSecretName).Str("namespace", inst.Namespace).Msg("Failed to get webhook cert secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+
+	caCrt, ok := webhookCertSecret.Data["ca.crt"]
+	if !ok || len(caCrt) == 0 {
+		err := fmt.Errorf("ca.crt not found or empty in secret %s/%s", inst.Namespace, caSecretName)
+		log.Error().Err(err).Msg("ca.crt missing from webhook cert secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Get the kcp-webhook-secret
+	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
+	kcpWebhookSecret, err := GetSecret(r.client, webhookSecret, inst.Namespace)
+	if err != nil {
+		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Get the kubeconfig from the secret
+	kubeconfigData, ok := kcpWebhookSecret.Data["kubeconfig"]
+	if !ok || len(kubeconfigData) == 0 {
+		err := fmt.Errorf("kubeconfig not found or empty in secret %s/%s", inst.Namespace, webhookSecret)
+		log.Error().Err(err).Msg("kubeconfig missing from kcp webhook secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Parse the kubeconfig using clientcmd utilities
+	kubeconfig, err := clientcmd.Load(kubeconfigData)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Update the certificate-authority-data in all clusters
+	updated := false
+	for clusterName, cluster := range kubeconfig.Clusters {
+		if cluster != nil {
+			// Update the certificate-authority-data with the new ca.crt
+			cluster.CertificateAuthorityData = caCrt
+			kubeconfig.Clusters[clusterName] = cluster
+			updated = true
+			log.Debug().Str("cluster", clusterName).Msg("Updated certificate-authority-data in cluster")
+		}
+	}
+
+	if !updated {
+		log.Info().Msg("No clusters found in kubeconfig to update")
+		return ctrl.Result{}, nil
+	}
+
+	// Marshal the updated kubeconfig back to YAML using clientcmd
+	updatedKubeconfigData, err := clientcmd.Write(*kubeconfig)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to write updated kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Update the secret with the new kubeconfig
+	kcpWebhookSecret.Data["kubeconfig"] = updatedKubeconfigData
+
+	err = r.client.Update(ctx, kcpWebhookSecret)
+	if err != nil {
+		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	log.Info().Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Successfully updated kcp webhook secret with new certificate-authority-data")
 
 	return ctrl.Result{}, nil
 }
@@ -195,22 +296,55 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 		Namespace:     namespace,
 	})
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to list pods with label selector: " + labelSelector)
 		return false, nil, err
 	}
 
 	if len(pods.Items) > 0 {
 		pod := pods.Items[0]
-		containers := pod.Object["spec"].(map[string]interface{})["containers"].([]interface{})
-		for _, container := range containers {
-			containerMap := container.(map[string]interface{})
-			if containerMap["name"] == "istio-proxy" {
-				return true, &pod, nil
+		spec := pod.Object["spec"].(map[string]interface{})
+		if initContainersInt, ok := spec["initContainers"]; ok {
+			initContainers := initContainersInt.([]interface{})
+			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
+			for _, container := range initContainers {
+				containerMap := container.(map[string]interface{})
+				log.Debug().Msgf("Container name: %s", containerMap["name"].(string))
+				if containerMap["name"] == "istio-proxy" {
+					log.Info().Msgf("Found Istio proxy container: %s", containerMap["image"])
+					return true, &pod, nil
+				}
 			}
 		}
+		log.Info().Msgf("Istio proxy containers not found")
 		return false, &pod, nil
 	}
 
 	return false, nil, errors.New("pod not found")
+}
+
+func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+	// Create Issuer
+	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
+	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.client, map[string]string{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// Create Certificate
+	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.client, map[string]string{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// Prepare KCP Webhook secret
+	oErr := r.createKCPWebhookSecret(ctx, inst)
+	if oErr != nil {
+		return ctrl.Result{}, oErr
+	}
+
+	// Update KCP Webhook secret with the latest CA bundle
+	return r.udpateKcpWebhookSecret(ctx, inst)
 }
 
 func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]string) error {
@@ -221,7 +355,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
@@ -237,7 +371,7 @@ func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.C
 	}
 	obj.Object["spec"].(map[string]interface{})["values"] = values
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("openmfp-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}

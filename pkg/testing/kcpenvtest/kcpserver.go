@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/logger"
 
-	"github.com/openmfp/openmfp-operator/pkg/testing/kcpenvtest/process"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/testing/kcpenvtest/process"
 )
 
 type KCPServer struct {

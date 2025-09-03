@@ -3,13 +3,13 @@ package subroutines
 import (
 	"context"
 
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/logger"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 // these are needed to allow testing private functions in the subroutines_test namespace
@@ -22,7 +22,7 @@ func (r *KcpsetupSubroutine) GetCABundleInventory(ctx context.Context) (map[stri
 	return r.getCABundleInventory(ctx)
 }
 
-func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.OpenMFP) error {
+func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
 	return r.createKcpResources(ctx, config, dir, inst)
 }
 
@@ -31,7 +31,7 @@ func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, conf
 }
 
 func (r *KcpsetupSubroutine) ApplyDirStructure(
-	ctx context.Context, dir string, kcpPath string, config *rest.Config, inventory map[string]string, inst *corev1alpha1.OpenMFP,
+	ctx context.Context, dir string, kcpPath string, config *rest.Config, inventory map[string]string, inst *corev1alpha1.PlatformMesh,
 ) error {
 	return r.applyDirStructure(ctx, dir, kcpPath, config, inventory, inst)
 }
@@ -47,7 +47,7 @@ func (r *KcpsetupSubroutine) ApplyManifestFromFile(
 	ctx context.Context,
 	path string,
 	k8sClient client.Client,
-	templateData map[string]string, wsPath string, inst *corev1alpha1.OpenMFP,
+	templateData map[string]string, wsPath string, inst *corev1alpha1.PlatformMesh,
 ) error {
 	return applyManifestFromFile(ctx, path, k8sClient, templateData, wsPath, inst)
 }

@@ -1,38 +1,38 @@
 package subroutines
 
-import corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+import corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 
 var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"
-var AccountOperatorWebhookSecretNamespace = "openmfp-system"
+var AccountOperatorWebhookSecretNamespace = "platform-mesh-system"
 
 var DefaultCASecretKey = "ca.crt"
 var AccountOperatorMutatingWebhookName = "account-operator.webhooks.core.platform-mesh.io"
 var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core.platform-mesh.io"
-var AccountOperatorWorkspace = "root:openmfp-system"
+var AccountOperatorWorkspace = "root:platform-mesh-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		EndpointSliceName: "core.platform-mesh.io",
-		Path:              "root:openmfp-system",
+		Path:              "root:platform-mesh-system",
 		Secret:            "account-operator-kubeconfig",
 	},
 	{
 		EndpointSliceName: "core.platform-mesh.io",
-		Path:              "root:openmfp-system",
+		Path:              "root:platform-mesh-system",
 		Secret:            "rebac-authz-webhook-kubeconfig",
 	},
 	{
 		EndpointSliceName: "core.platform-mesh.io",
-		Path:              "root:openmfp-system",
+		Path:              "root:platform-mesh-system",
 		Secret:            "security-operator-kubeconfig",
 	},
 	{
 		EndpointSliceName: "core.platform-mesh.io",
-		Path:              "root:openmfp-system",
+		Path:              "root:platform-mesh-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 	},
 	{
 		EndpointSliceName: "core.platform-mesh.io",
-		Path:              "root:openmfp-system",
+		Path:              "root:platform-mesh-system",
 		Secret:            "extension-manager-operator-kubeconfig",
 	},
 	{

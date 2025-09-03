@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/openmfp/openmfp-operator/cmd"
+	"github.com/platform-mesh/platform-mesh-operator/cmd"
 )
 
 func main() {

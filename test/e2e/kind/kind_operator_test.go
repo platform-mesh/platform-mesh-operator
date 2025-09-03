@@ -9,7 +9,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 func TestKindSuite(t *testing.T) {
@@ -19,19 +19,19 @@ func TestKindSuite(t *testing.T) {
 func (s *KindTestSuite) TestResourceReady() {
 	ctx := context.TODO()
 	s.Eventually(func() bool {
-		openmfp := corev1alpha1.OpenMFP{}
+		pm := corev1alpha1.PlatformMesh{}
 		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      "openmfp",
-			Namespace: "openmfp-system",
-		}, &openmfp)
+			Name:      "platform-mesh",
+			Namespace: "platform-mesh-system",
+		}, &pm)
 		if err != nil {
-			s.logger.Warn().Err(err).Msg("Failed to get OpenMFP resource")
+			s.logger.Warn().Err(err).Msg("Failed to get Platform Mesh resource")
 			return false
 		}
 
-		for _, condition := range openmfp.Status.Conditions {
+		for _, condition := range pm.Status.Conditions {
 			if condition.Type == "Ready" && condition.Status == "True" {
-				s.logger.Info().Msg("OpenMFP resource is ready")
+				s.logger.Info().Msg("PlatformMesh resource is ready")
 				return true
 			}
 		}

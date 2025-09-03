@@ -5,9 +5,9 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps
+  - platformmeshes
   verbs:
   - create
   - delete
@@ -17,15 +17,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps/finalizers
+  - platformmeshes/finalizers
   verbs:
   - update
 - apiGroups:
-  - core.openmfp.org
+  - core.platform-mesh.io
   resources:
-  - openmfps/status
+  - platformmeshes/status
   verbs:
   - get
   - patch

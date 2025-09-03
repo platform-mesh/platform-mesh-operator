@@ -12,8 +12,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	"github.com/openmfp/golang-commons/context/keys"
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/context/keys"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
@@ -29,9 +29,10 @@ import (
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines"
-	"github.com/openmfp/openmfp-operator/pkg/subroutines/mocks"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 )
 
 var secretKubeconfigData, _ = os.ReadFile("test/kubeconfig.yaml")
@@ -87,29 +88,29 @@ func (suite *ProvidersecretTestSuite) TearDownTest() {
 }
 
 func (s *ProvidersecretTestSuite) TestProcess() {
-	instance := &corev1alpha1.OpenMFP{
+	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
 				},
 			},
 		},
-		Status: corev1alpha1.OpenMFPStatus{
+		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
-				{Name: "root:openmfp-system", Phase: "Ready"},
+				{Name: "root:platform-mesh-system", Phase: "Ready"},
 				{Name: "root:orgs", Phase: "Ready"},
 			},
 		},
@@ -196,7 +197,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			cluster := kubeconfig.Clusters[currentContext.Cluster]
 
 			// Test that the URL is passed correctly form the endpoint slice
-			expectedURL := "http://example.com/clusters/root:openmfp-system"
+			expectedURL := "http://example.com/clusters/root:platform-mesh-system"
 			if cluster.Server != expectedURL {
 				s.T().Logf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
 				return false
@@ -228,7 +229,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 
 	mockKcpClient := new(mocks.Client)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -249,37 +250,42 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{Requeue: false, RequeueAfter: 5 * time.Second}, res)
 }
 
 func (s *ProvidersecretTestSuite) TestWrongScheme() {
-	instance := &corev1alpha1.OpenMFP{
+	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
 			},
 		},
-		Status: corev1alpha1.OpenMFPStatus{
+		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
 				},
 				{
@@ -340,7 +346,12 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	// s.testObj.kcpHelper = mockedKcpHelper
 	s.testObj = subroutines.NewProviderSecretSubroutine(mockK8sClient, mockedKcpHelper, fakeHelm{ready: true}, "")
 
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().NotNil(opErr)
 	s.Assert().Error(opErr.Err(), "expected error due to nil scheme")
@@ -349,29 +360,29 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 
 func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	s.T().Skip("Skipping test temporarily")
-	instance := &corev1alpha1.OpenMFP{
+	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
 			},
 		},
-		Status: corev1alpha1.OpenMFPStatus{
+		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
-				{Name: "root:openmfp-system", Phase: "Ready"},
+				{Name: "root:platform-mesh-system", Phase: "Ready"},
 			},
 		},
 	}
@@ -452,30 +463,30 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 
 func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	s.T().Skip("Skipping test temporarily")
-	instance := &corev1alpha1.OpenMFP{
+	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
 			},
 		},
-		Status: corev1alpha1.OpenMFPStatus{
+		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
 				},
 				{
@@ -499,8 +510,8 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 
 	mockKcpClient := new(mocks.Client)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-			*o.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
 
@@ -534,30 +545,30 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 
 func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 	s.T().Skip("Skipping test temporarily")
-	instance := &corev1alpha1.OpenMFP{
+	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
 			},
 		},
-		Status: corev1alpha1.OpenMFPStatus{
+		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
 				},
 				{
@@ -597,30 +608,30 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 
 func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 	s.T().Skip("Skipping test temporarily")
-	instance := &corev1alpha1.OpenMFP{
+	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
 				},
 			},
 		},
-		Status: corev1alpha1.OpenMFPStatus{
+		Status: corev1alpha1.PlatformMeshStatus{
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{
-					Name:  "root:openmfp-system",
+					Name:  "root:platform-mesh-system",
 					Phase: "NotReady",
 				},
 				{
@@ -652,7 +663,7 @@ func (s *ProvidersecretTestSuite) TestWorkspaceNotReady() {
 	_ = res
 
 	// assert
-	s.Assert().Error(opErr.Err(), "Workspace root:openmfp-system is not ready")
+	s.Assert().Error(opErr.Err(), "Workspace root:platform-mesh-system is not ready")
 }
 
 func (s *ProvidersecretTestSuite) TestFinalizers() {
@@ -676,22 +687,22 @@ func (s *ProvidersecretTestSuite) TestFinalize() {
 	s.Assert().Equal(res, ctrl.Result{})
 }
 
-func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.OpenMFP {
-	return &corev1alpha1.OpenMFP{
+func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
+	return &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OpenMFP",
-			APIVersion: "openmfp.core.openmfp.org/v1alpha1",
+			Kind:       "PlatformMesh",
+			APIVersion: "core.platform-mesh.io/v1alpha1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.OpenMFPSpec{
+		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: "test-endpoint",
-						Path:              "root:openmfp-system",
+						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
 				},
@@ -1321,9 +1332,13 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	// Setup mock expectations for Get and Create
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "openmfp-system"},
+		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
 		mock.Anything,
 	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
+
+	// We expect the URL to be rewritten to use the front-proxy, not example.com.
+	// Declare expectedURL here so the matcher can capture it and we set it after operatorCfg is prepared.
+	var expectedURL string
 
 	var createdSecret *corev1.Secret
 	s.clientMock.EXPECT().Create(
@@ -1332,10 +1347,15 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 			sec := obj.(*corev1.Secret)
 			createdSecret = sec.DeepCopy()
 			cfg, err := clientcmd.Load(sec.Data["kubeconfig"])
-			return err == nil &&
-				cfg.Clusters[cfg.Contexts[cfg.CurrentContext].Cluster].Server == fullURL
+			if err != nil {
+				return false
+			}
+			ctx := cfg.Contexts[cfg.CurrentContext]
+			cluster := cfg.Clusters[ctx.Cluster]
+			// Verify it matches the rewritten virtual workspace URL (front-proxy)
+			return cluster.Server == expectedURL
 		}),
-		mock.Anything,
+		// mock.Anything,
 	).
 		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
 			return nil
@@ -1348,6 +1368,22 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	// Run test
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+	// Use base name; code appends "-front-proxy"
+	operatorCfg.KCP.FrontProxyName = "test"
+	operatorCfg.KCP.FrontProxyPort = "8080"
+
+	// Expected rewritten URL: http://<front-proxy-name>-front-proxy:<port>/clusters/<path>
+	expectedURL = fmt.Sprintf(
+		"http://%s-front-proxy:%s/clusters/%s",
+		operatorCfg.KCP.FrontProxyName,
+		operatorCfg.KCP.FrontProxyPort,
+		path,
+	)
+
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, instance.Spec.Kcp.InitializerConnections[0], restCfg)
 
 	// Assert
@@ -1370,7 +1406,7 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	// Verify cluster exists and points to virtual workspace
 	cluster := kubeconfig.Clusters[context.Cluster]
 	s.Require().NotNil(cluster)
-	s.Require().Equal(fullURL, cluster.Server)
+	s.Require().Equal(expectedURL, cluster.Server)
 }
 
 func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorGettingWorkspaceType() {
@@ -1534,7 +1570,15 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 			},
 		},
 	}
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+	// Narrow matcher to only WorkspaceType gets to avoid catching Secret gets
+	mockedKcpClient.EXPECT().Get(
+		mock.Anything,
+		mock.Anything,
+		mock.MatchedBy(func(obj client.Object) bool {
+			_, ok := obj.(*kcptenancyv1alpha.WorkspaceType)
+			return ok
+		}),
+	).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			*obj.(*kcptenancyv1alpha.WorkspaceType) = *workspaceType
 			return nil
@@ -1545,15 +1589,19 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 
-	// Setup mock expectations for Get and Create
+	// Setup mock expectations for Get and Create on the main k8s client
+	// Pre-check Get, and CreateOrUpdate will call Get again internally: allow 2 calls
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "openmfp-system"},
+		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
 		mock.Anything,
-	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
+	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Twice()
 
+	// Helm/unstructured lookup
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 
+	// Expected rewritten URL via front-proxy
+	var expectedURL string
 	s.clientMock.EXPECT().Create(
 		mock.Anything,
 		mock.MatchedBy(func(obj client.Object) bool {
@@ -1565,22 +1613,35 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 			}
 			ctx := cfg.Contexts[cfg.CurrentContext]
 			cluster := cfg.Clusters[ctx.Cluster]
-
-			return cluster.Server == fullURL
+			return cluster.Server == expectedURL
 		}),
 		mock.Anything,
 	).
-		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-			return errors.New("failed to create secret")
-		}).
-		Once()
+		Return(errors.New("failed to create secret")).Once()
 
 	restCfg, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])
 	s.Require().NoError(err)
 
-	// Run test
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+	// Ensure URL rewriter has values
+	operatorCfg.KCP.FrontProxyName = "test"
+	operatorCfg.KCP.FrontProxyPort = "8080"
+
+	// Compute expected rewritten URL
+	expectedURL = fmt.Sprintf(
+		"http://%s-front-proxy:%s/clusters/%s",
+		operatorCfg.KCP.FrontProxyName,
+		operatorCfg.KCP.FrontProxyPort,
+		path,
+	)
+
+	// Run
+	// Use the main client mock (not the KCP client) for the subroutine
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
 
 	// Assert

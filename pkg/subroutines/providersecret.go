@@ -7,15 +7,17 @@ import (
 	"path"
 	"time"
 
+	pmconfig "github.com/platform-mesh/golang-commons/config"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/openmfp/golang-commons/controller/lifecycle"
-	"github.com/openmfp/golang-commons/errors"
-	"github.com/openmfp/golang-commons/logger"
+	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,7 +26,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	corev1alpha1 "github.com/openmfp/openmfp-operator/api/v1alpha1"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 // HelmGetter is an interface for getting Helm releases
@@ -64,37 +67,47 @@ type ProvidersecretSubroutine struct {
 
 const (
 	ProvidersecretSubroutineName      = "ProvidersecretSubroutine"
-	ProvidersecretSubroutineFinalizer = "openmfp.core.openmfp.org/finalizer"
+	ProvidersecretSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
 
 func (r *ProvidersecretSubroutine) Finalize(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
+	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
 func (r *ProvidersecretSubroutine) Process(
-	ctx context.Context, runtimeObj lifecycle.RuntimeObject,
+	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	scheme := r.client.Scheme()
 	if scheme == nil {
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("client scheme is nil"), true, false)
 	}
 
-	instance := runtimeObj.(*corev1alpha1.OpenMFP)
+	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Wait for kcp release to be ready before continuing
-	rel, err := r.helm.GetRelease(ctx, r.client, "kcp", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get KCP Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	if !isReady(rel) {
-		log.Info().Msg("KCP Release is not ready.. Retry in 5 seconds")
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	// Wait for root shard to be ready
+	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	if err != nil || !matchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
+
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	// Wait for root shard to be ready
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+
+	if err != nil || !matchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
 	// Determine which provider connections to use based on configuration:
 	var providers []corev1alpha1.ProviderConnection
 	hasProv := len(instance.Spec.Kcp.ProviderConnections) > 0
@@ -116,7 +129,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(r.client, r.kcpUrl, "kcp-cluster-admin-client-cert")
+	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -167,9 +180,10 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.OpenMFP, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	var u *url.URL
 
@@ -215,7 +229,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	if pc.External {
 		newConfig.Host = fmt.Sprintf("%s://%s%s/", u.Scheme, u.Host, u.Path)
 	} else {
-		newConfig.Host = fmt.Sprintf("https://kcp-front-proxy.openmfp-system:8443%s/", u.Path)
+		newConfig.Host = fmt.Sprintf("https://%s-front-proxy:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort, u.Path)
 	}
 
 	apiConfig := restConfigToAPIConfig(newConfig)
@@ -228,7 +242,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pc.Secret,
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 	}
 
@@ -249,7 +263,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.OpenMFP, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -276,6 +290,17 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	cluster := apiConfig.Contexts[curr].Cluster
 	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
 
+	var url *url.URL
+	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
+	if err != nil {
+		log.Error().Err(err).Msg("parsing virtual workspace URL")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
+	apiConfig.Clusters[cluster].Server = url.String()
+	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
+
 	data, err := clientcmd.Write(*apiConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("writing modified kubeconfig")
@@ -285,7 +310,7 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	initializerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ic.Secret,
-			Namespace: "openmfp-system",
+			Namespace: "platform-mesh-system",
 		},
 	}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
