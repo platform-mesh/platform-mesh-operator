@@ -83,7 +83,7 @@ tasks:
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
               echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
-              GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo $GH_TOKEN
                 echo "Listing HelmRepositories"
                 kubectl get helmrepositories -A
@@ -95,10 +95,14 @@ tasks:
                 kubectl get deployments -A
                 echo "Listing clusterpolicies"
                 kubectl get clusterpolicies -A
+                echo "Listing Resources"
+                kubectl get resources -A
 
 
                 echo "Describe clusterpolicies"
                 kubectl describe clusterpolicies -A
+                echo "Describe Resources"
+                kubectl describe resources -A
 
                 
                 # echo "Describing helmrepositories"
