@@ -453,6 +453,10 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		return err
 	}
 
+	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
+		return err
+	}
+
 	ok := s.Eventually(func() bool {
 		deployment := &appsv1.Deployment{}
 		err := s.client.Get(ctx, client.ObjectKey{Name: "kyverno-admission-controller", Namespace: "kyverno-system"}, deployment)
