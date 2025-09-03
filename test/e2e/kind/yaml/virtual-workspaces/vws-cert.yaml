@@ -1,0 +1,27 @@
+#TODO this should be part of the vws chart
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: virtual-workspaces
+  namespace: platform-mesh-system
+spec:
+  dnsNames:
+    - frontproxy-front-proxy
+    - frontproxy-front-proxy.platform-mesh-system
+    - frontproxy-front-proxy.platform-mesh-system.svc.cluster.local
+    - kcp.api.portal.dev.local
+    - virtual-workspaces
+    - virtual-workspaces.platform-mesh-system
+    - virtual-workspaces.platform-mesh-system.svc.cluster.local
+  duration: 8760h0m0s
+  issuerRef:
+    group: cert-manager.io
+    kind: Issuer
+    name: root-server-ca
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  renewBefore: 168h0m0s
+  secretName: virtual-workspaces-cert
+  usages:
+    - server auth

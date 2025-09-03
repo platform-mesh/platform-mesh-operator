@@ -21,8 +21,8 @@ func (s *KindTestSuite) TestResourceReady() {
 	s.Eventually(func() bool {
 		pm := corev1alpha1.PlatformMesh{}
 		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      "pm",
-			Namespace: "pm-system",
+			Name:      "platform-mesh",
+			Namespace: "platform-mesh-system",
 		}, &pm)
 		if err != nil {
 			s.logger.Warn().Err(err).Msg("Failed to get Platform Mesh resource")

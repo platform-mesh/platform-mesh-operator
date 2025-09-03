@@ -78,27 +78,33 @@ tasks:
     deps: [mockery, setup:kind, setup:mkcert]
     env:
       GO111MODULE: on
-      # GH_TOKEN: "{{.WORKFLOW_GITHUB_PAT}}"
     cmds:
-      - |
-        if [ "$GITHUB_WORKFLOW" = "ci" ]; then
-          echo "Running tests in Github Actions"
-          echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
-          GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
-        else
-          # test if portal.dev.local and kcp.api.portal.dev.local are in /etc/hosts
-          if ! grep -q "portal.dev.local" /etc/hosts; then
-            echo "Missing portal.dev.local in /etc/hosts"
-            exit 1
-          fi
-          if ! grep -q "kcp.api.portal.dev.local" /etc/hosts;
-          then
-            echo "Missing kcp.api.portal.dev.local in /etc/hosts"
-            exit 1
-          fi
-          export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-          go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
-        fi
+      - cmd: |
+            if [ "$GITHUB_WORKFLOW" = "ci" ]; then
+              echo "Running tests in Github Actions"
+              echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
+              GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+                echo $GH_TOKEN
+                echo "---Listing HelmReleases"
+                kubectl get helmreleases -A
+                # ...
+                exit 1
+              }
+            else
+              # test if portal.dev.local and kcp.api.portal.dev.local are in /etc/hosts
+              if ! grep -q "portal.dev.local" /etc/hosts; then
+                echo "Missing portal.dev.local in /etc/hosts"
+                exit 1
+              fi
+              if ! grep -q "kcp.api.portal.dev.local" /etc/hosts;
+              then
+                echo "Missing kcp.api.portal.dev.local in /etc/hosts"
+                exit 1
+              fi
+              export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
+              go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+            fi
+        ignore_error: false
         
   manifests:
     deps: [setup:controller-gen]

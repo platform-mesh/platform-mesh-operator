@@ -43,12 +43,12 @@ jobs:
       - name: Test Go
         if: ${{ inputs.useTask == false }}
         run: go test ./... -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+      - name: export tokens
+        run: |
+          echo "WORKFLOW_GITHUB_PAT=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
       - name: Test task
         if: ${{ inputs.useTask == true }}
-        env: # Or as an environment variable
-          WORKFLOW_GITHUB_PAT: ${{ secrets.WORKFLOW_GITHUB_PAT }}
         run: |
-          export WORKFLOW_GITHUB_PAT=${{ secrets.WORKFLOW_GITHUB_PAT }}
           task cover
       - name: Install Code Coverage
         run: go install github.com/vladopajic/go-test-coverage/v2@latest

@@ -178,9 +178,12 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	}
 	obj.SetNamespace(inst.Namespace)
 
-	// create system masters secret
-	err = r.client.Create(ctx, &obj)
-	if err != nil {
+	// create system masters secret (idempotent)
+	if err := r.client.Create(ctx, &obj); err != nil {
+		if kerrors.IsAlreadyExists(err) {
+			log.Info().Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("KCP webhook secret already exists, skipping create")
+			return nil
+		}
 		return errors.NewOperatorError(err, true, true)
 	}
 	return nil
