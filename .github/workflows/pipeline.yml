@@ -33,7 +33,7 @@ on:
       repoVersionUpdate:
         required: false
         type: string
-        default: 'platform-mesh/helm-charts-priv'
+        default: 'platform-mesh/helm-charts'
       doubleTagging:
         required: false
         type: boolean
