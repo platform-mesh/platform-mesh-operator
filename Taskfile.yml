@@ -104,6 +104,8 @@ tasks:
                 echo "Describe Resources"
                 kubectl describe resources -A
 
+                kubectl -n kyverno-system logs -l app.kubernetes.io/part-of=kyverno|grep 'oci-repos'
+
                 
                 # echo "Describing helmrepositories"
                 # kubectl describe helmrepositories -A
