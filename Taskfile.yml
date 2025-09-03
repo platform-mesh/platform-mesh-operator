@@ -91,8 +91,8 @@ tasks:
                 kubectl get ocirepositories -A
                 echo "Listing pods"
                 kubectl get pods -A
-                echo "Listing deployments"
-                kubectl get deployments -A
+                # echo "Listing deployments"
+                # kubectl get deployments -A
                 echo "Listing clusterpolicies"
                 kubectl get clusterpolicies -A
                 echo "Listing Resources"
@@ -104,7 +104,14 @@ tasks:
                 echo "Describe Resources"
                 kubectl describe resources -A
 
-                kubectl -n kyverno-system logs -l app.kubernetes.io/part-of=kyverno|grep 'oci-repos'
+                echo "Describe ocm component"
+                kubectl get component -o yaml
+
+                echo "Get OCM controller logs"
+                kubectl logs -l control-plane=controller-manager -n ocm-system
+
+                # kubectl -n kyverno-system logs -l app.kubernetes.io/part-of=kyverno|grep 'oci-repos'
+                # kubectl get resource -o yaml|yq '.items[] |.status |.resource["version"]'
 
                 
                 # echo "Describing helmrepositories"
