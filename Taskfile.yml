@@ -85,29 +85,31 @@ tasks:
               echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
               GH_TOKEN=$WORKFLOW_GITHUB_PAT PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 25m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo $GH_TOKEN
-                echo "Listing HelmRepositories"
+                echo "---Listing HelmReleases"
+                kubectl get helmreleases -A
+                echo "---Listing HelmRepositories"
                 kubectl get helmrepositories -A
-                echo "Listing OCIRepositories"
+                echo "---Listing OCIRepositories"
                 kubectl get ocirepositories -A
-                echo "Listing pods"
+                echo "---Listing pods"
                 kubectl get pods -A
-                # echo "Listing deployments"
-                # kubectl get deployments -A
-                echo "Listing clusterpolicies"
+                echo "---Listing deployments"
+                kubectl get deployments -A
+                echo "---Listing clusterpolicies"
                 kubectl get clusterpolicies -A
-                echo "Listing Resources"
+                echo "---Listing Resources"
                 kubectl get resources -A
 
 
-                echo "Describe clusterpolicies"
+                echo "---Describe clusterpolicies"
                 kubectl describe clusterpolicies -A
-                echo "Describe Resources"
+                echo "---Describe Resources"
                 kubectl describe resources -A
 
-                echo "Describe ocm component"
+                echo "---Describe ocm component"
                 kubectl get component -o yaml
 
-                echo "Get OCM controller logs"
+                echo "---Get OCM controller logs"
                 kubectl logs -l control-plane=controller-manager -n ocm-system
 
                 # kubectl -n kyverno-system logs -l app.kubernetes.io/part-of=kyverno|grep 'oci-repos'
