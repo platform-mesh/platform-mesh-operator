@@ -87,56 +87,7 @@ tasks:
                 echo $GH_TOKEN
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
-                echo "---Listing HelmRepositories"
-                kubectl get helmrepositories -A
-                echo "---Listing OCIRepositories"
-                kubectl get ocirepositories -A
-                echo "---Listing pods"
-                kubectl get pods -A
-                echo "---Listing deployments"
-                kubectl get deployments -A
-                echo "---Listing clusterpolicies"
-                kubectl get clusterpolicies -A
-                echo "---Listing Resources"
-                kubectl get resources -A
-
-
-                echo "---Describe clusterpolicies"
-                kubectl describe clusterpolicies -A
-                echo "---Describe Resources"
-                kubectl describe resources -A
-
-                echo "---Describe ocm component"
-                kubectl get component -o yaml
-
-                echo "---Get OCM controller logs"
-                kubectl logs -l control-plane=controller-manager -n ocm-system
-
-                # kubectl -n kyverno-system logs -l app.kubernetes.io/part-of=kyverno|grep 'oci-repos'
-                # kubectl get resource -o yaml|yq '.items[] |.status |.resource["version"]'
-
-                
-                # echo "Describing helmrepositories"
-                # kubectl describe helmrepositories -A
-                # echo "Describing pods"
-                # kubectl describe pods -A
-                # echo "Describing HelmReleases"
-                # kubectl describe helmreleases -A
-                # echo "Describing OCIRepositories"
-                # kubectl describe ocirepositories -A
-                # echo "Describing ClusterPolicies"
-                # kubectl describe clusterpolicies -A
-                # echo "Describing Deployments"
-                # kubectl describe deployments -A
-                # echo "Describing Services"
-                # kubectl describe svc -A
-                # echo "Describing Secrets"
-                # kubectl describe secrets -A
-                # # echo "Describing CRDs"
-                # # kubectl describe crds -A
-                # echo "Describing Nodes"
-                # kubectl describe nodes
-                # kubectl get secret github -o yaml
+                # ...
                 exit 1
               }
             else
