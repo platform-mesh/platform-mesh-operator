@@ -314,7 +314,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 	}
 	rbac_webhook_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rebac-authz-webhook-webhook-ca",
+			Name:      "rebac-authz-webhook-ca",
 			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{

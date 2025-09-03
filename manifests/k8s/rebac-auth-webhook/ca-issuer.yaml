@@ -4,5 +4,4 @@ metadata:
   name: rebac-authz-webhook-issuer
   namespace: platform-mesh-system
 spec:
-  ca:
-    secretName: rebac-authz-webhook-ca
+  selfSigned: {}
