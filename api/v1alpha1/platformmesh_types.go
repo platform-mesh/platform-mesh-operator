@@ -38,15 +38,15 @@ type OCMConfig struct {
 
 type RepoConfig struct {
 	// +kubebuilder:default=true
-	Create bool `json:"create,omitempty" default:"true"`
-	// +kubebuilder:default=platform-mesh
+	Create bool `json:"create,omitempty"`
+	// +kubebuilder:default="platform-mesh"
 	Name string `json:"name,omitempty"`
 }
 
 type ComponentConfig struct {
 	// +kubebuilder:default=true
-	Create bool `json:"create,omitempty" default:"true"`
-	// +kubebuilder:default=platform-mesh
+	Create bool `json:"create,omitempty"`
+	// +kubebuilder:default="platform-mesh"
 	Name string `json:"name,omitempty"`
 }
 
