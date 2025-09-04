@@ -62,20 +62,17 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Create DeploymentComponents Version
-	values, err := TemplateVars(ctx, inst, r.client)
+	templateVars, err := TemplateVars(ctx, inst, r.client)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	services := apiextensionsv1.JSON{}
-	services.Raw = inst.Spec.Values.Raw
-
-	mergedValues, err := MergeValuesAndServices(values, services)
+	mergedValues, err := MergeValuesAndServices(inst, templateVars)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to merge values and services")
+		log.Error().Err(err).Msg("Failed to merge templateVars and services")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	log.Debug().Msgf("Merged values: %s", string(mergedValues.Raw))
+	log.Debug().Msgf("Merged templateVars: %s", string(mergedValues.Raw))
 
 	// apply repository
 	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/repository.yaml")
@@ -88,7 +85,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 	log.Debug().Str("path", path).Msgf("Applied repository path: %s", path)
 
-	// apply release and merge values from spec.values
+	// apply release and merge templateVars from spec.templateVars
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/release.yaml")
 	err = applyReleaseWithValues(ctx, path, r.client, mergedValues)
 	if err != nil {
@@ -156,6 +153,34 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
+}
+
+func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMesh) {
+	if inst.Spec.OCM != nil {
+		repoConfig := map[string]interface{}{}
+		compConfig := map[string]interface{}{}
+
+		if inst.Spec.OCM.Repo != nil {
+			repoConfig = map[string]interface{}{
+				"name":   inst.Spec.OCM.Repo.Name,
+				"create": inst.Spec.OCM.Repo.Create,
+			}
+		}
+
+		if inst.Spec.OCM.Component != nil {
+			compConfig = map[string]interface{}{
+				"name":   inst.Spec.OCM.Component.Name,
+				"create": inst.Spec.OCM.Component.Create,
+			}
+		}
+
+		ocmConfig := map[string]interface{}{
+			"repo":          repoConfig,
+			"component":     compConfig,
+			"referencePath": inst.Spec.OCM.ReferencePath,
+		}
+		mapValues["ocm"] = ocmConfig
+	}
 }
 
 func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) errors.OperatorError {

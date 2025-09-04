@@ -93,13 +93,17 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	).Once()
 
 	// Create DeploymentComponents Version
-	values, err := subroutines.TemplateVars(ctx, inst, s.clientMock)
+	templateVars, err := subroutines.TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
-	services := apiextensionsv1.JSON{}
-	services.Raw = []byte(`{"services": {"platform-mesh-operator": {"version": "v1.0.0"}}}`)
+	vals := apiextensionsv1.JSON{Raw: []byte(`{"services": {"platform-mesh-operator": {"version": "v1.0.0"}}}`)}
+	instance := &v1alpha1.PlatformMesh{
+		Spec: v1alpha1.PlatformMeshSpec{
+			Values: vals,
+		},
+	}
 
-	mergedValues, err := subroutines.MergeValuesAndServices(values, services)
+	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
