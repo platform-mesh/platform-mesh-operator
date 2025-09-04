@@ -189,9 +189,7 @@ spec:
                         type: string
                     type: object
                 required:
-                - component
                 - referencePath
-                - repo
                 type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true

@@ -157,14 +157,21 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 
 func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMesh) {
 	if inst.Spec.OCM != nil {
-		repoConfig := map[string]interface{}{
-			"name":   inst.Spec.OCM.Repo.Name,
-			"create": inst.Spec.OCM.Repo.Create,
+		repoConfig := map[string]interface{}{}
+		compConfig := map[string]interface{}{}
+
+		if inst.Spec.OCM.Repo != nil {
+			repoConfig = map[string]interface{}{
+				"name":   inst.Spec.OCM.Repo.Name,
+				"create": inst.Spec.OCM.Repo.Create,
+			}
 		}
 
-		compConfig := map[string]interface{}{
-			"name":   inst.Spec.OCM.Component.Name,
-			"create": inst.Spec.OCM.Component.Create,
+		if inst.Spec.OCM.Component != nil {
+			compConfig = map[string]interface{}{
+				"name":   inst.Spec.OCM.Component.Name,
+				"create": inst.Spec.OCM.Component.Create,
+			}
 		}
 
 		ocmConfig := map[string]interface{}{
