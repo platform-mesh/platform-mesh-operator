@@ -28,6 +28,26 @@ type PlatformMeshSpec struct {
 	ChartVersion     string               `json:"chartVersion,omitempty"`
 	ComponentVersion string               `json:"componentVersion,omitempty"`
 	Values           apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM              *OCMConfig           `json:"ocm,omitempty"`
+}
+type OCMConfig struct {
+	Repo          RepoConfig      `json:"repo"`
+	Component     ComponentConfig `json:"component"`
+	ReferencePath []string        `json:"referencePath"`
+}
+
+type RepoConfig struct {
+	// +kubebuilder:default=true
+	Create bool `json:"create,omitempty" default:"true"`
+	// +kubebuilder:default=platform-mesh
+	Name string `json:"name,omitempty"`
+}
+
+type ComponentConfig struct {
+	// +kubebuilder:default=true
+	Create bool `json:"create,omitempty" default:"true"`
+	// +kubebuilder:default=platform-mesh
+	Name string `json:"name,omitempty"`
 }
 
 type ExposureConfig struct {

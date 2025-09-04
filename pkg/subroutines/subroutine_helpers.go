@@ -201,11 +201,11 @@ func MergeJSON(a, b apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
 }
 
-func MergeValuesAndServices(values, services apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	// Unmarshal 'values'
+func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+	services := inst.Spec.Values
 	var mapValues map[string]interface{}
-	if len(values.Raw) > 0 {
-		if err := json.Unmarshal(values.Raw, &mapValues); err != nil {
+	if len(templateVars.Raw) > 0 {
+		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
 			return apiextensionsv1.JSON{}, err
 		}
 	} else {
@@ -233,6 +233,9 @@ func MergeValuesAndServices(values, services apiextensionsv1.JSON) (apiextension
 	for k, v := range mapServices {
 		mapValues["services"].(map[string]interface{})[k] = v
 	}
+
+	mergeOCMConfig(mapValues, inst)
+
 	// Marshal back to apiextensionsv1.JSON
 	mergedRaw, err := json.Marshal(mapValues)
 	if err != nil {
