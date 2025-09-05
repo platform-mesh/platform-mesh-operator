@@ -22,3 +22,13 @@ spec:
     name: open-component-model
   path: ./kubernetes/controller/config/default
   prune: true
+  patches:
+    - patch: |
+        - op: replace
+          path: /spec/template/spec/containers/0/args
+          value:
+            - --health-probe-bind-address=:8081
+            - --resource-controller-concurrency=20
+      target:
+        kind: Deployment
+        name: controller-manager
