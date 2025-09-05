@@ -31,9 +31,13 @@ type PlatformMeshSpec struct {
 	OCM              *OCMConfig           `json:"ocm,omitempty"`
 }
 type OCMConfig struct {
-	Repo          *RepoConfig      `json:"repo,omitempty"`
-	Component     *ComponentConfig `json:"component,omitempty"`
-	ReferencePath []string         `json:"referencePath"`
+	Repo          *RepoConfig            `json:"repo,omitempty"`
+	Component     *ComponentConfig       `json:"component,omitempty"`
+	ReferencePath []ReferencePathElement `json:"referencePath"`
+}
+
+type ReferencePathElement struct {
+	Name string `json:"name"`
 }
 
 type RepoConfig struct {

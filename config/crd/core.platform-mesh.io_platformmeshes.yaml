@@ -177,7 +177,12 @@ spec:
                     type: object
                   referencePath:
                     items:
-                      type: string
+                      properties:
+                        name:
+                          type: string
+                      required:
+                      - name
+                      type: object
                     type: array
                   repo:
                     properties:
