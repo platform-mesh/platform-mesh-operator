@@ -331,8 +331,21 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 	if len(pods.Items) > 0 {
 		pod := pods.Items[0]
 		spec := pod.Object["spec"].(map[string]interface{})
+		// It is possible to have istio-proxy as an initContainer or a regular container
 		if initContainersInt, ok := spec["initContainers"]; ok {
 			initContainers := initContainersInt.([]interface{})
+			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
+			for _, container := range initContainers {
+				containerMap := container.(map[string]interface{})
+				log.Debug().Msgf("Container name: %s", containerMap["name"].(string))
+				if containerMap["name"] == "istio-proxy" {
+					log.Info().Msgf("Found Istio proxy container: %s", containerMap["image"])
+					return true, &pod, nil
+				}
+			}
+		}
+		if containersInt, ok := spec["containers"]; ok {
+			initContainers := containersInt.([]interface{})
 			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
 			for _, container := range initContainers {
 				containerMap := container.(map[string]interface{})
