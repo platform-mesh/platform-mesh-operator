@@ -345,9 +345,9 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 			}
 		}
 		if containersInt, ok := spec["containers"]; ok {
-			initContainers := containersInt.([]interface{})
-			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
-			for _, container := range initContainers {
+			containers := containersInt.([]interface{})
+			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d containers in pod", len(containers))
+			for _, container := range containers {
 				containerMap := container.(map[string]interface{})
 				log.Debug().Msgf("Container name: %s", containerMap["name"].(string))
 				if containerMap["name"] == "istio-proxy" {
