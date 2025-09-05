@@ -193,8 +193,6 @@ spec:
                         default: platform-mesh
                         type: string
                     type: object
-                required:
-                - referencePath
                 type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true
