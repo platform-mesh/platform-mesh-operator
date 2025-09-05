@@ -173,11 +173,14 @@ func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMes
 				"create": inst.Spec.OCM.Component.Create,
 			}
 		}
-
+		var referencePath []interface{}
+		for _, element := range inst.Spec.OCM.ReferencePath {
+			referencePath = append(referencePath, map[string]interface{}{"name": element.Name})
+		}
 		ocmConfig := map[string]interface{}{
 			"repo":          repoConfig,
 			"component":     compConfig,
-			"referencePath": inst.Spec.OCM.ReferencePath,
+			"referencePath": referencePath,
 		}
 		mapValues["ocm"] = ocmConfig
 	}

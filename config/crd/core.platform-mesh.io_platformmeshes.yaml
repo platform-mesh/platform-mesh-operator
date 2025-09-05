@@ -177,7 +177,12 @@ spec:
                     type: object
                   referencePath:
                     items:
-                      type: string
+                      properties:
+                        name:
+                          type: string
+                      required:
+                      - name
+                      type: object
                     type: array
                   repo:
                     properties:
@@ -188,8 +193,6 @@ spec:
                         default: platform-mesh
                         type: string
                     type: object
-                required:
-                - referencePath
                 type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true
