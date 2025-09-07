@@ -20,7 +20,7 @@ require (
 	github.com/kyverno/kyverno v1.15.1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.1.27
+	github.com/platform-mesh/golang-commons v0.1.28
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.20.1
@@ -278,7 +278,7 @@ require (
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/mod v0.26.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
+	golang.org/x/oauth2 v0.31.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
