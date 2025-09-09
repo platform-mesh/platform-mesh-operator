@@ -20,7 +20,7 @@ require (
 	github.com/kyverno/kyverno v1.15.1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.1.29
+	github.com/platform-mesh/golang-commons v0.1.30
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
