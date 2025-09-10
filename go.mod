@@ -5,9 +5,9 @@ go 1.24.6
 replace sigs.k8s.io/controller-runtime => github.com/kcp-dev/controller-runtime v0.19.0-kcp.1
 
 replace (
-	k8s.io/api => k8s.io/api v0.34.0
-	k8s.io/apimachinery => k8s.io/apimachinery v0.34.0
-	k8s.io/client-go => k8s.io/client-go v0.34.0
+	k8s.io/api => k8s.io/api v0.34.1
+	k8s.io/apimachinery => k8s.io/apimachinery v0.34.1
+	k8s.io/client-go => k8s.io/client-go v0.34.1
 )
 
 require (
@@ -28,10 +28,10 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
 	golang.org/x/sys v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.34.0
-	k8s.io/apiextensions-apiserver v0.34.0
-	k8s.io/apimachinery v0.34.0
-	k8s.io/client-go v0.34.0
+	k8s.io/api v0.34.1
+	k8s.io/apiextensions-apiserver v0.34.1
+	k8s.io/apimachinery v0.34.1
+	k8s.io/client-go v0.34.1
 	sigs.k8s.io/controller-runtime v0.22.1
 	sigs.k8s.io/kustomize/api v0.20.1
 	sigs.k8s.io/kustomize/kyaml v0.20.1
@@ -293,7 +293,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/component-base v0.34.0 // indirect
+	k8s.io/component-base v0.34.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
 	k8s.io/kubectl v0.33.1 // indirect
