@@ -23,7 +23,7 @@ spec:
                               "enabled": false
                           },
                           "keepSelectedForChildren": true,
-                          "url": "/assets/openmfp-portal-ui-wc.js#generic-list-view",
+                          "url": "/assets/platform-mesh-portal-ui-wc.js#generic-list-view",
                           "webcomponent": {
                               "selfRegistered": true
                           },
