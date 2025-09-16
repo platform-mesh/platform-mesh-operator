@@ -19,7 +19,7 @@ require (
 	github.com/kcp-dev/kcp/sdk v0.28.1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.3.1
+	github.com/platform-mesh/golang-commons v0.3.2
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
@@ -52,7 +52,7 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.12.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/getsentry/sentry-go v0.35.2 // indirect
+	github.com/getsentry/sentry-go v0.35.3 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
