@@ -21,7 +21,7 @@ spec:
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/:accountId/members",
                 "context": {
                   "accountId": ":accountId",
-                  "entityType": "account"
+                  "entityType": "core_platform-mesh_io_account"
                 },
                  "loadingIndicator": {
                   "enabled": false
@@ -35,7 +35,7 @@ spec:
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/:accountId/add-members",
                 "context": {
                   "accountId": ":accountId",
-                  "entityType": "account"
+                  "entityType": "core_platform-mesh_io_account"
                 }
               }
             ],

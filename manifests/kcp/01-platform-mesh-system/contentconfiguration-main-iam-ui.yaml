@@ -20,7 +20,7 @@ spec:
                 "entityType": "main",
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/organization/members",
                 "context": {
-                  "entityType": "account",
+                  "entityType": "core_platform-mesh_io_account",
                   "entityContext": {
                     "account": {
                       "policies": ["iamAdmin", "projectAdmin", "projectMember"]
@@ -35,7 +35,7 @@ spec:
                 "hideFromNav": true,
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/organization/add-members",
                 "context": {
-                  "entityType": "account"
+                  "entityType": "core_platform-mesh_io_account"
                 }
               }
             ],
