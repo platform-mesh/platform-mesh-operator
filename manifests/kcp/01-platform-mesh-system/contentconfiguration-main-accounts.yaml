@@ -110,6 +110,7 @@ spec:
                                   },
                                   "context": {
                                       "accountId": ":core_platform-mesh_io_accountId",
+                                      "core_platform-mesh_io_accountId": ":core_platform-mesh_io_accountId",
                                       "resourceId": ":core_platform-mesh_io_accountId"
                                   }
                               }
