@@ -95,7 +95,7 @@ spec:
                           },
                           "children": [
                               {
-                                  "pathSegment": ":accountId",
+                                  "pathSegment": ":core_platform-mesh_io_accountId",
                                   "hideFromNav": true,
                                   "keepSelectedForChildren": false,
                                   "defineEntity": {
