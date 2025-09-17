@@ -18,7 +18,10 @@ spec:
                 "order": 700,
                 "label": "{{"{{"}}marketplace{{"}}"}}",
                 "icon": "retail-store",
-                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:core_platform-mesh_io_accountId/marketplace"
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:core_platform-mesh_io_accountId/marketplace",
+                "context": {
+                  "accountId": ":core_platform-mesh_io_accountId"
+                }
               },
               {
                 "pathSegment": "provider",
