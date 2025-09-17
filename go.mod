@@ -19,7 +19,7 @@ require (
 	github.com/kcp-dev/kcp/sdk v0.28.1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.4.0
+	github.com/platform-mesh/golang-commons v0.4.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
@@ -38,7 +38,7 @@ require (
 )
 
 require (
-	github.com/99designs/gqlgen v0.17.79 // indirect
+	github.com/99designs/gqlgen v0.17.80 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
