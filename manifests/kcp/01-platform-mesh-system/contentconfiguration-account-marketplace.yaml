@@ -14,11 +14,11 @@ spec:
             "nodes": [
               {
                 "pathSegment": "marketplace",
-                "entityType": "main.account",
+                "entityType": "main.core_platform-mesh_io_account",
                 "order": 700,
                 "label": "{{"{{"}}marketplace{{"}}"}}",
                 "icon": "retail-store",
-                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:accountId/marketplace"
+                "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/entity/:core_platform-mesh_io_accountId/marketplace"
               },
               {
                 "pathSegment": "provider",

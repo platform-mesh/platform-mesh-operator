@@ -14,7 +14,7 @@ spec:
           "data": {
             "nodes": [
               {
-                "entityType": "main.account",
+                "entityType": "main.core_platform-mesh_io_account",
                 "pathSegment": "dashboard",
                 "label": "Dashboard",
                 "order": 100,

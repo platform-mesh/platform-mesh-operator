@@ -99,9 +99,9 @@ spec:
                                   "hideFromNav": true,
                                   "keepSelectedForChildren": false,
                                   "defineEntity": {
-                                      "id": "account",
-                                      "contextKey": "accountId",
-                                      "dynamicFetchId": "account",
+                                      "id": "core_platform-mesh_io_account",
+                                      "contextKey": "core_platform-mesh_io_accountId",
+                                      "dynamicFetchId": "core_platform-mesh_io_account",
                                       "graphqlEntity": {
                                           "group": "core.platform-mesh.io",
                                           "kind": "Account",
@@ -109,8 +109,8 @@ spec:
                                       }
                                   },
                                   "context": {
-                                      "accountId": ":accountId",
-                                      "resourceId": ":accountId"
+                                      "accountId": ":core_platform-mesh_io_accountId",
+                                      "resourceId": ":core_platform-mesh_io_accountId"
                                   }
                               }
                           ]
