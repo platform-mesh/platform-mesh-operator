@@ -22,7 +22,7 @@ spec:
               },
               {
                 "pathSegment": "provider",
-                "entityType": "main.account",
+                "entityType": "main.core_platform-mesh_io_account",
                 "hideFromNav": true,
                 "children": [
                   {
@@ -30,7 +30,8 @@ spec:
                     "hideFromNav": true,
                     "url": "https://{{ .baseDomain }}:{{ .port }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
-                      "providerName": ":providerName"
+                      "providerName": ":providerName",
+                      "accountId": ":core_platform-mesh_io_accountId"
                     }
                   }
                 ]

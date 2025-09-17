@@ -29,7 +29,7 @@ spec:
               },
               {
                 "pathSegment": "add-members",
-                "entityType": "main.account",
+                "entityType": "main.core_platform-mesh_io_account",
                 "label": "{{"{{"}}members{{"}}"}}",
                 "hideFromNav": true,
                 "url": "https://{{ .baseDomain }}:{{ .port }}/ui/iam/ui/#/:accountId/add-members",
