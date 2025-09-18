@@ -89,7 +89,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !matchesCondition(rootShard, "Available") {
+	if err != nil || !MatchesCondition(rootShard, "Available") {
 		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -98,7 +98,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
-	if err != nil || !matchesCondition(frontProxy, "Available") {
+	if err != nil || !MatchesCondition(frontProxy, "Available") {
 		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -135,8 +135,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 }
 
-// matchesCondition checks the Ready Condition if it has status true
-func matchesCondition(release *unstructured.Unstructured, conditionType string) bool {
+// MatchesCondition checks the Ready Condition if it has status true
+func MatchesCondition(release *unstructured.Unstructured, conditionType string) bool {
 	if release == nil {
 		return false
 	}
