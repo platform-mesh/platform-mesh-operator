@@ -82,7 +82,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","componentVersion":{"semver":"v2.0.0"},"iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.dev.local","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil

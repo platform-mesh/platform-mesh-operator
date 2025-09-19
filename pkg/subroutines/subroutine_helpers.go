@@ -272,12 +272,10 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	}
 
 	values := map[string]interface{}{
-		"iamWebhookCA":  base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"baseDomain":    baseDomain,
-		"protocol":      protocol,
-		"port":          fmt.Sprintf("%d", port),
-		"componentName": inst.Spec.OCM.Component.Name,
-		"repoName":      inst.Spec.OCM.Repo.Name,
+		"iamWebhookCA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":   baseDomain,
+		"protocol":     protocol,
+		"port":         fmt.Sprintf("%d", port),
 	}
 
 	result := apiextensionsv1.JSON{}
