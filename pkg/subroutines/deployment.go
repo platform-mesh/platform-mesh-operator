@@ -176,15 +176,13 @@ func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMes
 
 		if inst.Spec.OCM.Repo != nil {
 			repoConfig = map[string]interface{}{
-				"name":   inst.Spec.OCM.Repo.Name,
-				"create": inst.Spec.OCM.Repo.Create,
+				"name": inst.Spec.OCM.Repo.Name,
 			}
 		}
 
 		if inst.Spec.OCM.Component != nil {
 			compConfig = map[string]interface{}{
-				"name":   inst.Spec.OCM.Component.Name,
-				"create": inst.Spec.OCM.Component.Create,
+				"name": inst.Spec.OCM.Component.Name,
 			}
 		}
 		var referencePath []interface{}
