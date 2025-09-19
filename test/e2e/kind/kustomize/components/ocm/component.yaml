@@ -1,0 +1,17 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: platform-mesh
+  namespace: default
+spec:
+  component: github.com/platform-mesh/platform-mesh
+  downgradePolicy: Deny
+  interval: 1m0s
+  ocmConfig:
+    - kind: Repository
+      apiVersion: delivery.ocm.software/v1alpha1
+      name: platform-mesh
+      namespace: default
+  repositoryRef:
+    name: platform-mesh
+  semver: 0.0.350

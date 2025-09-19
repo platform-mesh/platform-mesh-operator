@@ -538,6 +538,9 @@ func (s *KindTestSuite) SetupSuite() {
 	if err = s.applyKustomize(ctx); err != nil {
 		s.FailNow("Failed to apply kustomize manifests")
 	}
+	if err = s.applyOCM(ctx); err != nil {
+		s.FailNow("Failed to apply OCM manifests")
+	}
 
 	// add Platform Mesh resource
 	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/openmfp-resource/platform-mesh.yaml", s.client, make(map[string]string)); err != nil {
@@ -566,6 +569,17 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("starting operator...")
 	s.runOperator(ctx)
 
+}
+
+// applyOCM applies the OCM component and repository to the cluster.
+func (s *KindTestSuite) applyOCM(ctx context.Context) error {
+	clients, err := kapply.NewClients(s.config)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to create kapply clients")
+		return err
+	}
+
+	return kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/components/ocm", clients)
 }
 
 func (s *KindTestSuite) applyKustomize(ctx context.Context) error {

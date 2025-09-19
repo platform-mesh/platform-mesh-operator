@@ -74,8 +74,8 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 	log.Debug().Msgf("Merged templateVars: %s", string(mergedValues.Raw))
 
-	// apply repository
-	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/repository.yaml")
+	// apply resource
+	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/resource.yaml")
 	tplValues := map[string]string{
 		"chartVersion": inst.Spec.ChartVersion,
 	}
@@ -83,7 +83,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
-	log.Debug().Str("path", path).Msgf("Applied repository path: %s", path)
+	log.Debug().Str("path", path).Msgf("Applied path: %s", path)
 
 	// apply release and merge templateVars from spec.templateVars
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/release.yaml")
