@@ -2,7 +2,7 @@ apiVersion: ui.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
-    ui.platform-mesh.io/entity: account
+    ui.platform-mesh.io/entity: core_platform-mesh_io_account
   name: account-iam-ui
 spec:
   inlineConfiguration:
