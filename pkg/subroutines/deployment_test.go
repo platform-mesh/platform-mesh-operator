@@ -55,10 +55,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			Name:      "test-platform-mesh",
 			Namespace: "default",
 		},
-		Spec: v1alpha1.PlatformMeshSpec{
-			ChartVersion:     "v1.0.0",
-			ComponentVersion: "v2.0.0",
-		},
+		Spec: v1alpha1.PlatformMeshSpec{},
 	}
 
 	// mocks

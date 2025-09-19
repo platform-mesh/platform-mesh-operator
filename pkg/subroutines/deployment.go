@@ -77,7 +77,21 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	// apply resource
 	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/resource.yaml")
 	tplValues := map[string]string{
-		"chartVersion": inst.Spec.ChartVersion,
+		"componentName": inst.Spec.OCM.Component.Name,
+		"repoName":      inst.Spec.OCM.Repo.Name,
+		"referencePath": func() string {
+			if inst.Spec.OCM == nil || inst.Spec.OCM.ReferencePath == nil {
+				return ""
+			}
+			out := ""
+			for _, rp := range inst.Spec.OCM.ReferencePath {
+				if rp.Name == "" {
+					continue
+				}
+				out += "\n        - name: " + rp.Name
+			}
+			return out
+		}(),
 	}
 	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {

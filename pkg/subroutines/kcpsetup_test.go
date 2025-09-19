@@ -734,10 +734,6 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 
-	path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-iam-ui.yaml"
-	templateData := map[string]string{
-		"baseDomain": "example1.com",
-	}
 	logcfg := logger.DefaultConfig()
 	// logcfg.Level = defaultCfg.Log.Level
 	// logcfg.NoJSON = defaultCfg.Log.NoJson
@@ -747,6 +743,11 @@ func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 		panic(err)
 	}
 
+	// ContentConfiguration
+	path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-iam-ui.yaml"
+	templateData := map[string]string{
+		"baseDomain": "example1.com",
+	}
 	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
 	s.Assert().Nil(err)
 	s.Assert().Equal(obj.GetKind(), "ContentConfiguration")
@@ -756,4 +757,29 @@ func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 	s.Assert().Nil(err)
 	s.Assert().Truef(strings.Contains(string(contentJSON), "{{members}}"), "Content does not contain expected URL")
 
+	// Resource
+	path = "../../manifests/k8s/platform-mesh-operator-components/resource.yaml"
+	templateData = map[string]string{
+		"componentName": "component1",
+		"repoName":      "repo1",
+		"referencePath": "\n        - ref1\n        - ref2",
+	}
+	obj, err = s.testObj.UnstructuredFromFile(path, templateData, log)
+	s.Assert().Nil(err)
+	s.Assert().Equal(obj.GetKind(), "Resource")
+	spec = obj.Object["spec"].(map[string]interface{})
+	content = spec["componentRef"].(map[string]interface{})
+	contentJSON, err = json.Marshal(content)
+	s.Assert().Nil(err)
+	s.Assert().Truef(strings.Contains(string(contentJSON), "component1"), "Content does not contain expected componentName")
+
+	resource := spec["resource"].(map[string]interface{})
+	byReference := resource["byReference"].(map[string]interface{})
+	referencePath := byReference["referencePath"].([]interface{})
+	contentJSON, err = json.Marshal(referencePath)
+	s.Assert().Nil(err)
+
+	s.Assert().Truef(strings.Contains(string(contentJSON), "ref1"), "Content does not contain expected referencePath")
+	s.Assert().Truef(strings.Contains(string(contentJSON), "ref2"), "Content does not contain expected referencePath")
+	s.Assert().Truef(strings.Contains(string(contentJSON), "platform-mesh-operator-components"), "Content does not contain expected referencePath")
 }

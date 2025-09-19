@@ -71,10 +71,6 @@ spec:
           spec:
             description: PlatformMeshSpec defines the desired state of PlatformMesh
             properties:
-              chartVersion:
-                type: string
-              componentVersion:
-                type: string
               exposure:
                 properties:
                   baseDomain:
