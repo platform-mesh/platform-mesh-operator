@@ -23,12 +23,10 @@ import (
 
 // PlatformMeshSpec defines the desired state of PlatformMesh
 type PlatformMeshSpec struct {
-	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp              Kcp                  `json:"kcp,omitempty"`
-	ChartVersion     string               `json:"chartVersion,omitempty"`
-	ComponentVersion string               `json:"componentVersion,omitempty"`
-	Values           apiextensionsv1.JSON `json:"values,omitempty"`
-	OCM              *OCMConfig           `json:"ocm,omitempty"`
+	Exposure *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp      Kcp                  `json:"kcp,omitempty"`
+	Values   apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM      *OCMConfig           `json:"ocm,omitempty"`
 }
 type OCMConfig struct {
 	Repo          *RepoConfig            `json:"repo,omitempty"`
@@ -41,15 +39,11 @@ type ReferencePathElement struct {
 }
 
 type RepoConfig struct {
-	// +kubebuilder:default=true
-	Create bool `json:"create,omitempty"`
 	// +kubebuilder:default="platform-mesh"
 	Name string `json:"name,omitempty"`
 }
 
 type ComponentConfig struct {
-	// +kubebuilder:default=true
-	Create bool `json:"create,omitempty"`
 	// +kubebuilder:default="platform-mesh"
 	Name string `json:"name,omitempty"`
 }

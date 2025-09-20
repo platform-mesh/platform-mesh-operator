@@ -278,12 +278,6 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 		"port":         fmt.Sprintf("%d", port),
 	}
 
-	if inst.Spec.ComponentVersion != "" {
-		values["componentVersion"] = map[string]string{
-			"semver": inst.Spec.ComponentVersion,
-		}
-	}
-
 	result := apiextensionsv1.JSON{}
 	result.Raw, _ = json.Marshal(values)
 

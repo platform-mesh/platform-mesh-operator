@@ -71,10 +71,6 @@ spec:
           spec:
             description: PlatformMeshSpec defines the desired state of PlatformMesh
             properties:
-              chartVersion:
-                type: string
-              componentVersion:
-                type: string
               exposure:
                 properties:
                   baseDomain:
@@ -168,9 +164,6 @@ spec:
                 properties:
                   component:
                     properties:
-                      create:
-                        default: true
-                        type: boolean
                       name:
                         default: platform-mesh
                         type: string
@@ -186,9 +179,6 @@ spec:
                     type: array
                   repo:
                     properties:
-                      create:
-                        default: true
-                        type: boolean
                       name:
                         default: platform-mesh
                         type: string
