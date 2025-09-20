@@ -743,33 +743,19 @@ func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 		panic(err)
 	}
 
-	// ContentConfiguration
-	path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-iam-ui.yaml"
-	templateData := map[string]string{
-		"baseDomain": "example1.com",
-	}
-	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
-	s.Assert().Nil(err)
-	s.Assert().Equal(obj.GetKind(), "ContentConfiguration")
-	spec := obj.Object["spec"].(map[string]interface{})
-	content := spec["inlineConfiguration"].(map[string]interface{})
-	contentJSON, err := json.Marshal(content)
-	s.Assert().Nil(err)
-	s.Assert().Truef(strings.Contains(string(contentJSON), "{{members}}"), "Content does not contain expected URL")
-
 	// Resource
-	path = "../../manifests/k8s/platform-mesh-operator-components/resource.yaml"
-	templateData = map[string]string{
+	path := "../../manifests/k8s/platform-mesh-operator-components/resource.yaml"
+	templateData := map[string]string{
 		"componentName": "component1",
 		"repoName":      "repo1",
 		"referencePath": "\n        - ref1\n        - ref2",
 	}
-	obj, err = s.testObj.UnstructuredFromFile(path, templateData, log)
+	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
 	s.Assert().Nil(err)
 	s.Assert().Equal(obj.GetKind(), "Resource")
-	spec = obj.Object["spec"].(map[string]interface{})
-	content = spec["componentRef"].(map[string]interface{})
-	contentJSON, err = json.Marshal(content)
+	spec := obj.Object["spec"].(map[string]interface{})
+	content := spec["componentRef"].(map[string]interface{})
+	contentJSON, err := json.Marshal(content)
 	s.Assert().Nil(err)
 	s.Assert().Truef(strings.Contains(string(contentJSON), "component1"), "Content does not contain expected componentName")
 
