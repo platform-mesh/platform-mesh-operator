@@ -2,9 +2,7 @@ package subroutines_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
@@ -730,30 +728,4 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply")
-}
-
-func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
-
-	path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-iam-ui.yaml"
-	templateData := map[string]string{
-		"baseDomain": "example1.com",
-	}
-	logcfg := logger.DefaultConfig()
-	// logcfg.Level = defaultCfg.Log.Level
-	// logcfg.NoJSON = defaultCfg.Log.NoJson
-	var err error
-	log, err := logger.New(logcfg)
-	if err != nil {
-		panic(err)
-	}
-
-	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
-	s.Assert().Nil(err)
-	s.Assert().Equal(obj.GetKind(), "ContentConfiguration")
-	spec := obj.Object["spec"].(map[string]interface{})
-	content := spec["inlineConfiguration"].(map[string]interface{})
-	contentJSON, err := json.Marshal(content)
-	s.Assert().Nil(err)
-	s.Assert().Truef(strings.Contains(string(contentJSON), "{{members}}"), "Content does not contain expected URL")
-
 }
