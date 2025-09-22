@@ -33,8 +33,6 @@ spec:
               operation: copy
             ref:
               tag: "0.0.0"
-            secretRef:
-              name: github
             timeout: 60s
             url: "oci://local-the-url-will-be-here-soon"
     - name: oci-repos-mutate

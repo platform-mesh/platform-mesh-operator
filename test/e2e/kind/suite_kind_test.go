@@ -491,7 +491,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		}
 
 		return true
-	}, 60*time.Second, 2*time.Second, "kyverno deployments not ready")
+	}, 120*time.Second, 2*time.Second, "kyverno deployments not ready")
 	if !ok {
 		return errors.New("kyverno deployments not ready")
 	}

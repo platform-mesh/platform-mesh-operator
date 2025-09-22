@@ -13,6 +13,17 @@ spec:
     component:
       name: platform-mesh
     referencePath: []
+  kcp:
+    extraWorkspaces:
+      - path: "root:orgs:extra1"
+        type:
+          name: "org"
+          path: "root"
+    extraProviderConnections:
+      - path: "root:orgs:extra1"
+        secret: "extra1-kubeconfig"
+        external: true
+        endpointSliceName: ""
   values:
     istio-gateway:
       enabled: true
@@ -25,25 +36,6 @@ spec:
       values:
         service:
           clusterIP: 10.96.0.110
-          # global:
-          #   imageRegistry: ghcr.io
-          #   imagePullSecrets:
-          #     - github
-          #   security:
-          #     allowInsecureImages: true
-          # image:
-          #   registry: ghcr.io
-          #   repository: platform-mesh/images/bitnami/keycloak
-          #   tag: 26.3.2-debian-12-r0
-          # postgresql:
-          #   global:
-          #     imageRegistry: ghcr.io
-          #     imagePullSecrets:
-          #       - github
-          #   image:
-          #     registry: ghcr.io
-          #     repository: platform-mesh/images/bitnami/postgresql
-          #     tag: 17.4.0-debian-12-r17
     crossplane:
       enabled: true
       values:
@@ -137,22 +129,6 @@ spec:
         trust:
           default:
             tokenUrl: https://portal.dev.local:8443/keycloak/realms/default/protocol/openid-connect/token
-            #     # -- base domains
-            #     baseDomains: "portal.dev.local"
-            #     # -- discovery endpoint. If specified (different than ""), authDomain and tokenUrl are not required
-            #     #  discoveryEndpoint: ""
-            #     # -- auth domain (if discoveryEndpoint is not specified)
-            #     authDomain: http://localhost:8000/keycloak/realms/platform-mesh/protocol/openid-connect/auth
-            #     # -- token url (if discoveryEndpoint is not specified)
-            #     tokenUrl: http://keycloak/keycloak/realms/platform-mesh/protocol/openid-connect/token
-            #     # -- oidc client secret name
-            #     oidcClientSecretName: openmfp-client
-            #     # -- login audience
-            #     loginAudience: platform-mesh
-            #     # -- secret key reference
-            #     secretKeyRef: attribute.client_secret
-            #     # -- ContentConfiguration validator api url
-            #     contentConfigurationValidatorApiUrl: http://extension-manager-operator-server.platform-mesh-system.svc.cluster.local:8088/validate
     openfga:
       enabled: true
       values:
@@ -190,7 +166,4 @@ spec:
                 - kubeconfig: /app/kubeconfig/kubeconfig
                   name: contentconfigurations
                   url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations
-                  # - kubeconfig: /app/kubeconfig/kubeconfig
-                  #   name: marketplace
-                  #   url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
             enabled: true
