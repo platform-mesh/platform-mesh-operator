@@ -37,7 +37,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	},
 	{
 		EndpointSliceName: "",
-		RawPath:           "/services/contentconfigurations/",
+		RawPath:           "/services/contentconfigurations",
 		Secret:            "portal-kubeconfig",
 	},
 }
