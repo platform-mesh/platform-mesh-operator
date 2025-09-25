@@ -1334,7 +1334,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 								if c.Server == "https://kcp.api.example.com:8443//clusters/root:platform-mesh-system" {
 									return nil
 								}
-								return errors.New(fmt.Sprintf("unexpected server URL: %s", c.Server))
+								return fmt.Errorf("unexpected server URL: %s", c.Server)
 							}
 							break
 						}
