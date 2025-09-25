@@ -359,7 +359,6 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 }
 
 func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
-	s.T().Skip("Skipping test temporarily")
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
@@ -384,6 +383,20 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
 				{Name: "root:platform-mesh-system", Phase: "Ready"},
 			},
+		},
+	}
+
+	// Setup test secret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"kubeconfig": secretKubeconfigData,
+			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
+			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
+			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -412,6 +425,50 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		}), mock.Anything).
 		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Secret"}, "test-secret")).
 		Once()
+
+	mockClient.EXPECT().
+		Get(mock.Anything,
+			mock.Anything,
+			mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			rootShard := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"status": map[string]interface{}{
+						"conditions": []interface{}{
+							map[string]interface{}{
+								"type":   "Available",
+								"status": "True",
+							},
+						},
+					},
+				},
+			}
+			*obj.(*unstructured.Unstructured) = *rootShard
+			return nil
+		}).
+		Twice()
+	mockClient.EXPECT().
+		Get(mock.Anything,
+			mock.MatchedBy(func(key types.NamespacedName) bool {
+				if key.Namespace == "platform-mesh-system" {
+					switch key.Name {
+					case "account-operator-kubeconfig",
+						"rebac-authz-webhook-kubeconfig",
+						"security-operator-kubeconfig",
+						"kubernetes-grapqhl-gateway-kubeconfig",
+						"extension-manager-operator-kubeconfig",
+						"portal-kubeconfig",
+						"cluster-admin-secret":
+						return true
+					}
+				}
+				return false
+			}),
+			mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*corev1.Secret) = *secret
+			return nil
+		})
 
 	// Simulate error on Create
 	mockClient.EXPECT().
@@ -450,9 +507,17 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	).Once()
 
 	// Run
-	s.testObj = subroutines.NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
+
+	// Add the missing operator config context
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+	operatorCfg.KCP.ClusterAdminSecretName = "cluster-admin-secret"
+	operatorCfg.KCP.Namespace = "platform-mesh-system"
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
 	res, opErr := s.testObj.Process(ctx, instance)
 
 	// Asserts
@@ -462,7 +527,6 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 }
 
 func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
-	s.T().Skip("Skipping test temporarily")
 	instance := &corev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
@@ -496,6 +560,28 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 			},
 		},
 	}
+
+	s.clientMock.EXPECT().
+		Get(mock.Anything,
+			mock.Anything,
+			mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			rootShard := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"status": map[string]interface{}{
+						"conditions": []interface{}{
+							map[string]interface{}{
+								"type":   "Available",
+								"status": "True",
+							},
+						},
+					},
+				},
+			}
+			*obj.(*unstructured.Unstructured) = *rootShard
+			return nil
+		}).
+		Twice()
 
 	// mocks
 	slice := &kcpapiv1alpha.APIExportEndpointSlice{
@@ -533,7 +619,13 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	// s.testObj.kcpHelper = mockedKcpHelper
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
+	// Add the missing operator config context
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
 	res, opErr := s.testObj.Process(ctx, instance)
 	_ = opErr
 	_ = res
@@ -1131,7 +1223,6 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 }
 
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
-	s.T().Skip("Skipping test temporarily")
 	// Save and restore default connections
 	oldInits := subroutines.DefaultInitializerConnection
 	defer func() { subroutines.DefaultInitializerConnection = oldInits }()
@@ -1140,6 +1231,18 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	// Setup test instance
 	instance := s.getBaseInstance()
 	instance.Spec.Kcp.ProviderConnections = nil
+	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
+		{
+			EndpointSliceName: "",
+			Path:              "root:platform-mesh-system",
+			Secret:            "external-kubeconfig",
+			External:          true,
+		},
+	}
+	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
+		BaseDomain: "example.com",
+		Port:       8443,
+	}
 
 	// Setup test secret
 	secret := &corev1.Secret{
@@ -1149,6 +1252,9 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
+			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
+			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
+			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -1167,6 +1273,76 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			return nil
 		}).
 		Once()
+
+	s.clientMock.EXPECT().
+		Get(mock.Anything,
+			mock.Anything,
+			mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			rootShard := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"status": map[string]interface{}{
+						"conditions": []interface{}{
+							map[string]interface{}{
+								"type":   "Available",
+								"status": "True",
+							},
+						},
+					},
+				},
+			}
+			*obj.(*unstructured.Unstructured) = *rootShard
+			return nil
+		}).
+		Twice()
+
+	s.clientMock.EXPECT().
+		Get(mock.Anything,
+			mock.MatchedBy(func(key types.NamespacedName) bool {
+				if key.Namespace == "platform-mesh-system" {
+					switch key.Name {
+					case "account-operator-kubeconfig",
+						"rebac-authz-webhook-kubeconfig",
+						"security-operator-kubeconfig",
+						"kubernetes-grapqhl-gateway-kubeconfig",
+						"extension-manager-operator-kubeconfig",
+						"portal-kubeconfig",
+						"external-kubeconfig":
+						return true
+					}
+				}
+				return false
+			}),
+			mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			// *obj.(*corev1.Secret) = *secret
+			return nil
+		})
+	s.clientMock.EXPECT().
+		Update(mock.Anything,
+			mock.Anything).
+		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+			sec := obj.(*corev1.Secret)
+			if sec.Name == "external-kubeconfig" {
+				if data, ok := sec.Data["kubeconfig"]; ok {
+					cfg, err := clientcmd.Load(data)
+					if err != nil {
+						s.T().Logf("failed to parse kubeconfig: %v", err)
+					} else {
+						for _, c := range cfg.Clusters {
+							if c != nil {
+								if c.Server == "https://kcp.api.example.com:8443//clusters/root:platform-mesh-system" {
+									return nil
+								}
+								return fmt.Errorf("unexpected server URL: %s", c.Server)
+							}
+							break
+						}
+					}
+				}
+			}
+			return nil
+		})
 
 	// Setup mock KCP client
 	mockedKcpClient := new(mocks.Client)
@@ -1263,8 +1439,15 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	}
 
 	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
+
+	// Add the missing operator config context
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
+
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, res)
@@ -1613,6 +1796,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 			}
 			ctx := cfg.Contexts[cfg.CurrentContext]
 			cluster := cfg.Clusters[ctx.Cluster]
+			// Verify it matches the rewritten virtual workspace URL (front-proxy)
 			return cluster.Server == expectedURL
 		}),
 		mock.Anything,
