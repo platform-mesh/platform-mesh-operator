@@ -27,6 +27,8 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var ManifestStructureTest = "../../manifests/kcp"
@@ -768,4 +770,127 @@ func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 	s.Assert().Truef(strings.Contains(string(contentJSON), "ref1"), "Content does not contain expected referencePath")
 	s.Assert().Truef(strings.Contains(string(contentJSON), "ref2"), "Content does not contain expected referencePath")
 	s.Assert().Truef(strings.Contains(string(contentJSON), "platform-mesh-operator-components"), "Content does not contain expected referencePath")
+}
+
+// Tests for applyExtraWorkspaces (via assumed exported wrapper ApplyExtraWorkspaces).
+// If the wrapper name differs, adjust the method name accordingly.
+
+func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Success() {
+	// Arrange
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	parentPath := "root:orgs"
+	fullPath := parentPath + ":extra-ws"
+
+	kcpClientMock := new(mocks.Client)
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, parentPath).
+		Return(kcpClientMock, nil).Once()
+
+	// First Get => NotFound (so Patch executed)
+	kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "extra-ws"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "extra-ws")).Once()
+
+	kcpClientMock.EXPECT().
+		Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+
+	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
+		{Path: fullPath, TypeName: "universal", TypePath: "root"},
+	})
+
+	// Act
+	err := s.testObj.ApplyExtraWorkspaces(ctx, &rest.Config{}, inst)
+
+	// Assert
+	s.Assert().NoError(err)
+}
+
+func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_InvalidPath_Skipped() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	// No expectation for NewKcpClient because invalid path is skipped
+	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
+		{Path: "invalid-no-colon", TypeName: "universal", TypePath: "root"},
+	})
+
+	err := s.testObj.ApplyExtraWorkspaces(ctx, &rest.Config{}, inst)
+	s.Assert().NoError(err)
+	s.helperMock.AssertNotCalled(s.T(), "NewKcpClient", mock.Anything, mock.Anything)
+}
+
+func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_NewKcpClient_Error() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	parentPath := "root:team"
+	fullPath := parentPath + ":ws1"
+
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, parentPath).
+		Return(nil, errors.New("boom")).Once()
+
+	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
+		{Path: fullPath, TypeName: "typeA", TypePath: "root"},
+	})
+
+	err := s.testObj.ApplyExtraWorkspaces(ctx, &rest.Config{}, inst)
+	s.Assert().Error(err)
+	s.Assert().Contains(err.Error(), "Failed to create kcp client")
+}
+
+func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Patch_Error() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	parentPath := "root:orgs"
+	fullPath := parentPath + ":ws3"
+
+	kcpClientMock := new(mocks.Client)
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, parentPath).
+		Return(kcpClientMock, nil).Once()
+
+	kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "ws3"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "ws3")).Once()
+
+	kcpClientMock.EXPECT().
+		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything).
+		Return(errors.New("patch failed")).Once()
+
+	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
+		{Path: fullPath, TypeName: "universal", TypePath: "root"},
+	})
+
+	err := s.testObj.ApplyExtraWorkspaces(ctx, &rest.Config{}, inst)
+	s.Assert().Error(err)
+	s.Assert().Contains(err.Error(), "Failed to apply extra workspace")
+}
+
+//
+// Helpers for constructing PlatformMesh with ExtraWorkspaces.
+// These helper type names guess the actual API names; adjust if different.
+//
+
+type extraWsDef struct {
+	Path     string
+	TypeName string
+	TypePath string
+}
+
+func (s *KcpsetupTestSuite) newPlatformMeshWithExtraWorkspaces(defs []extraWsDef) *corev1alpha1.PlatformMesh {
+	pm := &corev1alpha1.PlatformMesh{}
+	// Ensure nested structs exist
+	pm.Spec.Kcp = corev1alpha1.Kcp{}
+
+	// Attempt to populate using likely field names; ignore if they differ (tests will need adjustment).
+	for _, d := range defs {
+		pm.Spec.Kcp.ExtraWorkspaces = append(pm.Spec.Kcp.ExtraWorkspaces, corev1alpha1.WorkspaceDeclaration{
+			Path: d.Path,
+			Type: corev1alpha1.WorkspaceTypeReference{
+				Name: d.TypeName,
+			},
+		})
+	}
+	return pm
 }

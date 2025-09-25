@@ -60,6 +60,25 @@ type Kcp struct {
 	InitializerConnections      []InitializerConnection          `json:"initializerConnections,omitempty"`
 	ExtraInitializerConnections []InitializerConnection          `json:"extraInitializerConnections,omitempty"`
 	ExtraDefaultAPIBindings     []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
+	// ExtraWorkspaces allows declaring additional workspaces that the operator will create.
+	// +optional
+	ExtraWorkspaces []WorkspaceDeclaration `json:"extraWorkspaces,omitempty"`
+}
+
+// WorkspaceDeclaration defines a workspace to be created by the operator.
+type WorkspaceDeclaration struct {
+	// Path is the full logical path of the workspace to be created (e.g., "root:orgs:my-workspace").
+	Path string `json:"path"`
+	// Type defines the WorkspaceType for the new workspace.
+	Type WorkspaceTypeReference `json:"type"`
+}
+
+// WorkspaceTypeReference specifies the type of a workspace.
+type WorkspaceTypeReference struct {
+	// Name is the name of the WorkspaceType.
+	Name string `json:"name"`
+	// Path is the logical cluster path where the WorkspaceType is defined.
+	Path string `json:"path"`
 }
 
 type DefaultAPIBindingConfiguration struct {

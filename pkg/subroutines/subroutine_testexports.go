@@ -63,3 +63,7 @@ func (s *DeploymentSubroutine) ApplyReleaseWithValues(ctx context.Context, path 
 func (s *KcpsetupSubroutine) UnstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
 	return unstructuredFromFile(path, templateData, log)
 }
+
+func (r *KcpsetupSubroutine) ApplyExtraWorkspaces(ctx context.Context, config *rest.Config, inst *corev1alpha1.PlatformMesh) error {
+	return r.applyExtraWorkspaces(ctx, config, inst)
+}

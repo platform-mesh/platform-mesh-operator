@@ -32,6 +32,14 @@ spec:iam-service
     - workspaceTypeName: universal
       path: root:initializers
       secret: initializer-kubeconfig
+    extraWorkspaces:
+    - path: "root:orgs:my-new-workspace"
+      type:
+        name: "universal"
+        path: "root"
+    extraProviderConnections:
+    - path: "root:orgs:my-new-workspace"
+      secret: "my-new-workspace-kubeconfig"
   values:
     service1:
       enabled: true
@@ -165,6 +173,7 @@ The KcpSetup subroutine handles the initialization of the KCP environment:
 
 - Creates workspaces based on the specified paths in `providerConnections` and `initializerConnections`
 - Sets up API bindings as specified in `extraDefaultAPIBindings`
+- Create extra Workspaces specified in the `spec.KCP.extraWorkspaces`
 
 ### ProviderSecret
 

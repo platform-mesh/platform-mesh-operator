@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -28,6 +29,8 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+
+	"strings"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -115,6 +118,13 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
+	}
+
+	// apply extra workspaces
+	err = r.applyExtraWorkspaces(ctx, cfg, inst)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to apply extra workspaces")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply extra workspaces"), true, false)
 	}
 
 	// update workspace status
@@ -241,7 +251,6 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	return nil
-
 }
 
 func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
@@ -403,6 +412,54 @@ func (r *KcpsetupSubroutine) applyDirStructure(
 		}
 	}
 
+	return nil
+}
+
+func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *rest.Config, inst *corev1alpha1.PlatformMesh) error {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+
+	if inst.Spec.Kcp.ExtraWorkspaces == nil {
+		return nil
+	}
+
+	for _, wsDecl := range inst.Spec.Kcp.ExtraWorkspaces {
+		lastColon := strings.LastIndex(wsDecl.Path, ":")
+		if lastColon == -1 {
+			log.Warn().Str("path", wsDecl.Path).Msg("Invalid workspace path format for extraWorkspace, skipping. Must be 'parent:name'.")
+			continue
+		}
+		parentPath := wsDecl.Path[:lastColon]
+		workspaceName := wsDecl.Path[lastColon+1:]
+
+		log.Debug().Str("parentPath", parentPath).Str("workspaceName", workspaceName).Msg("Processing extra workspace")
+
+		k8sClient, err := r.kcpHelper.NewKcpClient(config, parentPath)
+		if err != nil {
+			return errors.Wrap(err, "Failed to create kcp client for parent workspace %s", parentPath)
+		}
+
+		ws := &kcptenancyv1alpha.Workspace{}
+		ws.APIVersion = kcptenancyv1alpha.SchemeGroupVersion.String()
+		ws.Kind = "Workspace"
+		ws.Name = workspaceName
+		ws.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
+			Name: kcptenancyv1alpha.WorkspaceTypeName(wsDecl.Type.Name),
+			Path: wsDecl.Type.Path,
+		}
+
+		unstructuredWs, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ws)
+		if err != nil {
+			return errors.Wrap(err, "failed to convert workspace to unstructured")
+		}
+		obj := unstructured.Unstructured{Object: unstructuredWs}
+
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+		if err != nil {
+			return errors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
+		}
+		log.Info().Str("workspace", wsDecl.Path).Msg("Applied extra workspace")
+
+	}
 	return nil
 }
 
