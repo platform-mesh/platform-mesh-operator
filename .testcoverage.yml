@@ -9,4 +9,6 @@ exclude:
     - ^setup/
     - .*_testexports.go
     - pkg/subroutines/deployment.go
+    - pkg/subroutines/patch_oidc.go
+    - internal/controller/realm_controller.go
 

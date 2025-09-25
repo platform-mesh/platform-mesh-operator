@@ -113,6 +113,14 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
+	if operatorCfg.PatchOIDCControllerEnabled {
+		realmReconciler := controller.NewRealmReconciler(mgr, log, &operatorCfg)
+		if err := realmReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "Realm")
+			os.Exit(1)
+		}
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
