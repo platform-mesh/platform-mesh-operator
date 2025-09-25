@@ -51,6 +51,16 @@ spec:
                 - get
                 - list
                 - watch
+            - apiGroups:
+                - apps
+              resources:
+                - deployments
+              verbs:
+                - get
+                - list
+                - watch
+                - update
+                - patch
 
     reportsController:
       rbac:
