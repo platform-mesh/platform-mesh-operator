@@ -4,10 +4,11 @@ metadata:
   name: orgs-authentication
 spec:
   jwt:
-    - issuer: https://{{ .baseDomain }}/keycloak/realms/welcome
-      audiences:
-        - welcome
-      audienceMatchPolicy: MatchAny
+    - issuer:
+        url: https://{{ .baseDomain }}/keycloak/realms/welcome
+        audiences:
+          - welcome
+        audienceMatchPolicy: MatchAny
       claimMappings:
         groups:
           claim: groups
