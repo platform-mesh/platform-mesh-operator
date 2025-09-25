@@ -185,7 +185,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	var u *url.URL
+	var address *url.URL
 
 	if pc.EndpointSliceName != "" {
 		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
@@ -206,7 +206,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 
 		endpointURL := slice.Status.APIExportEndpoints[0].URL
-		u, err = url.Parse(endpointURL)
+		address, err = url.Parse(endpointURL)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to parse endpoint URL")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -222,14 +222,14 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		} else {
 			kcpUrl.Path = path.Join("/clusters", pc.Path)
 		}
-		u = kcpUrl
+		address = kcpUrl
 	}
 
 	newConfig := rest.CopyConfig(cfg)
 	if pc.External {
-		newConfig.Host = fmt.Sprintf("%s://kcp.api.%s:%d/%s", u.Scheme, instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, u.Path)
+		newConfig.Host = fmt.Sprintf("https://kcp.api.%s:%d/%s", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, address.Path)
 	} else {
-		newConfig.Host = fmt.Sprintf("https://%s-front-proxy.%s:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort, u.Path)
+		newConfig.Host = fmt.Sprintf("https://%s-front-proxy.%s:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort, address.Path)
 	}
 
 	apiConfig := restConfigToAPIConfig(newConfig)
