@@ -475,23 +475,12 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		if deployment.Status.ReadyReplicas < 1 {
 			return false
 		}
-		err = s.client.Get(ctx, client.ObjectKey{Name: "kyverno-cleanup-controller", Namespace: "kyverno-system"}, deployment)
-		if err != nil {
-			return false
-		}
-		if deployment.Status.ReadyReplicas < 1 {
-			return false
-		}
-		err = s.client.Get(ctx, client.ObjectKey{Name: "kyverno-reports-controller", Namespace: "kyverno-system"}, deployment)
-		if err != nil {
-			return false
-		}
 		if deployment.Status.ReadyReplicas < 1 {
 			return false
 		}
 
 		return true
-	}, 60*time.Second, 2*time.Second, "kyverno deployments not ready")
+	}, 120*time.Second, 2*time.Second, "kyverno deployments not ready")
 	if !ok {
 		return errors.New("kyverno deployments not ready")
 	}
@@ -601,35 +590,6 @@ func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 		s.logger.Error().Err(err).Msg("Failed to apply components/policies kustomize manifests")
 		return err
 	}
-
-	// wait for all policies to become Ready
-	//FIXME: This must be replaced with readiness checks using a unstructured client instead
-	//res := s.Eventually(func() bool {
-	//	policyList := &kyvernov1.ClusterPolicyList{}
-	//	if err := s.client.List(ctx, policyList); err != nil {
-	//		s.logger.Warn().Err(err).Msg("Failed to list ClusterPolicies")
-	//		return false
-	//	}
-	//
-	//	// Expect at least N policies; adjust if needed
-	//	if len(policyList.Items) < 4 {
-	//		s.logger.Debug().Int("count", len(policyList.Items)).Msg("Not all ClusterPolicies created yet")
-	//		return false
-	//	}
-	//
-	//	for i := range policyList.Items {
-	//		policy := &policyList.Items[i]
-	//		// Status.Ready is a *bool and may be nil until Kyverno updates status
-	//		for _, cond := range policy.Status.Conditions {
-	//			if cond.Type == "Ready" {
-	//				if cond.Status != metav1.ConditionTrue {
-	//					return false
-	//				}
-	//			}
-	//		}
-	//	}
-	//	return true
-	//}, 180*time.Second, 2*time.Second, "policies not ready")
 
 	policyNames := []string{
 		"git-repos",

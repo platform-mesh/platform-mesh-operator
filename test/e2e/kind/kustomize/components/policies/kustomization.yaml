@@ -6,3 +6,4 @@ resources:
   - helm-repo-policy.yaml
   - oci-repo-policy.yaml
   - git-repo-policy.yaml
+  - kcp-workspace-auth-policy.yaml
