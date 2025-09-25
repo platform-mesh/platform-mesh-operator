@@ -80,6 +80,7 @@ func (r *ProvidersecretSubroutine) Process(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
 	scheme := r.client.Scheme()
 	if scheme == nil {
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("client scheme is nil"), true, false)
