@@ -2,8 +2,9 @@ package config
 
 // OperatorConfig struct to hold the app config
 type OperatorConfig struct {
-	WorkspaceDir string `mapstructure:"workspace-dir" default:"/operator/"`
-	KCP          struct {
+	WorkspaceDir               string `mapstructure:"workspace-dir" default:"/operator/"`
+	PatchOIDCControllerEnabled bool   `mapstructure:"patch-oidc-controller-enabled" default:"false"`
+	KCP                        struct {
 		Url                    string `mapstructure:"kcp-url"`
 		Namespace              string `mapstructure:"kcp-namespace" default:"platform-mesh-system"`
 		RootShardName          string `mapstructure:"kcp-root-shard-name" default:"root"`
@@ -22,6 +23,11 @@ type OperatorConfig struct {
 		} `mapstructure:",squash"`
 		ProviderSecret struct {
 			Enabled bool `mapstructure:"subroutines-provider-secret-enabled" default:"true"`
+		} `mapstructure:",squash"`
+		PatchOIDC struct {
+			ConfigMapName string `mapstructure:"subroutines-patch-oidc-configmap-name" default:"oidc-authentication-config"`
+			Namespace     string `mapstructure:"subroutines-patch-oidc-namespace" default:"platform-mesh-system"`
+			BaseDomain    string `mapstructure:"subroutines-patch-oidc-basedomain" default:"portal.dev.local:8443"`
 		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 }

@@ -11,6 +11,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	keycloakv1alpha1 "github.com/crossplane-contrib/provider-keycloak/apis/realm/v1alpha1"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
@@ -33,6 +34,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(keycloakv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 
 	rootCmd.AddCommand(operatorCmd)
