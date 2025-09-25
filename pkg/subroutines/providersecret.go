@@ -227,7 +227,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 
 	newConfig := rest.CopyConfig(cfg)
 	if pc.External {
-		newConfig.Host = fmt.Sprintf("%s://%s:%d/%s", u.Scheme, instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, u.Path)
+		newConfig.Host = fmt.Sprintf("%s://kcp.api.%s:%d/%s", u.Scheme, instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, u.Path)
 	} else {
 		newConfig.Host = fmt.Sprintf("https://%s-front-proxy.%s:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort, u.Path)
 	}
