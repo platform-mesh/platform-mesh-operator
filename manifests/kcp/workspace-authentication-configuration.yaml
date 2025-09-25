@@ -1,0 +1,17 @@
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: WorkspaceAuthenticationConfiguration
+metadata:
+  name: orgs-authentication
+spec:
+  jwt:
+    - issuer: https://{{ .baseDomain }}/keycloak/realms/welcome
+      audiences:
+        - welcome
+      audienceMatchPolicy: MatchAny
+      claimMappings:
+        groups:
+          claim: groups
+          prefix: ""
+        username:
+          claim: email
+          prefix: ""

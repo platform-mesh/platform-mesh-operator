@@ -17,3 +17,5 @@ spec:
     types:
       - name: org
         path: root
+  authenticationConfigurations:
+  - name: orgs-authentication
