@@ -6,6 +6,8 @@ metadata:
 spec:
   exposure:
     port: 8443
+    baseDomain: portal.dev.local
+    protocol: https
   # renovate: datasource=docker registryUrl=https://ghcr.io depName=ghcr.io/platform-mesh/helm-charts/platform-mesh-operator-components
   ocm:
     repo:

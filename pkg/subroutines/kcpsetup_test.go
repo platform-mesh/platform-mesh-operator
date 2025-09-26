@@ -541,7 +541,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
@@ -553,7 +553,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
