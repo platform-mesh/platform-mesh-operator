@@ -4,7 +4,7 @@ metadata:
   generation: 1
   labels:
     ui.platform-mesh.io/entity: main
-  name: main-home-overview
+  name: main-home-overview-getting-started
 spec:
   inlineConfiguration:
     content: |-
