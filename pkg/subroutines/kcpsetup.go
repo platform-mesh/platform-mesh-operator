@@ -46,6 +46,7 @@ type KcpsetupSubroutine struct {
 	kcpDirectory string
 	// Cache for CA bundles to avoid redundant secret lookups
 	caBundleCache map[string]string
+	cfg           *config.OperatorConfig
 }
 
 const (
@@ -53,7 +54,7 @@ const (
 	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
 	return &KcpsetupSubroutine{
 		client:        client,
 		kcpDirectory:  kcpdir,
@@ -61,6 +62,7 @@ func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, kcpdir string
 		kcpHelper:     helper,
 		helm:          DefaultHelmGetter{},
 		caBundleCache: make(map[string]string),
+		cfg:           cfg,
 	}
 }
 
@@ -71,9 +73,6 @@ func (r *KcpsetupSubroutine) GetName() string {
 func (r *KcpsetupSubroutine) Finalize(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
-	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
-	_ = instance
-
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
@@ -244,6 +243,12 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		templateData["port"] = fmt.Sprintf("%d", inst.Spec.Exposure.Port)
 	}
 
+	if templateData["port"] != "443" {
+		templateData["baseDomainWithPort"] = fmt.Sprintf("%s:%s", templateData["baseDomain"], templateData["port"])
+	} else {
+		templateData["baseDomainWithPort"] = templateData["baseDomain"]
+	}
+
 	err = r.applyDirStructure(ctx, dir, "root", config, templateData, inst)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
@@ -295,6 +300,22 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	validatingKey := fmt.Sprintf("%s.ca-bundle", validatingWebhookConfig.WebhookRef.Name)
 	validatingB64Data := base64.StdEncoding.EncodeToString(validatingCaData)
 	caBundles[validatingKey] = validatingB64Data
+
+	if r.cfg.Subroutines.PatchOIDC.DomainCALookup {
+		domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
+			SecretData: "tls.crt",
+			SecretRef: corev1alpha1.SecretReference{
+				Name:      "domain-certificate-ca",
+				Namespace: "platform-mesh-system",
+			},
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get Domain CA bundle")
+			return nil, errors.Wrap(err, "Failed to get Domain CA bundle")
+		}
+
+		caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
+	}
 
 	// Cache the results
 	r.caBundleCache = caBundles

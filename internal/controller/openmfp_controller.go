@@ -83,7 +83,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), commonCfg, cfg))
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
-		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, dir+"/manifests/kcp", kcpUrl))
+		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp", kcpUrl))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))

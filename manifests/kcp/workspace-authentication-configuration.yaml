@@ -5,10 +5,13 @@ metadata:
 spec:
   jwt:
     - issuer:
-        url: https://{{ .baseDomain }}/keycloak/realms/welcome
+        url: https://{{ .baseDomainWithPort }}/keycloak/realms/welcome
         audiences:
           - welcome
         audienceMatchPolicy: MatchAny
+        {{- with .domainCA }}
+        certificateAuthority: {{ . }}
+        {{- end -}}
       claimMappings:
         groups:
           claim: groups
