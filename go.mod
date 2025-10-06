@@ -14,7 +14,7 @@ require (
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/crossplane-contrib/provider-keycloak v1.13.0
 	github.com/fluxcd/helm-controller/api v1.3.0
-	github.com/fluxcd/source-controller/api v1.7.0
+	github.com/fluxcd/source-controller/api v1.7.1
 	github.com/go-logr/logr v1.4.3
 	github.com/google/go-cmp v0.7.0
 	github.com/kcp-dev/kcp/sdk v0.28.3
