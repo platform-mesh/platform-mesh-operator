@@ -23,11 +23,18 @@ import (
 
 // PlatformMeshSpec defines the desired state of PlatformMesh
 type PlatformMeshSpec struct {
-	Exposure *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp      Kcp                  `json:"kcp,omitempty"`
-	Values   apiextensionsv1.JSON `json:"values,omitempty"`
-	OCM      *OCMConfig           `json:"ocm,omitempty"`
+	Exposure       *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp            Kcp                  `json:"kcp,omitempty"`
+	Values         apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM            *OCMConfig           `json:"ocm,omitempty"`
+	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
 }
+
+type FeatureToggle struct {
+	Name       string            `json:"name,omitempty"`
+	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
 type OCMConfig struct {
 	Repo          *RepoConfig            `json:"repo,omitempty"`
 	Component     *ComponentConfig       `json:"component,omitempty"`

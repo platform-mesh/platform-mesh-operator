@@ -80,6 +80,17 @@ spec:
                   protocol:
                     type: string
                 type: object
+              featureToggles:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    parameters:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  type: object
+                type: array
               kcp:
                 properties:
                   extraDefaultAPIBindings:

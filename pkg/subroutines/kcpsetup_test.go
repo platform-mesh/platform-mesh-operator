@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -80,7 +79,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 			return nil
 		}).Times(10)
 
-	err := s.testObj.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{})
+	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
 
 	s.Assert().Nil(err)
 }
@@ -532,49 +531,6 @@ func (s *KcpsetupTestSuite) TestFinalize() {
 	res, err := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 	s.Assert().Equal(res, ctrl.Result{})
-}
-
-func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
-
-	cl := new(mocks.Client)
-	// Mock Get to return NotFound error (which should trigger a Patch)
-	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
-	s.Assert().Nil(err)
-
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
-	s.Assert().Error(err)
-
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
-	s.Assert().Error(err)
-
-	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
-	s.Assert().Error(err)
-
-	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.PlatformMesh{})
-	s.Assert().Nil(err)
-
-	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	templateData := map[string]string{
-		".account-operator.webhooks.platform-mesh.io.ca-bundle": "CABundle",
-	}
-
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
-	ctx := context.WithValue(context.TODO(), keys.ConfigCtxKey, operatorCfg)
-	err = s.testObj.ApplyManifestFromFile(ctx, "../../manifests/kcp/03-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
-	s.Assert().Nil(err)
 }
 
 func (s *KcpsetupTestSuite) TestCreateWorkspaces() {

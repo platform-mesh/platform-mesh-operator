@@ -130,7 +130,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := BuildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)

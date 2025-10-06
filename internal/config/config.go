@@ -30,5 +30,8 @@ type OperatorConfig struct {
 			BaseDomain     string `mapstructure:"subroutines-patch-oidc-basedomain" default:"portal.dev.local:8443"`
 			DomainCALookup bool   `mapstructure:"subroutines-patch-oidc-domain-ca-lookup" default:"false"`
 		} `mapstructure:",squash"`
+		FeatureToggles struct {
+			Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
+		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 }
