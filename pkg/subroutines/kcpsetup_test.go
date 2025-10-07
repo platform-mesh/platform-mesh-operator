@@ -73,45 +73,45 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, &config.OperatorConfig{}, ManifestStructureTest, "")
 }
 
-// func (s *KcpsetupTestSuite) Test_applyDirStructure() {
-// 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+func (s *KcpsetupTestSuite) Test_applyDirStructure() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-// 	kcpClientMock := new(mocks.Client)
-// 	// Expect NewKcpClient to be called multiple times for different workspaces (flexible count)
-// 	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil).Maybe()
-// 	inventory := map[string]string{
-// 		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
-// 		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
-// 		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
-// 	}
+	kcpClientMock := new(mocks.Client)
+	// Expect NewKcpClient to be called multiple times for different workspaces (flexible count)
+	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil).Maybe()
+	inventory := map[string]string{
+		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
+		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
+		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
+	}
 
-// 	// Expect multiple Patch calls for applying manifests (flexible count)
-// 	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
+	// Expect multiple Patch calls for applying manifests (flexible count)
+	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
 
-// 	// Mock unstructured object lookups (for general manifest objects - flexible count)
-// 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-// 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-// 			unstructuredObj := obj.(*unstructured.Unstructured)
-// 			unstructuredObj.Object = map[string]interface{}{
-// 				"status": map[string]interface{}{
-// 					"phase": "Ready",
-// 				},
-// 			}
-// 			return nil
-// 		}).Times(100)
+	// Mock unstructured object lookups (for general manifest objects - flexible count)
+	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"status": map[string]interface{}{
+					"phase": "Ready",
+				},
+			}
+			return nil
+		}).Times(100)
 
-// 	// Mock workspace lookups for waitForWorkspace calls (multiple calls for polling)
-// 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-// 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-// 			ws := obj.(*kcptenancyv1alpha.Workspace)
-// 			ws.Status.Phase = "Ready"
-// 			return nil
-// 		}).Times(10)
+	// Mock workspace lookups for waitForWorkspace calls (multiple calls for polling)
+	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			ws := obj.(*kcptenancyv1alpha.Workspace)
+			ws.Status.Phase = "Ready"
+			return nil
+		}).Times(10)
 
-// 	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
+	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
 
-// 	s.Assert().Nil(err)
-// }
+	s.Assert().Nil(err)
+}
 
 func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
