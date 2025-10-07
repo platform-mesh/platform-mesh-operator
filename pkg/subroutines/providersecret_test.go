@@ -168,28 +168,28 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		mock.MatchedBy(func(obj client.Object) bool {
 			secret, ok := obj.(*corev1.Secret)
 			if !ok {
-				s.T().Logf("Object is not a Secret")
+				s.log.Error().Msg("Object is not a Secret")
 				return false
 			}
 
 			if secret.Name != "provider-secret" {
-				s.T().Logf("Secret name mismatch: expected 'provider-secret', got '%s'", secret.Name)
+				s.log.Error().Msgf("Secret name mismatch: expected 'provider-secret', got '%s'", secret.Name)
 				return false
 			}
 			if secret.Namespace != "default" {
-				s.T().Logf("Secret namespace mismatch: expected 'default', got '%s'", secret.Namespace)
+				s.log.Error().Msgf("Secret namespace mismatch: expected 'default', got '%s'", secret.Namespace)
 				return false
 			}
 
 			kubeconfigData, exists := secret.Data["kubeconfig"]
 			if !exists {
-				s.T().Logf("kubeconfig data not found in secret")
+				s.log.Error().Msg("kubeconfig data not found in secret")
 				return false
 			}
 
 			kubeconfig, err := clientcmd.Load(kubeconfigData)
 			if err != nil {
-				s.T().Logf("Failed to parse kubeconfig: %v", err)
+				s.log.Error().Msgf("Failed to parse kubeconfig: %v", err)
 				return false
 			}
 
@@ -199,7 +199,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			// Test that the URL is passed correctly form the endpoint slice
 			expectedURL := "http://example.com/clusters/root:platform-mesh-system"
 			if cluster.Server != expectedURL {
-				s.T().Logf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
+				s.log.Error().Msgf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
 				return false
 			}
 			return true
@@ -717,8 +717,6 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.Process(ctx, instance)
-	_ = opErr
-	_ = res
 
 	// assert
 	s.Assert().Error(opErr.Err(), "Failed to build kubeconfig")
@@ -1700,7 +1698,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 				if data, ok := sec.Data["kubeconfig"]; ok {
 					cfg, err := clientcmd.Load(data)
 					if err != nil {
-						s.T().Logf("failed to parse kubeconfig: %v", err)
+						s.log.Error().Msgf("failed to parse kubeconfig: %v", err)
 					} else {
 						for _, c := range cfg.Clusters {
 							if c != nil {
@@ -1772,30 +1770,30 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 				mock.MatchedBy(func(obj client.Object) bool {
 					sec, ok := obj.(*corev1.Secret)
 					if !ok {
-						s.T().Logf("expected a *corev1.Secret, got %T", obj)
+						s.log.Error().Msgf("expected a *corev1.Secret, got %T", obj)
 						return false
 					}
 					if sec.Name != pc.Secret || sec.Namespace != instance.Namespace {
-						s.T().Logf("Secret %s/%s; want %s/%s",
+						s.log.Error().Msgf("Secret %s/%s; want %s/%s",
 							sec.Namespace, sec.Name,
 							instance.Namespace, pc.Secret)
 						return false
 					}
 					data, ok := sec.Data["kubeconfig"]
 					if !ok {
-						s.T().Logf("missing kubeconfig key")
+						s.log.Error().Msg("missing kubeconfig key")
 						return false
 					}
 					cfg, err := clientcmd.Load(data)
 					if err != nil {
-						s.T().Logf("invalid kubeconfig: %v", err)
+						s.log.Error().Msgf("invalid kubeconfig: %v", err)
 						return false
 					}
 					ctx := cfg.Contexts[cfg.CurrentContext]
 					cluster := cfg.Clusters[ctx.Cluster]
 					want := fmt.Sprintf("http://example.com/clusters/%s", pc.Path)
 					if cluster.Server != want {
-						s.T().Logf("server URL = %q; want %q", cluster.Server, want)
+						s.log.Error().Msgf("server URL = %q; want %q", cluster.Server, want)
 						return false
 					}
 					return true

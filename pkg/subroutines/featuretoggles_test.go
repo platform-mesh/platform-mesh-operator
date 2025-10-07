@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,7 +36,11 @@ func TestFeaturesTestSuite(t *testing.T) {
 func (s *FeaturesTestSuite) SetupTest() {
 	s.clientMock = new(mocks.Client)
 	s.helperMock = new(mocks.KcpHelper)
-	s.log, _ = logger.New(logger.DefaultConfig())
+	cfg := logger.DefaultConfig()
+	cfg.Level = "debug"
+	cfg.NoJSON = true
+	cfg.Name = "FeaturesTestSuite"
+	s.log, _ = logger.New(cfg)
 	s.testObj = subroutines.NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
 	}, "https://kcp.example.com")
@@ -94,6 +100,10 @@ func (s *FeaturesTestSuite) TestProcess() {
 			ws.Status.Phase = "Ready"
 			return nil
 		})
+
+	mockKcpClient.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "main-home-overview-getting-started"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "main-home-overview-getting-started"))
 
 	// Call Process
 	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{

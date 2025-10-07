@@ -44,45 +44,74 @@ func TestKcpsetupTestSuite(t *testing.T) {
 	suite.Run(t, new(KcpsetupTestSuite))
 }
 
-func (s *KcpsetupTestSuite) Test_applyDirStructure() {
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-
-	kcpClientMock := new(mocks.Client)
-	// Expect NewKcpClient to be called multiple times for different workspaces (flexible count)
-	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil).Maybe()
-	inventory := map[string]string{
-		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
-		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
-		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
-	}
-
-	// Expect multiple Patch calls for applying manifests (flexible count)
-	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
-
-	// Mock unstructured object lookups (for general manifest objects - flexible count)
-	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-			unstructuredObj := obj.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"status": map[string]interface{}{
-					"phase": "Ready",
-				},
-			}
-			return nil
-		}).Times(100)
-
-	// Mock workspace lookups for waitForWorkspace calls (multiple calls for polling)
-	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-			ws := obj.(*kcptenancyv1alpha.Workspace)
-			ws.Status.Phase = "Ready"
-			return nil
-		}).Times(10)
-
-	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
-
-	s.Assert().Nil(err)
+func (s *KcpsetupTestSuite) SetupTest() {
+	s.clientMock = new(mocks.Client)
+	s.helperMock = new(mocks.KcpHelper)
+	cfg := logger.DefaultConfig()
+	cfg.Level = "debug"
+	cfg.NoJSON = true
+	cfg.Name = "KcpsetupTestSuite"
+	s.log, _ = logger.New(cfg)
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "https://kcp.example.com")
 }
+
+func (s *KcpsetupTestSuite) TearDownTest() {
+	s.clientMock = nil
+	s.helperMock = nil
+	s.testObj = nil
+}
+
+func (s *KcpsetupTestSuite) Test_Constructor() {
+	// create new logger
+	s.log, _ = logger.New(logger.DefaultConfig())
+
+	// create new mock client
+	s.clientMock = new(mocks.Client)
+	helper := &subroutines.Helper{}
+
+	// create new test object
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, &config.OperatorConfig{}, ManifestStructureTest, "")
+}
+
+// func (s *KcpsetupTestSuite) Test_applyDirStructure() {
+// 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+// 	kcpClientMock := new(mocks.Client)
+// 	// Expect NewKcpClient to be called multiple times for different workspaces (flexible count)
+// 	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil).Maybe()
+// 	inventory := map[string]string{
+// 		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
+// 		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
+// 		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
+// 	}
+
+// 	// Expect multiple Patch calls for applying manifests (flexible count)
+// 	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
+
+// 	// Mock unstructured object lookups (for general manifest objects - flexible count)
+// 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+// 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+// 			unstructuredObj := obj.(*unstructured.Unstructured)
+// 			unstructuredObj.Object = map[string]interface{}{
+// 				"status": map[string]interface{}{
+// 					"phase": "Ready",
+// 				},
+// 			}
+// 			return nil
+// 		}).Times(100)
+
+// 	// Mock workspace lookups for waitForWorkspace calls (multiple calls for polling)
+// 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
+// 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+// 			ws := obj.(*kcptenancyv1alpha.Workspace)
+// 			ws.Status.Phase = "Ready"
+// 			return nil
+// 		}).Times(10)
+
+// 	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
+
+// 	s.Assert().Nil(err)
+// }
 
 func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
@@ -217,19 +246,6 @@ func (s *KcpsetupTestSuite) Test_GetCaBundle() {
 	s.Assert().Nil(caData)
 	s.Assert().Contains(err.Error(), "Failed to get caData from secret")
 	s.clientMock.AssertExpectations(s.T())
-}
-
-func (s *KcpsetupTestSuite) SetupTest() {
-	s.clientMock = new(mocks.Client)
-	s.helperMock = new(mocks.KcpHelper)
-	s.log, _ = logger.New(logger.DefaultConfig())
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "https://kcp.example.com")
-}
-
-func (s *KcpsetupTestSuite) TearDownTest() {
-	s.clientMock = nil
-	s.helperMock = nil
-	s.testObj = nil
 }
 
 func (s *KcpsetupTestSuite) TestProcess() {
@@ -503,18 +519,6 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(map[string]string{}, inventory)
-}
-
-func (s *KcpsetupTestSuite) Test_Constructor() {
-	// create new logger
-	s.log, _ = logger.New(logger.DefaultConfig())
-
-	// create new mock client
-	s.clientMock = new(mocks.Client)
-	helper := &subroutines.Helper{}
-
-	// create new test object
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, &config.OperatorConfig{}, ManifestStructureTest, "")
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {

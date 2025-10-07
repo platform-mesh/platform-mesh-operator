@@ -91,8 +91,6 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 
 	dir := r.workspaceDirectory + "/feature-enable-getting-started"
 
-	_ = cfg
-
 	err = ApplyDirStructure(ctx, dir, "root", cfg, make(map[string]string), inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")

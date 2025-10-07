@@ -37,7 +37,11 @@ func TestDeployTestSuite(t *testing.T) {
 func (s *DeployTestSuite) SetupTest() {
 	s.clientMock = new(mocks.Client)
 	s.helperMock = new(mocks.KcpHelper)
-	s.log, _ = logger.New(logger.DefaultConfig())
+	cfgLog := logger.DefaultConfig()
+	cfgLog.Level = "debug"
+	cfgLog.NoJSON = true
+	cfgLog.Name = "DeployTestSuite"
+	s.log, _ = logger.New(cfgLog)
 
 	cfg := pmconfig.CommonServiceConfig{}
 	operatorCfg := config.OperatorConfig{
