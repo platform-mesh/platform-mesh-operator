@@ -35,15 +35,13 @@ type FeatureToggleSubroutine struct {
 }
 
 func NewFeatureToggleSubroutine(client client.Client, helper KcpHelper, operatorCfg *config.OperatorConfig, kcpUrl string) *FeatureToggleSubroutine {
-	sub := &FeatureToggleSubroutine{
+	return &FeatureToggleSubroutine{
 		client:             client,
 		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/features/"),
 		kcpUrl:             kcpUrl,
 		kubeconfigBuilder:  defaultKubeconfigBuilder{},
 		kcpHelper:          helper,
 	}
-
-	return sub
 }
 
 func (r *FeatureToggleSubroutine) GetName() string {
