@@ -23,7 +23,7 @@ type KubeconfigBuilder interface {
 type defaultKubeconfigBuilder struct{}
 
 func (defaultKubeconfigBuilder) Build(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
-	return BuildKubeconfig(ctx, client, kcpUrl)
+	return buildKubeconfig(ctx, client, kcpUrl)
 }
 
 type FeatureToggleSubroutine struct {
@@ -81,7 +81,7 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 	log.Info().Msg("Getting started feature enabled")
 
 	// Build kcp kubeonfig
-	cfg, err := BuildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)

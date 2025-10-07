@@ -101,7 +101,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := BuildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -179,7 +179,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	for k, v := range apiExportHashes {
 		templateData[k] = v
 	}
-	templateData["baseDomain"] = GetBaseDomainInventory(inst)
+	templateData["baseDomain"] = getBaseDomainInventory(inst)
 
 	templateData["port"] = "443"
 	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Port != 0 {
@@ -201,7 +201,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	return nil
 }
 
-func GetBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
+func getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
 	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
 		return "portal.dev.local"
 	}
