@@ -34,6 +34,13 @@ spec:
     verbs:
       - '*'
     state: Accepted
+  - resource: apiresourceschemas
+    group: apis.kcp.io
+    selector:
+      matchAll: true
+    verbs:
+      - '*'
+    state: Accepted
   reference:
     export:
       name: core.platform-mesh.io
