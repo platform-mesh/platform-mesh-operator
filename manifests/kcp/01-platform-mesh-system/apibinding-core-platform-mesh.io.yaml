@@ -41,6 +41,13 @@ spec:
     verbs:
       - '*'
     state: Accepted
+  - resource: logicalclusters
+    group: apis.kcp.io
+    selector:
+      matchAll: true
+    verbs:
+      - '*'
+    state: Accepted
   reference:
     export:
       name: core.platform-mesh.io
