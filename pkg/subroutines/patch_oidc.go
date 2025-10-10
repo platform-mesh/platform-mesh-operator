@@ -8,29 +8,31 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
-	"gopkg.in/yaml.v3"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/yaml"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apiserver/pkg/apis/apiserver"
+	apiserverv1beta1 "k8s.io/apiserver/pkg/apis/apiserver/v1beta1"
 	"k8s.io/utils/ptr"
 )
 
 type PatchOIDCSubroutine struct {
-	cl            client.Client
-	baseDomain    string
-	configMapName string
-	namespace     string
+	cl             client.Client
+	baseDomain     string
+	configMapName  string
+	namespace      string
+	domainCALookup bool
 }
 
-func NewPatchOIDCSubroutine(cl client.Client, configMapName, namespace, baseDomain string) *PatchOIDCSubroutine {
+func NewPatchOIDCSubroutine(cl client.Client, configMapName, namespace, baseDomain string, domainCALookup bool) *PatchOIDCSubroutine {
 	return &PatchOIDCSubroutine{
-		cl:            cl,
-		baseDomain:    baseDomain,
-		configMapName: configMapName,
-		namespace:     namespace,
+		cl:             cl,
+		baseDomain:     baseDomain,
+		configMapName:  configMapName,
+		namespace:      namespace,
+		domainCALookup: domainCALookup,
 	}
 }
 
@@ -49,13 +51,13 @@ func (p *PatchOIDCSubroutine) Finalize(ctx context.Context, instance runtimeobje
 			oidcCM.Data = map[string]string{}
 		}
 
-		var structuredAuth apiserver.AuthenticationConfiguration
+		var structuredAuth apiserverv1beta1.AuthenticationConfiguration
 		err := yaml.Unmarshal([]byte(configYaml), &structuredAuth)
 		if err != nil {
 			return err
 		}
 
-		structuredAuth.JWT = slices.DeleteFunc(structuredAuth.JWT, func(j apiserver.JWTAuthenticator) bool {
+		structuredAuth.JWT = slices.DeleteFunc(structuredAuth.JWT, func(j apiserverv1beta1.JWTAuthenticator) bool {
 			return j.Issuer.URL == fmt.Sprintf("https://%s/keycloak/realms/%s", p.baseDomain, name)
 		})
 
@@ -91,6 +93,17 @@ func (p *PatchOIDCSubroutine) Process(ctx context.Context, instance runtimeobjec
 	oidcCM.SetName(p.configMapName)
 	oidcCM.SetNamespace(p.namespace)
 
+	var domainCA string
+	if p.domainCALookup {
+		var domainCASecret corev1.Secret
+		err := p.cl.Get(ctx, client.ObjectKey{Name: "domain-certificate-ca", Namespace: p.namespace}, &domainCASecret)
+		if err != nil {
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+
+		domainCA = string(domainCASecret.Data["tls.crt"])
+	}
+
 	_, err := controllerutil.CreateOrPatch(ctx, p.cl, &oidcCM, func() error {
 
 		configYaml, ok := oidcCM.Data["config.yaml"]
@@ -98,29 +111,47 @@ func (p *PatchOIDCSubroutine) Process(ctx context.Context, instance runtimeobjec
 			oidcCM.Data = map[string]string{}
 		}
 
-		var structuredAuth apiserver.AuthenticationConfiguration
+		var structuredAuth apiserverv1beta1.AuthenticationConfiguration
 		err := yaml.Unmarshal([]byte(configYaml), &structuredAuth)
 		if err != nil {
 			return err
 		}
 
-		structuredAuth.JWT = append(structuredAuth.JWT, apiserver.JWTAuthenticator{
-			Issuer: apiserver.Issuer{
+		oidcConfig := apiserverv1beta1.JWTAuthenticator{
+			Issuer: apiserverv1beta1.Issuer{
 				URL:                 fmt.Sprintf("https://%s/keycloak/realms/%s", p.baseDomain, name),
 				Audiences:           []string{name},
-				AudienceMatchPolicy: apiserver.AudienceMatchPolicyMatchAny,
+				AudienceMatchPolicy: apiserverv1beta1.AudienceMatchPolicyMatchAny,
 			},
-			ClaimMappings: apiserver.ClaimMappings{
-				Username: apiserver.PrefixedClaimOrExpression{
+			ClaimMappings: apiserverv1beta1.ClaimMappings{
+				Username: apiserverv1beta1.PrefixedClaimOrExpression{
 					Claim:  "email",
 					Prefix: ptr.To(""),
 				},
-				Groups: apiserver.PrefixedClaimOrExpression{
+				Groups: apiserverv1beta1.PrefixedClaimOrExpression{
 					Claim:  "groups",
 					Prefix: ptr.To(""),
 				},
 			},
+		}
+
+		if p.domainCALookup {
+			oidcConfig.Issuer.CertificateAuthority = domainCA
+		}
+
+		idx := slices.IndexFunc(structuredAuth.JWT, func(j apiserverv1beta1.JWTAuthenticator) bool {
+			return j.Issuer.URL == fmt.Sprintf("https://%s/keycloak/realms/%s", p.baseDomain, name)
 		})
+
+		if idx != -1 {
+			structuredAuth.JWT[idx] = oidcConfig
+		} else {
+			structuredAuth.JWT = append(structuredAuth.JWT, oidcConfig)
+		}
+
+		if structuredAuth.GroupVersionKind().Empty() {
+			structuredAuth.SetGroupVersionKind(apiserverv1beta1.ConfigSchemeGroupVersion.WithKind("AuthenticationConfiguration"))
+		}
 
 		rawYaml, err := yaml.Marshal(&structuredAuth)
 		if err != nil {

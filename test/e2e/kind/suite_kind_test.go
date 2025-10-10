@@ -532,7 +532,7 @@ func (s *KindTestSuite) SetupSuite() {
 	}
 
 	// add Platform Mesh resource
-	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/openmfp-resource/platform-mesh.yaml", s.client, make(map[string]string)); err != nil {
+	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client, make(map[string]string)); err != nil {
 		s.FailNow("Failed to apply PlatformMesh resource manifest", err)
 	}
 

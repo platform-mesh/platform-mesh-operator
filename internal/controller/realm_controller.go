@@ -32,6 +32,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 					cfg.Subroutines.PatchOIDC.ConfigMapName,
 					cfg.Subroutines.PatchOIDC.Namespace,
 					cfg.Subroutines.PatchOIDC.BaseDomain,
+					cfg.Subroutines.PatchOIDC.DomainCALookup,
 				),
 			},
 			"platform-mesh-operator",

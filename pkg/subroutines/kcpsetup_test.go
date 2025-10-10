@@ -149,7 +149,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 
 	// Test case 2: Secret not found
 	// Create a new instance to clear the cache
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "")
 
 	// Mock the mutating webhook secret lookup to return error
 	s.clientMock.EXPECT().
@@ -224,7 +224,7 @@ func (s *KcpsetupTestSuite) SetupTest() {
 	s.clientMock = new(mocks.Client)
 	s.helperMock = new(mocks.KcpHelper)
 	s.log, _ = logger.New(logger.DefaultConfig())
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, ManifestStructureTest, "https://kcp.example.com")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "https://kcp.example.com")
 }
 
 func (s *KcpsetupTestSuite) TearDownTest() {
@@ -430,7 +430,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	s.Assert().Equal(ctrl.Result{}, result)
 
 	// Test error case - create a new instance to clear the cache
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, ManifestStructureTest, "https://kcp.example.com")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "https://kcp.example.com")
 }
 
 func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
@@ -438,7 +438,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Times(3)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -515,7 +515,7 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 	helper := &subroutines.Helper{}
 
 	// create new test object
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, &config.OperatorConfig{}, ManifestStructureTest, "")
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
@@ -541,7 +541,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err := s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	err = s.testObj.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
@@ -553,7 +553,7 @@ func (s *KcpsetupTestSuite) TestApplyManifestFromFile() {
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-openmfp-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = s.testObj.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
@@ -581,7 +581,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	// test err1 - expect error when NewKcpClient fails
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(nil, errors.New("failed to create client"))
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
 
 	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
@@ -592,7 +592,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper = new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
 
 	// Mock both webhook secret lookups for CA bundle inventory
 	webhookConfig := subroutines.DEFAULT_WEBHOOK_CONFIGURATION
@@ -671,7 +671,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient = new(mocks.Client)
 	mockedKcpHelper = new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
 
 	// Mock both secret lookups again (they should be cached from previous call)
 	// Since we're creating a new instance, the cache is cleared, so we need to mock again
