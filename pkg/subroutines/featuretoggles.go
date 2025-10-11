@@ -80,7 +80,7 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 	// Implement the logic to enable the getting started feature
 	log.Info().Msg("Getting started feature enabled")
 
-	// Build kcp kubeonfig
+	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
