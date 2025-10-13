@@ -3,7 +3,7 @@ kind: ContentConfiguration
 metadata:
   generation: 1
   labels:
-    ui.platform-mesh.io/entity: users
+    ui.platform-mesh.io/entity: main
   name: user-overview
 spec:
   inlineConfiguration:
