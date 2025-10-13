@@ -34,12 +34,11 @@ import (
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
-	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 type KcpHelper interface {
@@ -377,7 +376,7 @@ func WaitForWorkspace(
 
 func ApplyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.PlatformMesh,
+	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *v1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -415,11 +414,11 @@ func ApplyManifestFromFile(
 
 	existingObj := obj.DeepCopy()
 	err = k8sClient.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}, existingObj)
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil && !kerrors.IsNotFound(err) {
 		return errors.Wrap(err, "Failed to get existing object: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 
-	if apierrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
+	if kerrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
 		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
@@ -435,7 +434,7 @@ func ApplyDirStructure(
 	kcpPath string,
 	config *rest.Config,
 	templateData map[string]string,
-	inst *corev1alpha1.PlatformMesh,
+	inst *v1alpha1.PlatformMesh,
 	kcpHelper KcpHelper,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", "")
