@@ -1,0 +1,31 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  generation: 1
+  labels:
+    ui.platform-mesh.io/entity: main
+  name: main-home-overview-getting-started
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "getting-started",
+        "creationTimestamp": "2022-09-26T11:39:17Z",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "entityType": "main.overview::compound",
+                "url": "/assets/openmfp-portal-ui-wc.js#getting-started",
+                "layoutConfig": {
+                  "column": "1 / -1"
+                },
+                "webcomponent": {
+                  "selfRegistered": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

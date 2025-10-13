@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -16,13 +15,10 @@ import (
 	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -35,7 +31,6 @@ import (
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 type KcpsetupSubroutine struct {
@@ -112,7 +107,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
 
-	// generate kcp secret
+	// Create kcp workspaces recursively
 	err = r.createKcpResources(ctx, cfg, r.kcpDirectory, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
@@ -164,58 +159,6 @@ func MatchesCondition(release *unstructured.Unstructured, conditionType string) 
 	return false
 }
 
-func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	secretName := operatorCfg.KCP.ClusterAdminSecretName
-	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
-	}
-	if secret == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
-	}
-	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
-	}
-
-	caData, ok := secret.Data["ca.crt"]
-	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
-	}
-
-	tlsCrt, ok := secret.Data["tls.crt"]
-	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
-	}
-
-	tlsKey, ok := secret.Data["tls.key"]
-	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
-	}
-
-	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters = map[string]*clientcmdapi.Cluster{
-		"kcp": {
-			Server:                   kcpUrl,
-			CertificateAuthorityData: secret.Data["ca.crt"],
-		},
-	}
-	cfg.Contexts = map[string]*clientcmdapi.Context{
-		"admin": {
-			Cluster:  "kcp",
-			AuthInfo: "admin",
-		},
-	}
-	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
-		"admin": {
-			ClientCertificateData: secret.Data["tls.crt"],
-			ClientKeyData:         secret.Data["tls.key"],
-		},
-	}
-	cfg.CurrentContext = "admin"
-	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
-}
-
 func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
@@ -236,7 +179,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	for k, v := range apiExportHashes {
 		templateData[k] = v
 	}
-	templateData["baseDomain"] = r.getBaseDomainInventory(inst)
+	templateData["baseDomain"] = getBaseDomainInventory(inst)
 
 	templateData["port"] = "443"
 	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Port != 0 {
@@ -249,7 +192,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		templateData["baseDomainWithPort"] = templateData["baseDomain"]
 	}
 
-	err = r.applyDirStructure(ctx, dir, "root", config, templateData, inst)
+	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
 		return errors.Wrap(err, "Failed to apply dir structure")
@@ -258,7 +201,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	return nil
 }
 
-func (r *KcpsetupSubroutine) getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
+func getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
 	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
 		return "portal.dev.local"
 	}
@@ -383,59 +326,6 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, conf
 	return inventory, nil
 }
 
-func (r *KcpsetupSubroutine) applyDirStructure(
-	ctx context.Context,
-	dir string,
-	kcpPath string,
-	config *rest.Config,
-	templateData map[string]string,
-	inst *corev1alpha1.PlatformMesh,
-) error {
-	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-
-	k8sClient, err := r.kcpHelper.NewKcpClient(config, kcpPath)
-	if err != nil {
-		return err
-	}
-
-	// apply all manifest files in the current directory first
-	files, err := ListFiles(dir)
-	if err != nil {
-		return errors.Wrap(err, "Failed to list files in workspace")
-	}
-	var errApplyManifests error = nil
-	for _, file := range files {
-		log.Debug().Str("file", file).Msg("Applying file")
-		path := filepath.Join(dir, file)
-		err := applyManifestFromFile(ctx, path, k8sClient, templateData, kcpPath, inst)
-		if err != nil {
-			log.Warn().Err(err).Str("file", path).Msg("Failed to apply manifest file, continuing to next file in directory")
-			errApplyManifests = err
-		}
-	}
-	if errApplyManifests != nil {
-		return errApplyManifests
-	}
-
-	for _, wsDir := range GetWorkspaceDirs(dir) {
-		wsName, err := GetWorkspaceName(wsDir)
-		if err != nil {
-			log.Warn().Err(err).Str("Directory", dir).Str("wsName", wsName).Msg("Failed to get workspace path, skipping")
-			continue
-		}
-		err = r.waitForWorkspace(ctx, config, wsName, log)
-		if err != nil {
-			return err
-		}
-		err = r.applyDirStructure(ctx, dir+"/"+wsDir, fmt.Sprintf("%s:%s", kcpPath, wsName), config, templateData, inst)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *rest.Config, inst *corev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -480,87 +370,6 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		log.Info().Str("workspace", wsDecl.Path).Msg("Applied extra workspace")
 
-	}
-	return nil
-}
-
-func (r *KcpsetupSubroutine) waitForWorkspace(
-	ctx context.Context,
-	config *rest.Config, name string, log *logger.Logger,
-) error {
-	client, err := r.kcpHelper.NewKcpClient(config, "root")
-	if err != nil {
-		return err
-	}
-
-	err = wait.PollUntilContextTimeout(
-		ctx, time.Second, time.Second*15, true,
-		func(ctx context.Context) (bool, error) {
-			ws := &kcptenancyv1alpha.Workspace{}
-			if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
-				return false, nil //nolint:nilerr
-			}
-			ready := ws.Status.Phase == "Ready"
-			log.Info().Str("workspace", name).Bool("ready", ready).Msg("waiting for workspace to be ready")
-			return ready, nil
-		})
-
-	if err != nil {
-		return fmt.Errorf("workspace %s did not become ready: %w", name, err)
-	}
-	return err
-}
-
-func applyManifestFromFile(
-	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *corev1alpha1.PlatformMesh,
-) error {
-	log := logger.LoadLoggerFromContext(ctx)
-
-	obj, err := unstructuredFromFile(path, templateData, log)
-	if err != nil {
-		return err
-	}
-	if obj.Object == nil {
-		return nil
-	}
-
-	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
-		extraDefaultApiBindings := getExtraDefaultApiBindings(obj, wsPath, inst)
-		currentDefAPiBindings, found, err := unstructured.NestedSlice(obj.Object, "spec", "defaultAPIBindings")
-		if err != nil || !found {
-			currentDefAPiBindings = []interface{}{}
-		}
-		for _, v := range extraDefaultApiBindings {
-			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}
-			var m map[string]interface{}
-			b, marshalErr := yaml.Marshal(newExport)
-			if marshalErr != nil {
-				return errors.Wrap(marshalErr, "Failed to marshal APIExportReference")
-			}
-			if unmarshalErr := yaml.Unmarshal(b, &m); unmarshalErr != nil {
-				return errors.Wrap(unmarshalErr, "Failed to unmarshal APIExportReference")
-			}
-			currentDefAPiBindings = append(currentDefAPiBindings, m)
-		}
-		err = unstructured.SetNestedSlice(obj.Object, currentDefAPiBindings, "spec", "defaultAPIBindings")
-		if err != nil {
-			return errors.Wrap(err, "Failed to set defaultAPIBindings")
-		}
-	}
-
-	existingObj := obj.DeepCopy()
-	err = k8sClient.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}, existingObj)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return errors.Wrap(err, "Failed to get existing object: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-	}
-
-	if apierrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
-		if err != nil {
-			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-		}
-		log.Info().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied manifest file")
 	}
 	return nil
 }

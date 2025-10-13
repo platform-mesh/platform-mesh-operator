@@ -151,6 +151,21 @@ spec:
 
 Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
 
+### Feature toggles
+
+Certain features can be toggled by the user via the API:
+
+#### feature-enable-getting-started
+
+```yaml
+spec:
+  featureToggles:
+  - name: "feature-enable-getting-started"
+    parameters: {}
+```
+
+This applies the needed ContentConfiguration for the Getting Started UI page.
+
 ## Subroutines
 
 The platform-mesh-operator processes the PlatformMesh resource through several subroutines:

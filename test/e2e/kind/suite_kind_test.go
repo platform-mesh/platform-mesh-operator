@@ -435,7 +435,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		sourceControllerReady := (deployment.Status.ReadyReplicas > 0)
 
 		return certManagerWebhookReady && certManagerReady && helmControllerReady && sourceControllerReady
-	}, 180*time.Second, 5*time.Second, "cert-manager helmrelease did not become ready")
+	}, 240*time.Second, 5*time.Second, "cert-manager helmrelease did not become ready")
 
 	if !avail {
 		return errors.New("cert-manager helmrelease is not available")
@@ -639,6 +639,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.Subroutines.Deployment.Enabled = true
 	appConfig.Subroutines.KcpSetup.Enabled = true
 	appConfig.Subroutines.ProviderSecret.Enabled = true
+	appConfig.Subroutines.FeatureToggles.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
 	appConfig.KCP.Url = "https://kcp.api.portal.dev.local:8443"
 	appConfig.KCP.RootShardName = "root"

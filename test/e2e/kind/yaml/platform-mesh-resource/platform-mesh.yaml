@@ -4,6 +4,9 @@ metadata:
   name: platform-mesh
   namespace: platform-mesh-system
 spec:
+  featureToggles:
+  - name: "feature-enable-getting-started"
+    parameters: {}
   exposure:
     port: 8443
     baseDomain: portal.dev.local

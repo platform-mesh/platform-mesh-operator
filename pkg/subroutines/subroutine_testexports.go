@@ -30,28 +30,6 @@ func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, conf
 	return r.getAPIExportHashInventory(ctx, config)
 }
 
-func (r *KcpsetupSubroutine) ApplyDirStructure(
-	ctx context.Context, dir string, kcpPath string, config *rest.Config, inventory map[string]string, inst *corev1alpha1.PlatformMesh,
-) error {
-	return r.applyDirStructure(ctx, dir, kcpPath, config, inventory, inst)
-}
-
-func (r *KcpsetupSubroutine) WaitForWorkspace(
-	ctx context.Context,
-	config *rest.Config, name string, log *logger.Logger,
-) error {
-	return r.waitForWorkspace(ctx, config, name, log)
-}
-
-func (r *KcpsetupSubroutine) ApplyManifestFromFile(
-	ctx context.Context,
-	path string,
-	k8sClient client.Client,
-	templateData map[string]string, wsPath string, inst *corev1alpha1.PlatformMesh,
-) error {
-	return applyManifestFromFile(ctx, path, k8sClient, templateData, wsPath, inst)
-}
-
 func (s *DeploymentSubroutine) ApplyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]string) error {
 	return applyManifestFromFileWithMergedValues(ctx, path, k8sClient, templateData)
 }

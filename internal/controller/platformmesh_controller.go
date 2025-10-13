@@ -88,6 +88,9 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 	if cfg.Subroutines.ProviderSecret.Enabled {
 		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))
 	}
+	if cfg.Subroutines.FeatureToggles.Enabled {
+		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, kcpUrl))
+	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
 			pmReconcilerName, mgr.GetClient(), log).WithConditionManagement(),
