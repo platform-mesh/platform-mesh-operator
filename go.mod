@@ -11,7 +11,7 @@ replace (
 )
 
 require (
-	github.com/cert-manager/cert-manager v1.19.0
+	github.com/cert-manager/cert-manager v1.19.1
 	github.com/crossplane-contrib/provider-keycloak v1.13.0
 	github.com/fluxcd/helm-controller/api v1.3.0
 	github.com/fluxcd/source-controller/api v1.7.2
