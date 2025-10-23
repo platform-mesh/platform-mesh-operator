@@ -36,6 +36,11 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "extension-manager-operator-kubeconfig",
 	},
 	{
+		EndpointSliceName: "core.platform-mesh.io",
+		Path:              "root:platform-mesh-system",
+		Secret:            "iam-service-kubeconfig",
+	},
+	{
 		EndpointSliceName: "",
 		RawPath:           "/services/contentconfigurations",
 		Secret:            "portal-kubeconfig",
