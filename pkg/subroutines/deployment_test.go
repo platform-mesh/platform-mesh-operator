@@ -63,7 +63,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	}
 
 	// mocks
-	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).Return(nil).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).Return(nil).Twice()
 	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			// Simulate a successful patch operation
@@ -86,7 +86,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local:8443","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil
@@ -109,4 +109,48 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
+
+	// switch to standard port 443
+	inst.Spec.Exposure = &v1alpha1.ExposureConfig{
+		Port: 443,
+	}
+
+	templateVars, err = subroutines.TemplateVars(ctx, inst, s.clientMock)
+	s.Assert().NoError(err, "TemplateVars should not return an error")
+
+	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			// Simulate a successful patch operation
+			hr := obj.(*unstructured.Unstructured)
+
+			// Extract .spec
+			spec, found, err := unstructured.NestedFieldNoCopy(hr.Object, "spec")
+			s.Require().NoError(err, "should be able to get spec")
+			s.Require().True(found, "spec should be present")
+
+			// Check if spec is a map
+			specMap, ok := spec.(map[string]interface{})
+			s.Require().True(ok, "spec should be a map[string]interface{}")
+
+			// Extract .spec.values
+			specValues, found, err := unstructured.NestedFieldNoCopy(specMap, "values")
+			s.Require().NoError(err, "should be able to get spec.values")
+			s.Require().True(found, "spec.values should be present")
+
+			specJSON, ok := specValues.(apiextensionsv1.JSON)
+			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
+
+			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local","iamWebhookCA":"","port":"443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
+
+			return nil
+		},
+	).Once()
+
+	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars)
+	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
+
+	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
+	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
+
 }
