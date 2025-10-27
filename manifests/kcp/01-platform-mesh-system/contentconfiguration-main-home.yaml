@@ -24,6 +24,16 @@ spec:
                 "defineEntity": {
                   "id": "main"
                 },
+                "context": {
+                  resourceDefinition: {
+                    "group": "core.platform-mesh.io",
+                    "plural": "accounts",
+                    "singular": "account",
+                    "kind": "Account",
+                    "scope": "Cluster",
+                    "namespace": null,
+                  },
+                },
                 "children": [
                   {
                     "pathSegment": "overview",
