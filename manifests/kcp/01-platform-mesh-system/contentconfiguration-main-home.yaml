@@ -25,7 +25,7 @@ spec:
                   "id": "main"
                 },
                 "context": {
-                  resourceDefinition: {
+                  "resourceDefinition": {
                     "group": "core.platform-mesh.io",
                     "plural": "accounts",
                     "singular": "account",
