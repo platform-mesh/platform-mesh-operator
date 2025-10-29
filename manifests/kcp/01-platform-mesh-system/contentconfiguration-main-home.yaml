@@ -30,8 +30,7 @@ spec:
                     "plural": "accounts",
                     "singular": "account",
                     "kind": "Account",
-                    "scope": "Cluster",
-                    "namespace": null,
+                    "scope": "Cluster"
                   },
                 },
                 "children": [
