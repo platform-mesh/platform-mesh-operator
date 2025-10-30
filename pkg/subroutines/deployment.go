@@ -32,6 +32,7 @@ type DeploymentSubroutine struct {
 	client             client.Client
 	cfg                *pmconfig.CommonServiceConfig
 	workspaceDirectory string
+	cfgOperator        *config.OperatorConfig
 }
 
 func NewDeploymentSubroutine(client client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
@@ -39,6 +40,7 @@ func NewDeploymentSubroutine(client client.Client, cfg *pmconfig.CommonServiceCo
 		cfg:                cfg,
 		client:             client,
 		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/"),
+		cfgOperator:        operatorCfg,
 	}
 
 	return sub
@@ -58,7 +60,7 @@ func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
 
 func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	inst := runtimeObj.(*v1alpha1.PlatformMesh)
-	log := logger.LoadLoggerFromContext(ctx)
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Create DeploymentComponents Version
@@ -113,23 +115,24 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, oErr
 	}
 
-	// Wait for istiod release to be ready before continuing
-	rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get istio-istiod Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	if !MatchesCondition(rel, "Ready") {
-		log.Info().Msg("istio-istiod Release is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-	}
-
 	// Check if istio-proxy is injected
 	// At he boostrap time of the cluster the operator will install istio. Later in the Process the operator needs
 	// to communicate via the proxy with KCP. Once Istio is up and running the operator will be restarted to ensure
 	// this communication will work
-	if !r.cfg.IsLocal {
+	if r.cfgOperator.Subroutines.Deployment.EnableIstio {
+
+		// Wait for istiod release to be ready before continuing
+		rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get istio-istiod Release")
+			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		}
+
+		if !MatchesCondition(rel, "Ready") {
+			log.Info().Msg("istio-istiod Release is not ready.. Retry in 5 seconds")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
