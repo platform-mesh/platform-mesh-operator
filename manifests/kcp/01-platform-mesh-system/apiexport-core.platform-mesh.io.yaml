@@ -34,7 +34,7 @@ spec:
       all: true
       identityHash: ""
     - resource: logicalclusters
-      group: apis.kcp.io
+      group: core.kcp.io
       all: true
       identityHash: ""
 status: {}

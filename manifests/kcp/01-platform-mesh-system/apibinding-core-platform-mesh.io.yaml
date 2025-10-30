@@ -42,7 +42,7 @@ spec:
       - '*'
     state: Accepted
   - resource: logicalclusters
-    group: apis.kcp.io
+    group: core.kcp.io
     selector:
       matchAll: true
     verbs:

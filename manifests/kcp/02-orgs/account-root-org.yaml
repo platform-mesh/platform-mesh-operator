@@ -1,7 +1,0 @@
-apiVersion: core.platform-mesh.io/v1alpha1
-kind: Account
-metadata:
-  name: default
-spec:
-  type: org
-  displayName: Default Root Organization

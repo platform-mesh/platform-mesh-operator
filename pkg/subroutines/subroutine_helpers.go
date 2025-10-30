@@ -259,6 +259,7 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	port := 8443
 	baseDomain := "portal.dev.local"
 	protocol := "https"
+	baseDomainPort := ""
 
 	if inst.Spec.Exposure != nil {
 		if inst.Spec.Exposure.Port != 0 {
@@ -272,6 +273,12 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 		}
 	}
 
+	if port == 80 || port == 443 {
+		baseDomainPort = baseDomain
+	} else {
+		baseDomainPort = fmt.Sprintf("%s:%d", baseDomain, port)
+	}
+
 	var secret corev1.Secret
 	err := cl.Get(ctx, client.ObjectKey{
 		Name:      "rebac-authz-webhook-cert",
@@ -282,10 +289,11 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	}
 
 	values := map[string]interface{}{
-		"iamWebhookCA": base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"baseDomain":   baseDomain,
-		"protocol":     protocol,
-		"port":         fmt.Sprintf("%d", port),
+		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":     baseDomain,
+		"protocol":       protocol,
+		"port":           fmt.Sprintf("%d", port),
+		"baseDomainPort": baseDomainPort,
 	}
 
 	result := apiextensionsv1.JSON{}

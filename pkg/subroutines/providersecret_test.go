@@ -1677,6 +1677,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 						"security-operator-kubeconfig",
 						"kubernetes-grapqhl-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
+						"iam-service-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
 						return true
