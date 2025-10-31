@@ -23,3 +23,7 @@ spec:
         path: root
       - name: account
         path: root
+  extend:
+    with:
+      - name: universal
+        path: root
