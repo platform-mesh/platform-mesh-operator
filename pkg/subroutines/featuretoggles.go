@@ -3,12 +3,18 @@ package subroutines
 import (
 	"context"
 	"path/filepath"
+	"time"
 
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +64,41 @@ func (r *FeatureToggleSubroutine) Finalizers() []string { // coverage-ignore
 
 func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
+	// Gate on KCP RootShard readiness
+	rootShard := &unstructured.Unstructured{}
+	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
+	if err := r.client.Get(ctx, types.NamespacedName{
+		Name:      operatorCfg.KCP.RootShardName,
+		Namespace: operatorCfg.KCP.Namespace,
+	}, rootShard); err != nil || !MatchesCondition(rootShard, "Available") {
+		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Gate on KCP FrontProxy readiness
+	frontProxy := &unstructured.Unstructured{}
+	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
+	if err := r.client.Get(ctx, types.NamespacedName{
+		Name:      operatorCfg.KCP.FrontProxyName,
+		Namespace: operatorCfg.KCP.Namespace,
+	}, frontProxy); err != nil || !MatchesCondition(frontProxy, "Available") {
+		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Ensure the KCP admin secret exists before building kubeconfig
+	if _, err := GetSecret(r.client, operatorCfg.KCP.ClusterAdminSecretName, operatorCfg.KCP.Namespace); err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().
+				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
+				Str("namespace", operatorCfg.KCP.Namespace).
+				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
 
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
 	for _, ft := range inst.Spec.FeatureToggles {
