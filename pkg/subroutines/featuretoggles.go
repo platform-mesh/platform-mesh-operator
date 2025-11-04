@@ -88,18 +88,6 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	// Ensure the KCP admin secret exists before building kubeconfig
-	if _, err := GetSecret(r.client, operatorCfg.KCP.ClusterAdminSecretName, operatorCfg.KCP.Namespace); err != nil {
-		if kerrors.IsNotFound(err) {
-			log.Info().
-				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
-				Str("namespace", operatorCfg.KCP.Namespace).
-				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-		}
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
-
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
 	for _, ft := range inst.Spec.FeatureToggles {
 		switch ft.Name {
@@ -120,6 +108,20 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 
 	// Implement the logic to enable the getting started feature
 	log.Info().Msg("Getting started feature enabled")
+
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
+	// Ensure the KCP admin secret exists before building kubeconfig
+	if _, err := GetSecret(r.client, operatorCfg.KCP.ClusterAdminSecretName, operatorCfg.KCP.Namespace); err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().
+				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
+				Str("namespace", operatorCfg.KCP.Namespace).
+				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
 
 	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
