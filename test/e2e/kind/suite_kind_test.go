@@ -2,8 +2,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -248,40 +246,6 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		return err
 	}
 
-	s.logger.Debug().Str("gh-token", os.Getenv("GH_TOKEN")).Msg("Using GitHub token for Docker secrets")
-
-	// create docker secrets
-	dockerCfg := map[string]interface{}{
-		"auths": map[string]interface{}{
-			"ghcr.io": map[string]string{
-				"username": "platform-mesh-technical-user",
-				"password": os.Getenv("GH_TOKEN"),
-				"auth":     base64.StdEncoding.EncodeToString([]byte("platform-mesh-technical-user:" + os.Getenv("GH_TOKEN"))),
-			},
-		},
-	}
-	jsonBytes, _ := json.Marshal(dockerCfg)
-
-	github := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "github",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			".dockerconfigjson": jsonBytes,
-		},
-		Type: corev1.SecretTypeDockerConfigJson,
-	}
-	github_pms := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "github",
-			Namespace: "platform-mesh-system",
-		},
-		Data: map[string][]byte{
-			".dockerconfigjson": jsonBytes,
-		},
-		Type: corev1.SecretTypeDockerConfigJson,
-	}
 	keycloak_admin := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "keycloak-admin",
@@ -291,16 +255,6 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 			"secret": []byte("admin"),
 		},
 		Type: corev1.SecretTypeOpaque,
-	}
-	ocm := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ocm-oci-github-pull",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			".dockerconfigjson": jsonBytes,
-		},
-		Type: corev1.SecretTypeDockerConfigJson,
 	}
 	domain_certificate := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -348,9 +302,6 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 	}
 
 	secrets := []client.Object{
-		github,
-		github_pms,
-		ocm,
 		keycloak_admin,
 		domain_certificate,
 		rbac_webhook_ca,
