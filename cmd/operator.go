@@ -113,6 +113,12 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
+	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg)
+	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
+		os.Exit(1)
+	}
+
 	if operatorCfg.PatchOIDCControllerEnabled {
 		realmReconciler := controller.NewRealmReconciler(mgr, log, &operatorCfg)
 		if err := realmReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
