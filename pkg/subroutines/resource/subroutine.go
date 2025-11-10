@@ -21,6 +21,12 @@ var ociRepoGvk = schema.GroupVersionKind{
 	Kind:    "OCIRepository",
 }
 
+var gitRepoGvk = schema.GroupVersionKind{
+	Group:   "source.toolkit.fluxcd.io",
+	Version: "v1",
+	Kind:    "GitRepository",
+}
+
 var helmRepoGvk = schema.GroupVersionKind{
 	Group:   "source.toolkit.fluxcd.io",
 	Version: "v1",
@@ -63,6 +69,13 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	if repo == "oci" && artifact == "chart" {
 		log.Debug().Msg("Create/Update OCI Repo")
 		result, err := r.updateOciRepo(ctx, inst, log)
+		if err != nil {
+			return result, err
+		}
+	}
+	if repo == "git" && artifact == "chart" {
+		log.Debug().Msg("Create/Update Git Repo")
+		result, err := r.updateGitRepo(ctx, inst, log)
 		if err != nil {
 			return result, err
 		}
@@ -194,6 +207,9 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
 	}
+
+	url = strings.TrimPrefix(url, "oci://")
+
 	url = "oci://" + url
 	url = strings.TrimSuffix(url, ":"+version)
 
@@ -224,6 +240,51 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 			"operation": "copy",
 		}, "spec", "layerSelector")
+		return err
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
+	commit, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "commit")
+	if err != nil || !found {
+		log.Info().Err(err).Msg("Failed to get version from Resource status")
+	}
+
+	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "repoUrl")
+	if err != nil || !found {
+		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+	}
+
+	// Update or create oci repo
+	log.Info().Msg("Processing OCI Chart Resource")
+	obj := &unstructured.Unstructured{}
+
+	obj.SetGroupVersionKind(gitRepoGvk)
+	obj.SetName(inst.GetName())
+	obj.SetNamespace(inst.GetNamespace())
+
+	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+
+		err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit")
+		if err != nil {
+			return err
+		}
+
+		err = unstructured.SetNestedField(obj.Object, url, "spec", "url")
+		if err != nil {
+			return err
+		}
+
+		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
+		if err != nil {
+			return err
+		}
+
 		return err
 	})
 	if err != nil {
