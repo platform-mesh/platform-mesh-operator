@@ -72,8 +72,12 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 	if err := r.client.Get(ctx, types.NamespacedName{
 		Name:      operatorCfg.KCP.RootShardName,
 		Namespace: operatorCfg.KCP.Namespace,
-	}, rootShard); err != nil || !MatchesCondition(rootShard, "Available") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
+	}, rootShard); err != nil {
+		log.Info().Err(err).Str("name", operatorCfg.KCP.RootShardName).Msg("Failed to get RootShard.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	if !MatchesCondition(rootShard, "Available") {
+		log.Info().Str("name", operatorCfg.KCP.RootShardName).Msg("RootShard Available condition not met.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
@@ -83,8 +87,12 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 	if err := r.client.Get(ctx, types.NamespacedName{
 		Name:      operatorCfg.KCP.FrontProxyName,
 		Namespace: operatorCfg.KCP.Namespace,
-	}, frontProxy); err != nil || !MatchesCondition(frontProxy, "Available") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
+	}, frontProxy); err != nil {
+		log.Info().Err(err).Str("name", operatorCfg.KCP.FrontProxyName).Msg("Failed to get FrontProxy.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	if !MatchesCondition(frontProxy, "Available") {
+		log.Info().Str("name", operatorCfg.KCP.FrontProxyName).Msg("FrontProxy Available condition not met.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
@@ -94,7 +102,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		case "feature-enable-getting-started":
 			// Implement the logic to enable the getting started feature
 			log.Info().Msg("Getting started feature enabled")
-			return r.FeatureGettingStarted(ctx, inst)
+			return r.FeatureGettingStarted(ctx, inst, operatorCfg)
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -103,13 +111,11 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 	return ctrl.Result{}, nil
 }
 
-func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, inst *corev1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, inst *corev1alpha1.PlatformMesh, operatorCfg config.OperatorConfig) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	// Implement the logic to enable the getting started feature
 	log.Info().Msg("Getting started feature enabled")
-
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Ensure the KCP admin secret exists before building kubeconfig
 	if _, err := GetSecret(r.client, operatorCfg.KCP.ClusterAdminSecretName, operatorCfg.KCP.Namespace); err != nil {
