@@ -224,7 +224,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 			"operation": "copy",
 		}, "spec", "layerSelector")
-		return nil
+		return err
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
