@@ -12,7 +12,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -74,8 +74,12 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		Name:      operatorCfg.KCP.RootShardName,
 		Namespace: operatorCfg.KCP.Namespace,
 	}, rootShard); err != nil {
-		log.Info().Err(err).Str("name", operatorCfg.KCP.RootShardName).Msg("Failed to get RootShard.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		if apierrors.IsNotFound(err) {
+			log.Info().Str("name", operatorCfg.KCP.RootShardName).Msg("RootShard not found yet.. Retry in 5 seconds")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		log.Error().Err(err).Str("name", operatorCfg.KCP.RootShardName).Msg("Failed to get RootShard")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	if !MatchesCondition(rootShard, "Available") {
 		log.Info().Str("name", operatorCfg.KCP.RootShardName).Msg("RootShard Available condition not met.. Retry in 5 seconds")
@@ -89,8 +93,12 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		Name:      operatorCfg.KCP.FrontProxyName,
 		Namespace: operatorCfg.KCP.Namespace,
 	}, frontProxy); err != nil {
-		log.Info().Err(err).Str("name", operatorCfg.KCP.FrontProxyName).Msg("Failed to get FrontProxy.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		if apierrors.IsNotFound(err) {
+			log.Info().Str("name", operatorCfg.KCP.FrontProxyName).Msg("FrontProxy not found yet.. Retry in 5 seconds")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		log.Error().Err(err).Str("name", operatorCfg.KCP.FrontProxyName).Msg("Failed to get FrontProxy")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	if !MatchesCondition(frontProxy, "Available") {
 		log.Info().Str("name", operatorCfg.KCP.FrontProxyName).Msg("FrontProxy Available condition not met.. Retry in 5 seconds")
@@ -124,7 +132,7 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 		Name:      operatorCfg.KCP.ClusterAdminSecretName,
 		Namespace: operatorCfg.KCP.Namespace,
 	}, secret); err != nil {
-		if kerrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			log.Info().
 				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
 				Str("namespace", operatorCfg.KCP.Namespace).
