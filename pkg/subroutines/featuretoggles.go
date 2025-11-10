@@ -11,6 +11,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -118,7 +119,11 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 	log.Info().Msg("Getting started feature enabled")
 
 	// Ensure the KCP admin secret exists before building kubeconfig
-	if _, err := GetSecret(r.client, operatorCfg.KCP.ClusterAdminSecretName, operatorCfg.KCP.Namespace); err != nil {
+	secret := &corev1.Secret{}
+	if err := r.client.Get(ctx, types.NamespacedName{
+		Name:      operatorCfg.KCP.ClusterAdminSecretName,
+		Namespace: operatorCfg.KCP.Namespace,
+	}, secret); err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().
 				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
@@ -126,7 +131,7 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), true, true)
 	}
 
 	// Build kcp kubeconfig
