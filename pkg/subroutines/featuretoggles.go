@@ -13,8 +13,6 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -66,44 +64,6 @@ func (r *FeatureToggleSubroutine) Finalizers() []string { // coverage-ignore
 func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-
-	// Gate on KCP RootShard readiness
-	rootShard := &unstructured.Unstructured{}
-	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
-	if err := r.client.Get(ctx, types.NamespacedName{
-		Name:      operatorCfg.KCP.RootShardName,
-		Namespace: operatorCfg.KCP.Namespace,
-	}, rootShard); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info().Str("name", operatorCfg.KCP.RootShardName).Msg("RootShard not found yet.. Retry in 5 seconds")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-		}
-		log.Error().Err(err).Str("name", operatorCfg.KCP.RootShardName).Msg("Failed to get RootShard")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
-	if !MatchesCondition(rootShard, "Available") {
-		log.Info().Str("name", operatorCfg.KCP.RootShardName).Msg("RootShard Available condition not met.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-	}
-
-	// Gate on KCP FrontProxy readiness
-	frontProxy := &unstructured.Unstructured{}
-	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
-	if err := r.client.Get(ctx, types.NamespacedName{
-		Name:      operatorCfg.KCP.FrontProxyName,
-		Namespace: operatorCfg.KCP.Namespace,
-	}, frontProxy); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info().Str("name", operatorCfg.KCP.FrontProxyName).Msg("FrontProxy not found yet.. Retry in 5 seconds")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-		}
-		log.Error().Err(err).Str("name", operatorCfg.KCP.FrontProxyName).Msg("Failed to get FrontProxy")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
-	if !MatchesCondition(frontProxy, "Available") {
-		log.Info().Str("name", operatorCfg.KCP.FrontProxyName).Msg("FrontProxy Available condition not met.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-	}
 
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
 	for _, ft := range inst.Spec.FeatureToggles {

@@ -86,7 +86,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 	}
 
 	// Expect multiple Patch calls for applying manifests (flexible count)
-	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
+	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	// Mock unstructured object lookups (for general manifest objects - flexible count)
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
@@ -98,7 +98,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 				},
 			}
 			return nil
-		}).Times(100)
+		})
 
 	// Mock workspace lookups for waitForWorkspace calls (multiple calls for polling)
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
@@ -106,7 +106,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 			ws := obj.(*kcptenancyv1alpha.Workspace)
 			ws.Status.Phase = "Ready"
 			return nil
-		}).Times(10)
+		})
 
 	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
 
@@ -430,12 +430,12 @@ func (s *KcpsetupTestSuite) TestProcess() {
 				},
 			}
 			return nil
-		}).Times(100)
+		})
 
 	// Mock patch calls for applying manifests (flexible count)
 	mockKcpClient.EXPECT().
 		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything).
-		Return(nil).Times(100)
+		Return(nil)
 
 	// Call Process
 	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
@@ -620,10 +620,10 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 				},
 			}
 			return nil
-		}).Times(100)
+		})
 
 	// Mock patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
@@ -685,10 +685,10 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 				},
 			}
 			return nil
-		}).Times(100)
+		})
 
 	// Mock patch calls for applying manifests (flexible count) - but they should fail
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed")).Times(100)
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed"))
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply")
