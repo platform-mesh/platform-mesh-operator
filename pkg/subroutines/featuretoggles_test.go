@@ -89,46 +89,6 @@ func (s *FeaturesTestSuite) TestProcess() {
 		NewKcpClient(mock.Anything, "root:orgs:default").
 		Return(mockKcpClient, nil)
 
-	// Mock RootShard lookup
-	s.clientMock.EXPECT().Get(
-		mock.Anything,
-		types.NamespacedName{Name: "root-shard", Namespace: "kcp-system"},
-		mock.MatchedBy(func(obj client.Object) bool {
-			u, ok := obj.(*unstructured.Unstructured)
-			return ok && u.GetKind() == "RootShard"
-		}),
-	).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-		unstructuredObj := obj.(*unstructured.Unstructured)
-		unstructuredObj.Object = map[string]interface{}{
-			"status": map[string]interface{}{
-				"conditions": []interface{}{
-					map[string]interface{}{"type": "Available", "status": "True"},
-				},
-			},
-		}
-		return nil
-	})
-
-	// Mock FrontProxy lookup
-	s.clientMock.EXPECT().Get(
-		mock.Anything,
-		types.NamespacedName{Name: "front-proxy", Namespace: "kcp-system"},
-		mock.MatchedBy(func(obj client.Object) bool {
-			u, ok := obj.(*unstructured.Unstructured)
-			return ok && u.GetKind() == "FrontProxy"
-		}),
-	).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-		unstructuredObj := obj.(*unstructured.Unstructured)
-		unstructuredObj.Object = map[string]interface{}{
-			"status": map[string]interface{}{
-				"conditions": []interface{}{
-					map[string]interface{}{"type": "Available", "status": "True"},
-				},
-			},
-		}
-		return nil
-	})
-
 	// Mock unstructured object lookups (for general manifest objects - flexible count)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
