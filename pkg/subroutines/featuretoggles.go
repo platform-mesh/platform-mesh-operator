@@ -3,12 +3,17 @@ package subroutines
 import (
 	"context"
 	"path/filepath"
+	"time"
 
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +63,7 @@ func (r *FeatureToggleSubroutine) Finalizers() []string { // coverage-ignore
 
 func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
 	for _, ft := range inst.Spec.FeatureToggles {
@@ -65,7 +71,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		case "feature-enable-getting-started":
 			// Implement the logic to enable the getting started feature
 			log.Info().Msg("Getting started feature enabled")
-			return r.FeatureGettingStarted(ctx, inst)
+			return r.FeatureGettingStarted(ctx, inst, operatorCfg)
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -74,11 +80,27 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 	return ctrl.Result{}, nil
 }
 
-func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, inst *corev1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, inst *corev1alpha1.PlatformMesh, operatorCfg config.OperatorConfig) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	// Implement the logic to enable the getting started feature
 	log.Info().Msg("Getting started feature enabled")
+
+	// Ensure the KCP admin secret exists before building kubeconfig
+	secret := &corev1.Secret{}
+	if err := r.client.Get(ctx, types.NamespacedName{
+		Name:      operatorCfg.KCP.ClusterAdminSecretName,
+		Namespace: operatorCfg.KCP.Namespace,
+	}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info().
+				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
+				Str("namespace", operatorCfg.KCP.Namespace).
+				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), true, true)
+	}
 
 	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)

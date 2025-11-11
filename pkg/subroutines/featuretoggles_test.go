@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,6 +55,10 @@ func (s *FeaturesTestSuite) TearDownTest() {
 
 func (s *FeaturesTestSuite) TestProcess() {
 	operatorCfg := config.OperatorConfig{}
+	operatorCfg.KCP.RootShardName = "root-shard"
+	operatorCfg.KCP.FrontProxyName = "front-proxy"
+	operatorCfg.KCP.Namespace = "kcp-system"
+	operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin-kubeconfig"
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
@@ -61,9 +66,9 @@ func (s *FeaturesTestSuite) TestProcess() {
 	// Mock the kubeconfig secret lookup
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      "",
-			Namespace: "",
-		}, mock.Anything).
+			Name:      "kcp-admin-kubeconfig",
+			Namespace: "kcp-system",
+		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
@@ -84,13 +89,26 @@ func (s *FeaturesTestSuite) TestProcess() {
 		NewKcpClient(mock.Anything, "root:orgs:default").
 		Return(mockKcpClient, nil)
 
-	// Mock patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().
-		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything).
-		Return(nil).Times(100)
+	// Mock unstructured object lookups (for general manifest objects - flexible count)
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"status": map[string]interface{}{
+					"phase": "Ready",
+					"conditions": []interface{}{
+						map[string]interface{}{
+							"type":   "Available",
+							"status": "True",
+						},
+					},
+				},
+			}
+			return nil
+		})
 
 	// Expect multiple Patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(100)
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	// Mock workspace lookups and patch calls
 	mockKcpClient.EXPECT().
