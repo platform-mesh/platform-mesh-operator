@@ -30,6 +30,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -67,6 +68,7 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 	if err != nil {
 		return err
 	}
+	builder.Owns(&corev1.Secret{})
 	return builder.Complete(r)
 }
 

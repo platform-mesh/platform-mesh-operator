@@ -76,6 +76,7 @@ func (r *DeploymentSubroutine) Finalize(ctx context.Context, _ runtimeobject.Run
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
+	log.Info().Msg("Successfully finalized DeploymentSubroutine")
 	// If we reach here, both objects are deleted or did not exist. The controller will remove our finalizer.
 	return ctrl.Result{}, nil
 }

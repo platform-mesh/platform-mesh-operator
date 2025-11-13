@@ -243,8 +243,13 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pc.Secret,
-			Namespace: "platform-mesh-system",
+			Namespace: instance.Namespace,
 		},
+	}
+
+	if err := controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme()); err != nil {
+		log.Error().Err(err).Msg("Failed to set owner reference on secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
@@ -311,9 +316,15 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	initializerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ic.Secret,
-			Namespace: "platform-mesh-system",
+			Namespace: instance.Namespace,
 		},
 	}
+
+	if err := controllerutil.SetOwnerReference(instance, initializerSecret, r.client.Scheme()); err != nil {
+		log.Error().Err(err).Msg("Failed to set owner reference on secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
 		initializerSecret.Data = map[string][]byte{"kubeconfig": data}
 		return err
