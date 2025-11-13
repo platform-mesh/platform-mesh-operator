@@ -50,12 +50,38 @@ func (r *DeploymentSubroutine) GetName() string {
 	return DeploymentSubroutineName
 }
 
-func (r *DeploymentSubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+// DeploymentSubroutineFinalizer ensures cleanup of FluxCD resources managed by this subroutine.
+const DeploymentSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/deployment-finalizer"
+
+func (r *DeploymentSubroutine) Finalize(ctx context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+
+	// Delete FluxCD Resource
+	resource := &unstructured.Unstructured{}
+	resource.SetGroupVersionKind(schema.GroupVersionKind{Group: "delivery.ocm.software", Version: "v1alpha1", Kind: "Resource"})
+	resource.SetName("platform-mesh-operator-components")
+	resource.SetNamespace("default")
+	if err := r.client.Delete(ctx, resource); err != nil && !kerrors.IsNotFound(err) {
+		log.Warn().Err(err).Msg("Failed to delete Resource during finalize")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// Delete FluxCD HelmRelease
+	release := &unstructured.Unstructured{}
+	release.SetGroupVersionKind(schema.GroupVersionKind{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"})
+	release.SetName("platform-mesh-operator-components")
+	release.SetNamespace("default")
+	if err := r.client.Delete(ctx, release); err != nil && !kerrors.IsNotFound(err) {
+		log.Warn().Err(err).Msg("Failed to delete HelmRelease during finalize")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	// If we reach here, both objects are deleted or did not exist. The controller will remove our finalizer.
 	return ctrl.Result{}, nil
 }
 
 func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
-	return []string{}
+	return []string{DeploymentSubroutineFinalizer}
 }
 
 func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
