@@ -3,7 +3,7 @@ module github.com/platform-mesh/platform-mesh-operator
 go 1.25.1
 
 replace sigs.k8s.io/controller-runtime => github.com/kcp-dev/controller-runtime v0.19.0-kcp.1
-
+replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20251104083903-c6d40af9889f
 replace (
 	k8s.io/api => k8s.io/api v0.34.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.34.2
