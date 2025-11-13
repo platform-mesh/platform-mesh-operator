@@ -95,7 +95,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -140,7 +140,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": patchedData,
@@ -148,7 +148,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	}
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
-		return key.Name == "test-secret" && key.Namespace == "default"
+		return key.Name == "test-secret" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			*obj.(*corev1.Secret) = secret
@@ -156,7 +156,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		}).Once()
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
-		return key.Name == "provider-secret" && key.Namespace == "default"
+		return key.Name == "provider-secret" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything).
 		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Secret"}, "provider-secret")).
 		Once()
@@ -176,8 +176,8 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 				s.log.Error().Msgf("Secret name mismatch: expected 'provider-secret', got '%s'", secret.Name)
 				return false
 			}
-			if secret.Namespace != "default" {
-				s.log.Error().Msgf("Secret namespace mismatch: expected 'default', got '%s'", secret.Namespace)
+			if secret.Namespace != "platform-mesh-system" {
+				s.log.Error().Msgf("Secret namespace mismatch: expected 'platform-mesh-system', got '%s'", secret.Namespace)
 				return false
 			}
 
@@ -269,7 +269,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -366,7 +366,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -390,7 +390,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -534,7 +534,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -643,7 +643,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -752,7 +752,7 @@ func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -773,7 +773,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invalid kubeconfig data"),
@@ -781,7 +781,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 	}
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
-		return key.Name == "test-secret" && key.Namespace == "default"
+		return key.Name == "test-secret" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			*obj.(*corev1.Secret) = secret
@@ -837,7 +837,7 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 	badSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invalid kubeconfig data"),
@@ -846,7 +846,7 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -926,7 +926,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	badKubeconfigSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -935,7 +935,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -1028,7 +1028,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -1125,7 +1125,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -1230,7 +1230,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -1352,7 +1352,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": kubeconfigBytes,
@@ -1474,7 +1474,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": kubeconfigBytes,
@@ -1486,7 +1486,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 
 	// Mock the Helm release lookup
 	s.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: "default"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*unstructured.Unstructured")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			release := obj.(*unstructured.Unstructured)
 			release.Object = map[string]interface{}{
@@ -1607,7 +1607,6 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			Path:              "root:platform-mesh-system",
 			Secret:            "external-kubeconfig",
 			External:          true,
-			Namespace:         "test",
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
@@ -1620,7 +1619,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -1636,7 +1635,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		Get(
 			mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
-				return key.Name == "test-secret" && key.Namespace == "test"
+				return key.Name == "test-secret" && key.Namespace == "platform-mesh-system"
 			}),
 			mock.Anything,
 		).
@@ -1679,13 +1678,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 						"kubernetes-grapqhl-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"iam-service-kubeconfig",
-						"portal-kubeconfig":
-						return true
-					}
-				}
-				if key.Namespace == "test" {
-					switch key.Name {
-					case "external-kubeconfig":
+						"portal-kubeconfig",
+						"external-kubeconfig":
 						return true
 					}
 				}
@@ -1786,6 +1780,10 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 							instance.Namespace, pc.Secret)
 						return false
 					}
+					if sec.GetOwnerReferences() == nil || len(sec.GetOwnerReferences()) == 0 {
+						s.log.Error().Msg("missing owner reference")
+						return false
+					}
 					data, ok := sec.Data["kubeconfig"]
 					if !ok {
 						s.log.Error().Msg("missing kubeconfig key")
@@ -1852,12 +1850,19 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
 		},
 	}
+	secret.SetOwnerReferences([]metav1.OwnerReference{
+		{
+			APIVersion: "core.platform-mesh.io/v1alpha1",
+			Kind:       "PlatformMesh",
+			Name:       "platform-mesh",
+		},
+	})
 
 	// Setup mock KCP client
 	mockedKcpClient := new(mocks.Client)
@@ -1882,20 +1887,30 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
+			// do not mutate name/namespace of the secret
+			secret.SetName(nn.Name)
+			secret.SetNamespace(nn.Namespace)
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	)
+	// s.clientMock.EXPECT().Get(mock.AnythingOfType("*context.Context"), types.NamespacedName{Name: "test-initializer-secret", Namespace: "default"}, &corev1.Secret{}).RunAndReturn(
+	// 	func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+	// 	) error {
+	// 		*o.(*corev1.Secret) = *secret
+	// 		return nil
+	// 	},
+	// )
 
 	// Setup mock expectations for Get and Create
 	s.clientMock.EXPECT().Get(
 		mock.Anything,
 		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
 		mock.Anything,
-	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
+	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret"))
 
 	// We expect the URL to be rewritten to use the front-proxy, not example.com.
 	// Declare expectedURL here so the matcher can capture it and we set it after operatorCfg is prepared.
@@ -1906,6 +1921,10 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 		mock.Anything,
 		mock.MatchedBy(func(obj client.Object) bool {
 			sec := obj.(*corev1.Secret)
+			if sec.GetOwnerReferences() == nil || len(sec.GetOwnerReferences()) == 0 {
+				s.log.Error().Msg("missing owner reference")
+				return false
+			}
 			createdSecret = sec.DeepCopy()
 			cfg, err := clientcmd.Load(sec.Data["kubeconfig"])
 			if err != nil {
@@ -1919,6 +1938,30 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 		// mock.Anything,
 	).
 		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+			return nil
+		}).
+		Once()
+	s.clientMock.EXPECT().Update(
+		mock.Anything,
+		mock.MatchedBy(func(obj client.Object) bool {
+			sec := obj.(*corev1.Secret)
+			if sec.GetOwnerReferences() == nil || len(sec.GetOwnerReferences()) == 0 {
+				s.log.Error().Msg("missing owner reference")
+				return false
+			}
+			createdSecret = sec.DeepCopy()
+			cfg, err := clientcmd.Load(sec.Data["kubeconfig"])
+			if err != nil {
+				return false
+			}
+			ctx := cfg.Contexts[cfg.CurrentContext]
+			cluster := cfg.Clusters[ctx.Cluster]
+			// Verify it matches the rewritten virtual workspace URL (front-proxy)
+			return cluster.Server == expectedURL
+		}),
+		// mock.Anything,
+	).
+		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
 			return nil
 		}).
 		Once()
@@ -1983,7 +2026,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorGettingWorkspace
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -2035,7 +2078,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionNoVirtualWorkspaces()
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
@@ -2165,7 +2208,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,

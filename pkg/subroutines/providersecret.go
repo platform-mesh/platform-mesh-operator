@@ -251,6 +251,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		},
 	}
 
+	if err := controllerutil.SetOwnerReference(instance, providerSecret, r.client.Scheme()); err != nil {
+		log.Error().Err(err).Msg("Failed to set owner reference on secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
 		providerSecret.Data = map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
@@ -322,6 +327,12 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 			Namespace: namespace,
 		},
 	}
+
+	if err := controllerutil.SetOwnerReference(instance, initializerSecret, r.client.Scheme()); err != nil {
+		log.Error().Err(err).Msg("Failed to set owner reference on secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
 		initializerSecret.Data = map[string][]byte{"kubeconfig": data}
 		return err
