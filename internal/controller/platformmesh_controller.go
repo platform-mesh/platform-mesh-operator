@@ -46,6 +46,7 @@ type PlatformMeshReconciler struct {
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -68,7 +69,7 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 	if err != nil {
 		return err
 	}
-	builder.Owns(&corev1.Secret{})
+	builder = builder.Owns(&corev1.Secret{})
 	return builder.Complete(r)
 }
 

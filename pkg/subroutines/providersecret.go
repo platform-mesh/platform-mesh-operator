@@ -257,10 +257,19 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
+		// set the controller owner reference (required for builder.Owns to enqueue)
+		if err := controllerutil.SetControllerReference(instance, providerSecret, r.client.Scheme()); err != nil {
+			return err
+		}
+		if providerSecret.Labels == nil {
+			providerSecret.Labels = map[string]string{}
+		}
+		providerSecret.Labels["platform-mesh.io/owner"] = instance.Name
+		providerSecret.Type = corev1.SecretTypeOpaque
 		providerSecret.Data = map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
@@ -334,8 +343,17 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
+		// set the controller owner reference (required for builder.Owns to enqueue)
+		if err := controllerutil.SetControllerReference(instance, initializerSecret, r.client.Scheme()); err != nil {
+			return err
+		}
+		if initializerSecret.Labels == nil {
+			initializerSecret.Labels = map[string]string{}
+		}
+		initializerSecret.Labels["platform-mesh.io/owner"] = instance.Name
+		initializerSecret.Type = corev1.SecretTypeOpaque
 		initializerSecret.Data = map[string][]byte{"kubeconfig": data}
-		return err
+		return nil
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("creating/updating initializer Secret")
