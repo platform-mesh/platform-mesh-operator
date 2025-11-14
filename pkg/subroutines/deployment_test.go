@@ -8,8 +8,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -20,6 +22,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 type DeployTestSuite struct {
@@ -153,4 +156,38 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
 
+}
+
+func (s *DeployTestSuite) Test_Finalize_DeletesFluxObjects() {
+	ctx := context.TODO()
+
+	// mock deletions
+	s.clientMock.EXPECT().Delete(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		u := obj.(*unstructured.Unstructured)
+		gvk := u.GroupVersionKind()
+		return gvk.Group == "delivery.ocm.software" && gvk.Version == "v1alpha1" && gvk.Kind == "Resource" && u.GetName() == "platform-mesh-operator-components" && u.GetNamespace() == "default"
+	})).Return(nil).Once()
+
+	s.clientMock.EXPECT().Delete(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		u := obj.(*unstructured.Unstructured)
+		gvk := u.GroupVersionKind()
+		return gvk.Group == "helm.toolkit.fluxcd.io" && gvk.Version == "v2" && gvk.Kind == "HelmRelease" && u.GetName() == "platform-mesh-operator-components" && u.GetNamespace() == "default"
+	})).Return(nil).Once()
+
+	// asserts
+	res, opErr := s.testObj.Finalize(ctx, &v1alpha1.PlatformMesh{})
+	s.Require().Nil(opErr)
+	s.Require().Equal(ctrl.Result{}, res)
+}
+
+func (s *DeployTestSuite) Test_Finalize_AlreadyDeleted() {
+	ctx := context.TODO()
+
+	// mock deletions with NotFound errors
+	s.clientMock.EXPECT().Delete(mock.Anything, mock.Anything).Return(kerrors.NewNotFound(schema.GroupResource{Group: "delivery.ocm.software", Resource: "Resource"}, "platform-mesh-operator-components")).Once()
+	s.clientMock.EXPECT().Delete(mock.Anything, mock.Anything).Return(kerrors.NewNotFound(schema.GroupResource{Group: "helm.toolkit.fluxcd.io", Resource: "HelmRelease"}, "platform-mesh-operator-components")).Once()
+
+	res, opErr := s.testObj.Finalize(ctx, &v1alpha1.PlatformMesh{})
+	s.Require().Nil(opErr)
+	s.Require().Equal(ctrl.Result{}, res)
 }
