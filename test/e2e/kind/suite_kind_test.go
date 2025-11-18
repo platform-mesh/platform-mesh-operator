@@ -14,13 +14,11 @@ import (
 
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/rs/zerolog/log"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -40,9 +38,6 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 type KindTestSuite struct {
@@ -443,46 +438,8 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 
 	s.logger.Info().Msg("cert-manager, fluxcd helmreleases ready")
 
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/kyverno/kyverno-namespace.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/kyverno/helmrepository.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/kyverno/helmrelease.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-
 	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
 		return err
-	}
-
-	ok := s.Eventually(func() bool {
-		deployment := &appsv1.Deployment{}
-		err := s.client.Get(ctx, client.ObjectKey{Name: "kyverno-admission-controller", Namespace: "kyverno-system"}, deployment)
-		if err != nil {
-			return false
-		}
-		if deployment.Status.ReadyReplicas < 1 {
-			return false
-		}
-		err = s.client.Get(ctx, client.ObjectKey{Name: "kyverno-background-controller", Namespace: "kyverno-system"}, deployment)
-		if err != nil {
-			return false
-		}
-		if deployment.Status.ReadyReplicas < 1 {
-			return false
-		}
-		if deployment.Status.ReadyReplicas < 1 {
-			return false
-		}
-
-		return true
-	}, 120*time.Second, 2*time.Second, "kyverno deployments not ready")
-	if !ok {
-		return errors.New("kyverno deployments not ready")
 	}
 
 	time.Sleep(25 * time.Second)
@@ -585,35 +542,11 @@ func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 		return err
 	}
 
-	err = kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/components/policies", clients)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to apply components/policies kustomize manifests")
-		return err
-	}
-
-	policyNames := []string{
-		"git-repos",
-		"helm-releases",
-		"helm-repos",
-		"oci-repos",
-	}
-	res := s.Eventually(func() bool {
-		for _, policyName := range policyNames {
-			clusterPolicy := &unstructured.Unstructured{}
-			clusterPolicy.SetGroupVersionKind(schema.GroupVersionKind{Group: "kyverno.io", Version: "v1", Kind: "ClusterPolicy"})
-			// Wait for root shard to be ready
-			err = s.client.Get(ctx, types.NamespacedName{Name: policyName}, clusterPolicy)
-			if err != nil || !subroutines.MatchesCondition(clusterPolicy, "Ready") {
-				log.Info().Msg("ClusterPolicy is not ready.. Retry in 5 seconds")
-				return false
-			}
-		}
-		return true
-	}, 180*time.Second, 5*time.Second, "policies not ready")
-	if !res {
-		return fmt.Errorf("policies are not ready")
-	}
-	s.logger.Info().Msg("All kyverno policies are ready")
+	// err = kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/base/kro", clients)
+	// if err != nil {
+	// 	s.logger.Error().Err(err).Msg("Failed to apply kro kustomize manifests")
+	// 	return err
+	// }
 
 	s.logger.Info().Msg("kapply finished successfully")
 	return nil
@@ -670,6 +603,12 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
+		return
+	}
+
+	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig)
+	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger); err != nil {
+		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return
 	}
 

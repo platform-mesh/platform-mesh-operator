@@ -3,6 +3,5 @@ kind: Kustomization
 
 resources:
   - namespaces
-  # - kyverno
   - ocm-k8s-toolkit
   - crds
