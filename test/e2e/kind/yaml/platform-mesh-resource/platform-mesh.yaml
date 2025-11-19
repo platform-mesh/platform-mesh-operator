@@ -4,31 +4,16 @@ metadata:
   name: platform-mesh
   namespace: platform-mesh-system
 spec:
-  featureToggles:
-  - name: "feature-enable-getting-started"
-    parameters: {}
   exposure:
     port: 8443
-    baseDomain: portal.dev.local
-    protocol: https
-  # renovate: datasource=docker registryUrl=https://ghcr.io depName=ghcr.io/platform-mesh/helm-charts/platform-mesh-operator-components
   ocm:
     repo:
       name: platform-mesh
     component:
       name: platform-mesh
     referencePath: []
-  kcp:
-    extraWorkspaces:
-      - path: "root:orgs:extra1"
-        type:
-          name: "org"
-          path: "root"
-    extraProviderConnections:
-      - path: "root:orgs:extra1"
-        secret: "extra1-kubeconfig"
-        external: true
-        endpointSliceName: ""
+  featureToggles:
+   - name: "feature-enable-getting-started"
   values:
     istio-gateway:
       enabled: true
@@ -41,79 +26,93 @@ spec:
       values:
         service:
           clusterIP: 10.96.0.110
+        resources:
+          limits:
+            cpu: "2"
+            ephemeral-storage: 2Gi
+            memory: 2Gi
+          requests:
+            cpu: 750m
+            ephemeral-storage: 50Mi
+            memory: 1Gi
     crossplane:
-      enabled: true
       values:
         provider:
           packages:
-            - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v1.9.2
+            - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
-      enabled: true
+      dependsOn:
+        - name: istio-istiod
+          namespace: default
+        - name: kcp-operator
+          namespace: default
       values:
+        mailpit:
+          enabled: true
         hostAliases:
           enabled: true
         kcp:
-          image:
-            tag: d976f348
+          rootShard:
+            extraArgs:
+              - --feature-gates=WorkspaceAuthentication=true
+              - --shard-virtual-workspace-url=https://kcp.api.{{ .Values.baseDomain }}:31000
           webhook:
             enabled: true
-            # TODO this should be set by the operator
-            caData: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUREekNDQWZlZ0F3SUJBZ0lSQU9hRmdCNzQzaVZZM0xyRWs0Mk5jRTB3RFFZSktvWklodmNOQVFFTEJRQXcKSVRFZk1CMEdBMVVFQXhNV2NtVmlZV010WVhWMGFIb3RkMlZpYUc5dmF5MWpZVEFlRncweU5UQTRNekF4TVRRMQpOVEphRncweU5URXhNamd4TVRRMU5USmFNQ0V4SHpBZEJnTlZCQU1URm5KbFltRmpMV0YxZEdoNkxYZGxZbWh2CmIyc3RZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRREJYZnU2RjFvQVFNWUgKTGZaWlZieGVUdWxiUGtLbXBlemZWNzh4VzFZS05USEVPMExlelFVY3YrVXFSSkJQMmZXRGNreDZ1OEl5QXlxNgpycUNHYnJJb2xoakZTV1FYY3RRRTFiQVVvWVhlNlZSU2J4empWUGxGRHE4SmZhTHVrbkt4NXlkZlJYbUVWKzRlCm1BTHBKRUxhT09kaWZ5Yko1RStRM2tkMms5cEJ1TXdweHUxeTh2TDZ5cHRMTnMzc3hCcTY4SVVRaFdNd29BaDIKNWRzUDZSeU54N1lJV3VsQytjR1EvcUExV2ZRRldkdEwvVCs5TEgvSGlXd3lZN3haRE5EQVZIL2l3c05hUW16eQpVVlpJM05JcnB0SVl5d1ZPR21zZEliK2ZDRWdmaXlEdmJTaDlGZHcvOVlQeWphMHJGVG5SOS9HUmlIYTR0VkxYCll6ZzRRT3RSQWdNQkFBR2pRakJBTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQQmdOVkhSTUJBZjhFQlRBREFRSC8KTUIwR0ExVWREZ1FXQkJRNUR0d1FkSjQ1RU9lcnJ4V2Z3RVQ3N2ZqTEVqQU5CZ2txaGtpRzl3MEJBUXNGQUFPQwpBUUVBVS9aeG1mVDZGK3hyVHFpckVJSWVDelQ5aE1uMEkxRjZCTU81NjVjTEhjWTd0b1ZvaldJUng4d1p0TDY1CjU3eVIzRTF6MEk2UzFxbUdpQU1nK0R4aHdrZ0NGZHBwUDlabHk2bENsMzRQenAzOFdBcEZMb3lvZGFLNTZIYWMKYm50QzN3NGd5cmgxalZxMmZ3MWFFSWk1em9NNEI5RzU0SlEyYUlSQUdCamtqTVZwclBlcnh5Z0pHS3k2aFpBRwpZdDM5eTNDb1owRjlUSVJUR1NvUnNoNkNrZDQ1YzRPK3hHNjBIQVJXd2E0WVpkRmw4VU5YTFBPRzJzcmJwMlRaClNDYktoUkIyalVSVTNwTElpRzN0Um9JMmtMSXlVWU9mWExqdjZkVnM5Z0JKbFB6NzNEZUZudTVLK24wMUFsYTkKaEFhYms0alBMU0VLLzBTZk84TUl6ZkJpQVE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="
           frontProxy:
             clusterIP: "10.96.0.100"
         keycloak:
           crossplane:
             clients:
-              default:
+              welcome:
                 validRedirectUris:
                   - "http://localhost:8000/callback*"
                   - "http://localhost:4300/callback*"
-                  - "https://portal.dev.local:8443/callback*"
+                  - "https://*"
     observability:
+      enabled: false
+    kcp:
       enabled: false
     kcp-operator:
       enabled: true
+      imageResource:
+        enabled: true
+        labels:
+          infra: "true"
+          component: infra
       values:
+        crds:
+          create: true
         image:
           repository: ghcr.io/kcp-dev/kcp-operator
           #TODO this is needed until the latest changes are released like https://github.com/kcp-dev/kcp-operator/pull/89 and https://github.com/kcp-dev/kcp-operator/pull/88
           tag: "main"
           pullPolicy: IfNotPresent
-    marketplace-ui:
-      enabled: false
-      values:
-        istio:
-          virtualService:
-            hosts:
-              - "portal.dev.local"
-    iam-ui:
-      enabled: false
-      values:
-        istio:
-          virtualService:
-            hosts:
-              - "portal.dev.local"
-    iam-service:
-      enabled: false
     security-operator:
-      enabled: true
       values:
+        baseDomain: "{{ .Values.baseDomain }}:{{ .Values.port }}"
+        initializer:
+          extraArgs:
+            - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
+            - --idp-smtp-port=1025
+            - --idp-from-address=keycloak@portal.dev.local
+            - --domain-ca-lookup
+            - --idp-additional-redirect-urls="https://default.portal.dev.local:3000/callback*"
+        caSecret: domain-certificate-ca
         hostAliases:
           enabled: true
           items:
-            - ip: 10.96.0.100
+            - ip: 10.96.188.4
               hostnames:
                 - kcp.api.portal.dev.local
+                - portal.dev.local
     portal:
       enabled: true
       values:
         extraEnvVars:
-          - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-            value: "https://${org-subdomain}portal.dev.local:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
           - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-            value: "https://portal.dev.local:8443/iam/query"
-          - name: OPENMFP_PORTAL_CONTEXT_IAM_ENTITY_CONFIG
-            value: '{"account":{"contextProperty":"entityId"}}'
+            value: https://{{ .Values.baseDomainPort }}/iam/query
+          - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
+            value: "https://${org-subdomain}{{ .Values.baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
           - name: NODE_EXTRA_CA_CERTS
             value: /etc/ssl/certs/domain-ca.crt
         extraVolumes:
@@ -129,13 +128,11 @@ spec:
           hostAliases:
             - ip: "10.96.188.4"
               hostnames:
-                - "portal.dev.local"
+                - "{{ .Values.baseDomain }}"
         virtualService:
           hosts:
-            - "portal.dev.local"
-        trust:
-          default:
-            tokenUrl: https://portal.dev.local:8443/keycloak/realms/default/protocol/openid-connect/token
+            - "{{ .Values.baseDomain }}"
+            - "*.{{ .Values.baseDomain }}"
     openfga:
       enabled: true
       values:
@@ -153,16 +150,12 @@ spec:
               tls:
                 enabled: false
     virtual-workspaces:
-      enabled: true
       values:
         virtualWorkspaceSecretName: virtual-workspaces-cert
         deployment:
           serverUrl: "https://frontproxy-front-proxy.platform-mesh-system:6443"
           resourceSchemaName: "v250704-6d57f16.contentconfigurations.ui.platform-mesh.io"
           resourceSchemaWorkspace: "root:platform-mesh-system"
-          providerWorkspaceId: gjkphdcm5vwld9qe
-          providerMetadataVirtualWorkspacePath: /services/apiexport/gjkphdcm5vwld9qe/core.platform-mesh.io
-          apiExportVirtualWorkspacePath: /services/apiexport/gjkphdcm5vwld9qe/core.platform-mesh.io
     kubernetes-graphql-gateway:
       enabled: true
       values:
@@ -173,4 +166,17 @@ spec:
                 - kubeconfig: /app/kubeconfig/kubeconfig
                   name: contentconfigurations
                   url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations
+                - kubeconfig: /app/kubeconfig/kubeconfig
+                  name: marketplace
+                  url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
             enabled: true
+    iam-service:
+      enabled: true
+      values:
+        hostAliases:
+          enabled: true
+        caSecret: domain-certificate-ca
+    extension-manager-operator:
+      values:
+        istio:
+          enabled: true

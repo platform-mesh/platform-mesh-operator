@@ -1,7 +1,7 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: open-component-model
+  name: ocm-k8s-toolkit
   namespace: default
 spec:
   interval: 1m
@@ -12,14 +12,14 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: open-component-model
+  name: ocm-k8s-toolkit
   namespace: default
 spec:
   interval: 1m
   targetNamespace: ocm-system
   sourceRef:
     kind: GitRepository
-    name: open-component-model
+    name: ocm-k8s-toolkit
   path: ./kubernetes/controller/config/default
   prune: true
   patches:
@@ -28,7 +28,9 @@ spec:
           path: /spec/template/spec/containers/0/args
           value:
             - --health-probe-bind-address=:8081
-            - --resource-controller-concurrency=20
+            - --resource-controller-concurrency=21
+            - --zap-log-level=4
+
       target:
         kind: Deployment
         name: controller-manager
