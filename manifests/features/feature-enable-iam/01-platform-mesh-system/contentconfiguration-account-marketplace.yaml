@@ -1,0 +1,66 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    ui.platform-mesh.io/entity: core_platform-mesh_io_account
+  name: account-marketplace
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "marketplace",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "marketplace",
+                "entityType": "main.core_platform-mesh_io_account",
+                "order": 700,
+                "label": "Marketplace",
+                "icon": "retail-store",
+                "url": "https://portal.dev.local:8443/ui/marketplace/ui/#/entity/:accountId/marketplace",
+                "context": {
+                  "accountId": ":core_platform-mesh_io_accountId"
+                }
+              },
+              {
+                "pathSegment": "provider",
+                "entityType": "main.core_platform-mesh_io_account",
+                "hideFromNav": true,
+                "children": [
+                  {
+                    "pathSegment": ":providerName",
+                    "hideFromNav": true,
+                    "url": "https://portal.dev.local:8443/ui/marketplace/ui/#/provider/:providerName",
+                    "context": {
+                      "providerName": ":providerName",
+                      "accountId": ":core_platform-mesh_io_accountId"
+                    }
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              {
+                "locale": "",
+                "textDictionary": {
+                  "marketplace": "Marketplace"
+                }
+              },
+              {
+                "locale": "en",
+                "textDictionary": {
+                  "marketplace": "Marketplace"
+                }
+              },
+              {
+                "locale": "de",
+                "textDictionary": {
+                  "marketplace": "Marktplatz"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

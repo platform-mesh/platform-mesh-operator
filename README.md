@@ -166,6 +166,14 @@ spec:
 
 This applies the needed ContentConfiguration for the Getting Started UI page.
 
+#### feature-enable-iam
+
+```yaml
+spec:
+  featureToggles:
+  - name: "feature-enable-iam"
+    parameters: {}
+
 ## Subroutines
 
 The platform-mesh-operator processes the PlatformMesh resource through several subroutines:

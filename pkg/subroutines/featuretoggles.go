@@ -70,8 +70,12 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		switch ft.Name {
 		case "feature-enable-getting-started":
 			// Implement the logic to enable the getting started feature
-			log.Info().Msg("Getting started feature enabled")
-			return r.FeatureGettingStarted(ctx, inst, operatorCfg)
+			log.Info().Msg("Enabling 'Getting started configuration' feature")
+			return r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-getting-started")
+		case "feature-enable-iam":
+			// Implement the logic to enable the IAM feature
+			log.Info().Msg("Enabling 'IAM configuration' feature")
+			return r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-iam")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -80,11 +84,16 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 	return ctrl.Result{}, nil
 }
 
-func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, inst *corev1alpha1.PlatformMesh, operatorCfg config.OperatorConfig) (ctrl.Result, errors.OperatorError) {
+func (r *FeatureToggleSubroutine) applyKcpManifests(
+	ctx context.Context,
+	inst *corev1alpha1.PlatformMesh,
+	operatorCfg config.OperatorConfig,
+	kcpDir string,
+) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	// Implement the logic to enable the getting started feature
-	log.Info().Msg("Getting started feature enabled")
+	log.Info().Str("Directory", kcpDir).Msg("Applying KCP manifests for feature toggle")
 
 	// Ensure the KCP admin secret exists before building kubeconfig
 	secret := &corev1.Secret{}
@@ -109,7 +118,7 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
 
-	dir := r.workspaceDirectory + "/feature-enable-getting-started"
+	dir := r.workspaceDirectory + kcpDir
 
 	err = ApplyDirStructure(ctx, dir, "root", cfg, make(map[string]string), inst, r.kcpHelper)
 	if err != nil {
