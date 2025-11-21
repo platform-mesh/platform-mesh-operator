@@ -19,3 +19,11 @@ packages:
       Client:
         config:
           mockname: Client
+  sigs.k8s.io/controller-runtime/pkg/manager:
+    config:
+      dir: pkg/subroutines/mocks
+      outpkg: mocks
+    interfaces:
+      Manager:
+        config:
+          mockname: Manager

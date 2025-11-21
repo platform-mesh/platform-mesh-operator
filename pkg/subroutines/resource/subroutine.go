@@ -213,6 +213,15 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	url = "oci://" + url
 	url = strings.TrimSuffix(url, ":"+version)
 
+	// trim trailing from the 'url' @sha256:...
+	if idx := strings.Index(url, "@sha256:"); idx != -1 {
+		url = url[:idx]
+		// trim trailing from the 'url' :25.2.3 if present
+		if idx := strings.LastIndex(url, ":"); idx != -1 && strings.Count(url, ":") == 2 {
+			url = url[:idx]
+		}
+	}
+
 	// Update or create oci repo
 	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
