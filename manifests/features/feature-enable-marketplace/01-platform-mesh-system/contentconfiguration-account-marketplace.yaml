@@ -18,7 +18,7 @@ spec:
                 "order": 700,
                 "label": "Marketplace",
                 "icon": "retail-store",
-                "url": "https://portal.dev.local:8443/ui/marketplace/ui/#/entity/:accountId/marketplace",
+                "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/:accountId/marketplace",
                 "context": {
                   "accountId": ":core_platform-mesh_io_accountId"
                 }
@@ -31,7 +31,7 @@ spec:
                   {
                     "pathSegment": ":providerName",
                     "hideFromNav": true,
-                    "url": "https://portal.dev.local:8443/ui/marketplace/ui/#/provider/:providerName",
+                    "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
                       "providerName": ":providerName",
                       "accountId": ":core_platform-mesh_io_accountId"

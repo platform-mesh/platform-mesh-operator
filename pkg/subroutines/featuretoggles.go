@@ -2,6 +2,8 @@ package subroutines
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -70,12 +72,28 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		switch ft.Name {
 		case "feature-enable-getting-started":
 			// Implement the logic to enable the getting started feature
-			log.Info().Msg("Enabling 'Getting started configuration' feature")
-			return r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-getting-started")
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-getting-started")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply getting started manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Getting started configuration' feature")
 		case "feature-enable-iam":
 			// Implement the logic to enable the IAM feature
-			log.Info().Msg("Enabling 'IAM configuration' feature")
-			return r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-iam")
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-iam")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply IAM manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'IAM configuration' feature")
+		case "feature-enable-marketplace":
+			// Implement the logic to enable the marketplace feature
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply marketplace manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Marketplace configuration' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -120,7 +138,16 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 
 	dir := r.workspaceDirectory + kcpDir
 
-	err = ApplyDirStructure(ctx, dir, "root", cfg, make(map[string]string), inst, r.kcpHelper)
+	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
+	tplValues := map[string]string{
+		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":     baseDomain,
+		"protocol":       protocol,
+		"port":           fmt.Sprintf("%d", port),
+		"baseDomainPort": baseDomainPort,
+	}
+
+	err = ApplyDirStructure(ctx, dir, "root", cfg, tplValues, inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply dir structure"), true, false)
