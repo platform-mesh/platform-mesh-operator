@@ -2,6 +2,8 @@ package subroutines
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -70,8 +72,28 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 		switch ft.Name {
 		case "feature-enable-getting-started":
 			// Implement the logic to enable the getting started feature
-			log.Info().Msg("Getting started feature enabled")
-			return r.FeatureGettingStarted(ctx, inst, operatorCfg)
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-getting-started")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply getting started manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Getting started configuration' feature")
+		case "feature-enable-iam":
+			// Implement the logic to enable the IAM feature
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-iam")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply IAM manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'IAM configuration' feature")
+		case "feature-enable-marketplace":
+			// Implement the logic to enable the marketplace feature
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply marketplace manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Marketplace configuration' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -80,11 +102,16 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 	return ctrl.Result{}, nil
 }
 
-func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, inst *corev1alpha1.PlatformMesh, operatorCfg config.OperatorConfig) (ctrl.Result, errors.OperatorError) {
+func (r *FeatureToggleSubroutine) applyKcpManifests(
+	ctx context.Context,
+	inst *corev1alpha1.PlatformMesh,
+	operatorCfg config.OperatorConfig,
+	kcpDir string,
+) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	// Implement the logic to enable the getting started feature
-	log.Info().Msg("Getting started feature enabled")
+	log.Info().Str("Directory", kcpDir).Msg("Applying KCP manifests for feature toggle")
 
 	// Ensure the KCP admin secret exists before building kubeconfig
 	secret := &corev1.Secret{}
@@ -109,9 +136,18 @@ func (r *FeatureToggleSubroutine) FeatureGettingStarted(ctx context.Context, ins
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
 
-	dir := r.workspaceDirectory + "/feature-enable-getting-started"
+	dir := r.workspaceDirectory + kcpDir
 
-	err = ApplyDirStructure(ctx, dir, "root", cfg, make(map[string]string), inst, r.kcpHelper)
+	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
+	tplValues := map[string]string{
+		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":     baseDomain,
+		"protocol":       protocol,
+		"port":           fmt.Sprintf("%d", port),
+		"baseDomainPort": baseDomainPort,
+	}
+
+	err = ApplyDirStructure(ctx, dir, "root", cfg, tplValues, inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply dir structure"), true, false)

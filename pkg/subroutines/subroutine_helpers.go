@@ -255,7 +255,7 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 }
 
-func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
+func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
 	port := 8443
 	baseDomain := "portal.dev.local"
 	protocol := "https"
@@ -278,6 +278,11 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	} else {
 		baseDomainPort = fmt.Sprintf("%s:%d", baseDomain, port)
 	}
+	return baseDomain, baseDomainPort, port, protocol
+}
+
+func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
+	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 
 	var secret corev1.Secret
 	err := cl.Get(ctx, client.ObjectKey{

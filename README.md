@@ -161,10 +161,25 @@ Certain features can be toggled by the user via the API:
 spec:
   featureToggles:
   - name: "feature-enable-getting-started"
-    parameters: {}
 ```
 
 This applies the needed ContentConfiguration for the Getting Started UI page.
+
+#### feature-enable-iam
+
+```yaml
+spec:
+  featureToggles:
+  - name: "feature-enable-iam"
+```
+
+#### feature-enable-marketplace
+```yaml
+spec:
+  featureToggles:
+  - name: "feature-enable-marketplace"
+```
+
 
 ## Subroutines
 
