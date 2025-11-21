@@ -2,11 +2,13 @@ package resource
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -212,6 +214,14 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 
 	url = "oci://" + url
 	url = strings.TrimSuffix(url, ":"+version)
+
+	spec, err := ocm.ParseRef(url)
+	if err != nil {
+		log.Error().Err(err).Str("url", url).Msg("Failed to parse Resource url")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	url = fmt.Sprintf("%s://%s/%s", spec.Scheme, spec.Host, spec.Repository)
 
 	// Update or create oci repo
 	log.Info().Msg("Processing OCI Chart Resource")
