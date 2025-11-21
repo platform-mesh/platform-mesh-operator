@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -9,6 +10,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	apioci "ocm.software/ocm/api/oci"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -213,14 +215,13 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	url = "oci://" + url
 	url = strings.TrimSuffix(url, ":"+version)
 
-	// trim trailing from the 'url' @sha256:...
-	if idx := strings.Index(url, "@sha256:"); idx != -1 {
-		url = url[:idx]
-		// trim trailing from the 'url' :25.2.3 if present
-		if idx := strings.LastIndex(url, ":"); idx != -1 && strings.Count(url, ":") == 2 {
-			url = url[:idx]
-		}
+	spec, err := apioci.ParseRef(url)
+	if err != nil {
+		log.Error().Err(err).Str("url", url).Msg("Failed to parse Resource url")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+
+	url = fmt.Sprintf("%s://%s/%s", spec.Scheme, spec.Host, spec.Repository)
 
 	// Update or create oci repo
 	log.Info().Msg("Processing OCI Chart Resource")
