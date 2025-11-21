@@ -1,11 +1,11 @@
-package subroutines
+package ocm
 
 import (
 	"strings"
 
 	"github.com/mandelsoft/goutils/errors"
 	"github.com/opencontainers/go-digest"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/grammar"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm/grammar"
 )
 
 type RefSpec struct {
