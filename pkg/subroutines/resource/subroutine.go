@@ -8,9 +8,9 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	helpers "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	apioci "ocm.software/ocm/api/oci"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -215,7 +215,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	url = "oci://" + url
 	url = strings.TrimSuffix(url, ":"+version)
 
-	spec, err := apioci.ParseRef(url)
+	spec, err := helpers.ParseRef(url)
 	if err != nil {
 		log.Error().Err(err).Str("url", url).Msg("Failed to parse Resource url")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
