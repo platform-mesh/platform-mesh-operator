@@ -69,15 +69,13 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	mergedValues, err := MergeValuesAndServices(inst, templateVars)
+	mergedInfraValues, err := MergeValues(inst, templateVars)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to merge templateVars and services")
+		log.Error().Err(err).Msg("Failed to merge templateVars and infra values")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	log.Debug().Msgf("Merged templateVars: %s", string(mergedValues.Raw))
-
-	// apply resource
-	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/resource.yaml")
+	// apply infra resource
+	path := filepath.Join(r.workspaceDirectory, "platform-mesh-infra-components/resource.yaml")
 	tplValues := map[string]string{
 		"componentName": inst.Spec.OCM.Component.Name,
 		"repoName":      inst.Spec.OCM.Repo.Name,
@@ -95,6 +93,41 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			return out
 		}(),
 	}
+	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+	log.Debug().Str("path", path).Msgf("Applied path: %s", path)
+
+	// apply infra release
+	path = filepath.Join(r.workspaceDirectory, "platform-mesh-infra-components/release.yaml")
+	err = applyReleaseWithValues(ctx, path, r.client, mergedInfraValues)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
+
+	// Wait for infra-components release to be ready before continuing
+	rel, err := getHelmRelease(ctx, r.client, "platform-mesh-infra-components", "default")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get platform-mesh-infra-components Release")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+
+	if !MatchesCondition(rel, "Ready") {
+		log.Info().Msg("platform-mesh-infra-components Release is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	mergedValues, err := MergeValuesAndServices(inst, templateVars)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to merge templateVars and services")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	log.Debug().Msgf("Merged templateVars: %s", string(mergedValues.Raw))
+
+	// apply resource
+	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/resource.yaml")
 	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
