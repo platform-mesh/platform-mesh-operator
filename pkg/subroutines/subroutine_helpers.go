@@ -255,6 +255,37 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 }
 
+func MergeValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+	services := inst.Spec.Values
+	var mapValues map[string]interface{}
+	if len(templateVars.Raw) > 0 {
+		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
+			return apiextensionsv1.JSON{}, err
+		}
+	} else {
+		mapValues = map[string]interface{}{}
+	}
+	// Unmarshal 'services'
+	var mapServices map[string]interface{}
+	if len(services.Raw) > 0 {
+		if err := json.Unmarshal(services.Raw, &mapServices); err != nil {
+			return apiextensionsv1.JSON{}, err
+		}
+	} else {
+		mapServices = map[string]interface{}{}
+	}
+
+	mergeOCMConfig(mapValues, inst)
+
+	// Marshal back to apiextensionsv1.JSON
+	mergedRaw, err := json.Marshal(mapValues)
+	if err != nil {
+		return apiextensionsv1.JSON{}, err
+	}
+	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
+
+}
+
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
 	port := 8443
 	baseDomain := "portal.dev.local"
