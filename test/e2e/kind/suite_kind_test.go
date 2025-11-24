@@ -394,8 +394,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	}
 
 	time.Sleep(25 * time.Second)
-
-	return ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/istio-gateway/istio-gateway.yaml", s.client, make(map[string]string))
+	return nil
 }
 
 // SetupSuite sets up the Kind cluster and deploys the operator for testing.
