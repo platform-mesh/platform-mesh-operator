@@ -58,7 +58,7 @@ spec:
           rootShard:
             extraArgs:
               - --feature-gates=WorkspaceAuthentication=true
-              - --shard-virtual-workspace-url=https://kcp.api.{{ .Values.baseDomain }}:{{ .Values.port }}
+              - --shard-virtual-workspace-url=https://kcp.api.portal.dev.local:6443
           webhook:
             enabled: true
           frontProxy:
