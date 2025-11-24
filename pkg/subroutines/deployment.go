@@ -119,6 +119,17 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
+	// Wait for cert-manager to be ready
+	rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get cert-manager Release")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+	}
+	if !MatchesCondition(rel, "Ready") {
+		log.Info().Msg("cert-manager Release is not ready.. Retry in 5 seconds")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to merge templateVars and services")

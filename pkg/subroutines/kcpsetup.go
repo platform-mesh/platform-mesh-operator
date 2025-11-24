@@ -104,21 +104,21 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
 
 	// Create kcp workspaces recursively
 	err = r.createKcpResources(ctx, cfg, r.kcpDirectory, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
 	}
 
 	// apply extra workspaces
 	err = r.applyExtraWorkspaces(ctx, cfg, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to apply extra workspaces")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply extra workspaces"), true, false)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply extra workspaces"), true, false)
 	}
 
 	// update workspace status
