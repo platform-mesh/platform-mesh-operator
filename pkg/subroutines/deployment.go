@@ -75,7 +75,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	// apply infra resource
-	path := filepath.Join(r.workspaceDirectory, "platform-mesh-infra-components/resource.yaml")
+	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-infra-components/resource.yaml")
 	tplValues := map[string]string{
 		"componentName": inst.Spec.OCM.Component.Name,
 		"repoName":      inst.Spec.OCM.Repo.Name,
@@ -100,7 +100,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	log.Debug().Str("path", path).Msgf("Applied path: %s", path)
 
 	// apply infra release
-	path = filepath.Join(r.workspaceDirectory, "platform-mesh-infra-components/release.yaml")
+	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-infra-components/release.yaml")
 	err = applyReleaseWithValues(ctx, path, r.client, mergedInfraValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
@@ -108,14 +108,14 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
 	// Wait for infra-components release to be ready before continuing
-	rel, err := getHelmRelease(ctx, r.client, "platform-mesh-infra-components", "default")
+	rel, err := getHelmRelease(ctx, r.client, "platform-mesh-operator-infra-components", "default")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get platform-mesh-infra-components Release")
+		log.Error().Err(err).Msg("Failed to get platform-mesh-operator-infra-components Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
 	if !MatchesCondition(rel, "Ready") {
-		log.Info().Msg("platform-mesh-infra-components Release is not ready.. Retry in 5 seconds")
+		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 

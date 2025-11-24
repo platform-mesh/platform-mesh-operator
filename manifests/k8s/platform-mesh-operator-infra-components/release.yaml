@@ -1,15 +1,15 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: platform-mesh-infra-components
+  name: platform-mesh-operator-infra-components
   namespace: default
 spec:
   interval: 10m
   timeout: 20m
   chartRef:
     kind: OCIRepository
-    name: platform-mesh-infra-components
-  releaseName: platform-mesh-infra-components
+    name: platform-mesh-operator-infra-components
+  releaseName: platform-mesh-operator-infra-components
   targetNamespace: default
   values:
     imagePullSecret: github
