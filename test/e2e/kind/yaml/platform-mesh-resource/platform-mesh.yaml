@@ -82,7 +82,7 @@ spec:
           component: infra
     security-operator:
       values:
-        baseDomain: "{{ .Values.baseDomain }}:{{ .Values.port }}"
+        baseDomain: "portal.dev.local:8443"
         initializer:
           extraArgs:
             - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
