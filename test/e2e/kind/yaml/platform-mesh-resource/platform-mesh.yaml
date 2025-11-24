@@ -15,12 +15,6 @@ spec:
   featureToggles:
    - name: "feature-enable-getting-started"
   values:
-    istio-gateway:
-      enabled: true
-      targetNamespace: istio-system
-      values:
-        service:
-          type: None
     keycloak:
       enabled: true
       values:
@@ -42,8 +36,6 @@ spec:
             - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
       dependsOn:
-        - name: istio-istiod
-          namespace: default
         - name: kcp-operator
           namespace: default
       values:
@@ -171,12 +163,8 @@ spec:
                   url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
             enabled: true
     iam-service:
-      enabled: true
+      enabled: false
       values:
         hostAliases:
           enabled: true
         caSecret: domain-certificate-ca
-    extension-manager-operator:
-      values:
-        istio:
-          enabled: true
