@@ -97,21 +97,21 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !MatchesCondition(frontProxy, "Available") {
 		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{}, nil
 	}
 
 	// Build kcp kubeonfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
 
 	// Create kcp workspaces recursively
 	err = r.createKcpResources(ctx, cfg, r.kcpDirectory, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
 	}
 
 	// apply extra workspaces
