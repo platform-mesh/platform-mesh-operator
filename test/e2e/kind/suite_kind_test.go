@@ -263,6 +263,18 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
+	pms_domain_certificate := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "domain-certificate",
+			Namespace: "platform-mesh-system",
+		},
+		Data: map[string][]byte{
+			"ca.crt":  caRootBytes,
+			"tls.crt": certBytes,
+			"tls.key": keyBytes,
+		},
+		Type: corev1.SecretTypeTLS,
+	}
 	rbac_webhook_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rebac-authz-webhook-ca",
@@ -301,6 +313,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		domain_certificate,
 		rbac_webhook_ca,
 		domain_certificate_ca,
+		pms_domain_certificate,
 	}
 
 	for _, sec := range secrets {

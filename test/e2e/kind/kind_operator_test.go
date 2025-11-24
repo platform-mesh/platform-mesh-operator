@@ -41,6 +41,12 @@ func (s *KindTestSuite) TestResourceReady() {
 
 }
 
+func (s *KindTestSuite) TestRunFor30Minutes() {
+	s.Eventually(func() bool {
+		return false
+	}, 30*time.Minute, 10*time.Second)
+}
+
 // func (s *KindTestSuite) TestExtraWorkspaces() {
 // 	ctx := context.TODO()
 
