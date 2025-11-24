@@ -246,7 +246,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 		if err != nil {
 			return err
 		}
-		err = unstructured.SetNestedMap(inst.Object, map[string]interface{}{
+		err = unstructured.SetNestedMap(obj.Object, map[string]interface{}{
 			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 			"operation": "copy",
 		}, "spec", "layerSelector")
