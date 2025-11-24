@@ -315,52 +315,10 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/flux2-v2.6.4/flux2-install.yaml", s.client, make(map[string]string)); err != nil {
 		return err
 	}
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/cert-manager/namespace.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/cert-manager/repository.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/cert-manager/release.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-
 	avail := s.Eventually(func() bool {
-		helmRelease := fluxcdv2.HelmRelease{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "cert-manager",
-				Namespace: "cert-manager",
-			},
-		}
-
-		err := s.client.Get(ctx, client.ObjectKeyFromObject(&helmRelease), &helmRelease)
-		if err != nil {
-			return false
-		}
-
 		deployment := &appsv1.Deployment{}
 
-		err = s.client.Get(ctx, client.ObjectKey{
-			Name:      "cert-manager-webhook",
-			Namespace: "cert-manager",
-		}, deployment)
-		if err != nil {
-			s.logger.Warn().Msg("Not getting cert-manager-webhook deployment")
-			return false
-		}
-		certManagerWebhookReady := (deployment.Status.ReadyReplicas > 0)
-
-		err = s.client.Get(ctx, client.ObjectKey{
-			Name:      "cert-manager",
-			Namespace: "cert-manager",
-		}, deployment)
-		if err != nil {
-			s.logger.Warn().Msg("Not getting cert-manager deployment")
-			return false
-		}
-		certManagerReady := (deployment.Status.ReadyReplicas > 0)
-
-		err = s.client.Get(ctx, client.ObjectKey{
+		err := s.client.Get(ctx, client.ObjectKey{
 			Name:      "helm-controller",
 			Namespace: "flux-system",
 		}, deployment)
@@ -380,14 +338,14 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		}
 		sourceControllerReady := (deployment.Status.ReadyReplicas > 0)
 
-		return certManagerWebhookReady && certManagerReady && helmControllerReady && sourceControllerReady
-	}, 240*time.Second, 5*time.Second, "cert-manager helmrelease did not become ready")
+		return helmControllerReady && sourceControllerReady
+	}, 240*time.Second, 5*time.Second, "helm resources did not become ready")
 
 	if !avail {
-		return errors.New("cert-manager helmrelease is not available")
+		return errors.New("helm resources are not available")
 	}
 
-	s.logger.Info().Msg("cert-manager, fluxcd helmreleases ready")
+	s.logger.Info().Msg("helm resources ready")
 
 	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
 		return err
