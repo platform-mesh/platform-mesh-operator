@@ -1,7 +1,7 @@
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
-  name: platform-mesh-infra-components
+  name: platform-mesh-operator-infra-components
   namespace: default
   labels:
     repo: oci
@@ -20,7 +20,7 @@ spec:
     byReference:
       referencePath: 
         {{ .referencePath }}
-        - name: platform-mesh-infra-components
+        - name: platform-mesh-operator-infra-components
       resource:
         name: chart
   skipVerify: true
