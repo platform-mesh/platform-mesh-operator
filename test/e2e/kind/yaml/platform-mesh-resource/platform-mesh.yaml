@@ -105,9 +105,9 @@ spec:
               kind: Gateway
         extraEnvVars:
           - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-            value: https://${org-subdomain}{{ .Values.baseDomainPort }}/iam/graphql
+            value: https://${org-subdomain}portal.dev.local:8443/iam/graphql
           - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-            value: "https://${org-subdomain}{{ .Values.baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+            value: "https://${org-subdomain}portal.dev.local:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
           - name: NODE_EXTRA_CA_CERTS
             value: /etc/ssl/certs/domain-ca.crt
         extraVolumes:
