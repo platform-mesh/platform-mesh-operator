@@ -1607,6 +1607,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			Path:              "root:platform-mesh-system",
 			Secret:            "external-kubeconfig",
 			External:          true,
+			Namespace:         "test",
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
@@ -1635,7 +1636,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		Get(
 			mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
-				return key.Name == "test-secret" && key.Namespace == "default"
+				return key.Name == "test-secret" && key.Namespace == "test"
 			}),
 			mock.Anything,
 		).
@@ -1678,8 +1679,13 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 						"kubernetes-grapqhl-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"iam-service-kubeconfig",
-						"portal-kubeconfig",
-						"external-kubeconfig":
+						"portal-kubeconfig":
+						return true
+					}
+				}
+				if key.Namespace == "test" {
+					switch key.Name {
+					case "external-kubeconfig":
 						return true
 					}
 				}

@@ -99,6 +99,7 @@ type InitializerConnection struct {
 	WorkspaceTypeName string `json:"workspaceTypeName"`
 	Path              string `json:"path"`
 	Secret            string `json:"secret,omitempty"`
+	Namespace         string `json:"namespace,omitempty"`
 }
 
 type WebhookConfiguration struct {
@@ -129,6 +130,7 @@ type ProviderConnection struct {
 	RawPath           string `json:"rawPath,omitempty"`
 	Secret            string `json:"secret,omitempty"`
 	External          bool   `json:"external,omitempty"`
+	Namespace         string `json:"namespace,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh
