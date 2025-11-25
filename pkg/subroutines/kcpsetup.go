@@ -118,7 +118,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	err = r.applyExtraWorkspaces(ctx, cfg, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to apply extra workspaces")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply extra workspaces"), true, false)
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply extra workspaces"), true, false)
 	}
 
 	// update workspace status
