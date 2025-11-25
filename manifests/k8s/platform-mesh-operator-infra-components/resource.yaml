@@ -1,0 +1,26 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: platform-mesh-operator-infra-components
+  namespace: default
+  labels:
+    repo: oci
+    artifact: chart
+spec:
+  componentRef:
+    name: {{ .componentName }}
+  interval: 3m0s
+  ocmConfig:
+  - apiVersion: delivery.ocm.software/v1alpha1
+    kind: Repository
+    name: {{ .repoName }}
+    namespace: default
+    policy: Propagate
+  resource:
+    byReference:
+      referencePath: 
+        {{ .referencePath }}
+        - name: platform-mesh-operator-infra-components
+      resource:
+        name: chart
+  skipVerify: true

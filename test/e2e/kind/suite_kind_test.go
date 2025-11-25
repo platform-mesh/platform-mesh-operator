@@ -263,6 +263,18 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
+	pms_domain_certificate := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "domain-certificate",
+			Namespace: "platform-mesh-system",
+		},
+		Data: map[string][]byte{
+			"ca.crt":  caRootBytes,
+			"tls.crt": certBytes,
+			"tls.key": keyBytes,
+		},
+		Type: corev1.SecretTypeTLS,
+	}
 	rbac_webhook_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rebac-authz-webhook-ca",
@@ -301,6 +313,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		domain_certificate,
 		rbac_webhook_ca,
 		domain_certificate_ca,
+		pms_domain_certificate,
 	}
 
 	for _, sec := range secrets {
@@ -315,52 +328,10 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/flux2-v2.6.4/flux2-install.yaml", s.client, make(map[string]string)); err != nil {
 		return err
 	}
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/cert-manager/namespace.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/cert-manager/repository.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/cert-manager/release.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-
 	avail := s.Eventually(func() bool {
-		helmRelease := fluxcdv2.HelmRelease{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "cert-manager",
-				Namespace: "cert-manager",
-			},
-		}
-
-		err := s.client.Get(ctx, client.ObjectKeyFromObject(&helmRelease), &helmRelease)
-		if err != nil {
-			return false
-		}
-
 		deployment := &appsv1.Deployment{}
 
-		err = s.client.Get(ctx, client.ObjectKey{
-			Name:      "cert-manager-webhook",
-			Namespace: "cert-manager",
-		}, deployment)
-		if err != nil {
-			s.logger.Warn().Msg("Not getting cert-manager-webhook deployment")
-			return false
-		}
-		certManagerWebhookReady := (deployment.Status.ReadyReplicas > 0)
-
-		err = s.client.Get(ctx, client.ObjectKey{
-			Name:      "cert-manager",
-			Namespace: "cert-manager",
-		}, deployment)
-		if err != nil {
-			s.logger.Warn().Msg("Not getting cert-manager deployment")
-			return false
-		}
-		certManagerReady := (deployment.Status.ReadyReplicas > 0)
-
-		err = s.client.Get(ctx, client.ObjectKey{
+		err := s.client.Get(ctx, client.ObjectKey{
 			Name:      "helm-controller",
 			Namespace: "flux-system",
 		}, deployment)
@@ -380,22 +351,21 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		}
 		sourceControllerReady := (deployment.Status.ReadyReplicas > 0)
 
-		return certManagerWebhookReady && certManagerReady && helmControllerReady && sourceControllerReady
-	}, 240*time.Second, 5*time.Second, "cert-manager helmrelease did not become ready")
+		return helmControllerReady && sourceControllerReady
+	}, 240*time.Second, 5*time.Second, "helm resources did not become ready")
 
 	if !avail {
-		return errors.New("cert-manager helmrelease is not available")
+		return errors.New("helm resources are not available")
 	}
 
-	s.logger.Info().Msg("cert-manager, fluxcd helmreleases ready")
+	s.logger.Info().Msg("helm resources ready")
 
 	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
 		return err
 	}
 
 	time.Sleep(25 * time.Second)
-
-	return ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/istio-gateway/istio-gateway.yaml", s.client, make(map[string]string))
+	return nil
 }
 
 // SetupSuite sets up the Kind cluster and deploys the operator for testing.
