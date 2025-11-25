@@ -69,7 +69,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	mergedInfraValues, err := MergeValues(inst, templateVars)
+	mergedInfraValues, err := MergeValuesAndInfraValues(inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to merge templateVars and infra values")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)

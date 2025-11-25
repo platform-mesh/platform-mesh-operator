@@ -255,8 +255,8 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 }
 
-func MergeValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	services := inst.Spec.Values
+func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+	valuesInfra := inst.Spec.InfraValues
 	var mapValues map[string]interface{}
 	if len(templateVars.Raw) > 0 {
 		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
@@ -265,17 +265,20 @@ func MergeValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON)
 	} else {
 		mapValues = map[string]interface{}{}
 	}
-	// Unmarshal 'services'
-	var mapServices map[string]interface{}
-	if len(services.Raw) > 0 {
-		if err := json.Unmarshal(services.Raw, &mapServices); err != nil {
+	// Unmarshal 'valuesInfra'
+	var mapValuesInfra map[string]interface{}
+	if len(valuesInfra.Raw) > 0 {
+		if err := json.Unmarshal(valuesInfra.Raw, &mapValuesInfra); err != nil {
 			return apiextensionsv1.JSON{}, err
 		}
 	} else {
-		mapServices = map[string]interface{}{}
+		mapValuesInfra = map[string]interface{}{}
 	}
 
-	mergeOCMConfig(mapValues, inst)
+	// add 'valuesInfra' to mapValues
+	for k, v := range mapValuesInfra {
+		mapValues[k] = v
+	}
 
 	// Marshal back to apiextensionsv1.JSON
 	mergedRaw, err := json.Marshal(mapValues)
@@ -283,7 +286,6 @@ func MergeValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON)
 		return apiextensionsv1.JSON{}, err
 	}
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-
 }
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
