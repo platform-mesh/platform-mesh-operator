@@ -82,7 +82,6 @@ func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Ope
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
 			resourceReconcilerName, mgr.GetClient(), log).WithReadOnly().
-			WithConditionManagement().
 			WithStaticThenExponentialRateLimiter(
 				ratelimiter.WithRequeueDelay(5*time.Second),
 				ratelimiter.WithStaticWindow(10*time.Minute),
