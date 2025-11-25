@@ -97,7 +97,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !MatchesCondition(frontProxy, "Available") {
 		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Build kcp kubeonfig
