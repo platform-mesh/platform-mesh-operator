@@ -18,9 +18,11 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -79,6 +81,13 @@ func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Ope
 
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
-			resourceReconcilerName, mgr.GetClient(), log).WithReadOnly(),
+			resourceReconcilerName, mgr.GetClient(), log).WithReadOnly().
+			WithConditionManagement().
+			WithStaticThenExponentialRateLimiter(
+				ratelimiter.WithRequeueDelay(5*time.Second),
+				ratelimiter.WithStaticWindow(10*time.Minute),
+				ratelimiter.WithExponentialInitialBackoff(10*time.Second),
+				ratelimiter.WithExponentialMaxBackoff(120*time.Second),
+			),
 	}
 }

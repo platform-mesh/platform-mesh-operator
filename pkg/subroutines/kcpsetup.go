@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -71,7 +70,7 @@ func (r *KcpsetupSubroutine) Finalize(
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
-func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
+func (r *KcpsetupSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
@@ -87,8 +86,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !MatchesCondition(rootShard, "Available") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Info().Msg("RootShard is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -96,8 +95,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !MatchesCondition(frontProxy, "Available") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Info().Msg("FrontProxy is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
 	}
 
 	// Build kcp kubeonfig

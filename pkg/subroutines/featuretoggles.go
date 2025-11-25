@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -59,7 +58,7 @@ func (r *FeatureToggleSubroutine) Finalize(_ context.Context, _ runtimeobject.Ru
 	return ctrl.Result{}, nil
 }
 
-func (r *FeatureToggleSubroutine) Finalizers() []string { // coverage-ignore
+func (r *FeatureToggleSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{}
 }
 
@@ -123,8 +122,8 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 			log.Info().
 				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
 				Str("namespace", operatorCfg.KCP.Namespace).
-				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+				Msg("KCP admin secret not found yet..")
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("KCP admin secret not found yet"), true, true)
 		}
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), true, true)
 	}

@@ -26,7 +26,7 @@ require (
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.4.3
+	github.com/platform-mesh/golang-commons v0.8.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
@@ -49,7 +49,7 @@ require (
 require (
 	cel.dev/expr v0.25.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/99designs/gqlgen v0.17.81 // indirect
+	github.com/99designs/gqlgen v0.17.84 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/antchfx/htmlquery v1.2.4 // indirect
 	github.com/antchfx/xpath v1.2.0 // indirect
@@ -72,7 +72,7 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.23.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/getsentry/sentry-go v0.35.3 // indirect
+	github.com/getsentry/sentry-go v0.39.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -145,7 +145,7 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tmccombs/hcl2json v0.3.3 // indirect
-	github.com/vektah/gqlparser/v2 v2.5.30 // indirect
+	github.com/vektah/gqlparser/v2 v2.5.31 // indirect
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
@@ -164,20 +164,20 @@ require (
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/mod v0.29.0 // indirect
-	golang.org/x/net v0.46.0 // indirect
-	golang.org/x/oauth2 v0.32.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/term v0.36.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
+	golang.org/x/mod v0.30.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/oauth2 v0.33.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/term v0.37.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	golang.org/x/tools v0.38.0 // indirect
+	golang.org/x/tools v0.39.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251103181224-f26f9409b101 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251103181224-f26f9409b101 // indirect
-	google.golang.org/grpc v1.76.0 // indirect
+	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
