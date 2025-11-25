@@ -19,6 +19,7 @@ spec:
                 "order": 800,
                 "entityType": "main",
                 "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
+                "viewGroup": "members",
                 "context": {
                   "entityType": "core_platform-mesh_io_account",
                   "entityContext": {
@@ -34,6 +35,7 @@ spec:
                 "label": "members",
                 "hideFromNav": true,
                 "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
+                "viewGroup": "members",
                 "context": {
                   "entityType": "core_platform-mesh_io_account"
                 }
