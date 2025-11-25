@@ -19,6 +19,7 @@ spec:
                 "label": "Marketplace",
                 "icon": "retail-store",
                 "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/:accountId/marketplace",
+                "viewGroup": "marketplace",
                 "context": {
                   "accountId": ":core_platform-mesh_io_accountId"
                 }
@@ -27,6 +28,7 @@ spec:
                 "pathSegment": "provider",
                 "entityType": "main.core_platform-mesh_io_account",
                 "hideFromNav": true,
+                "viewGroup": "marketplace",
                 "children": [
                   {
                     "pathSegment": ":providerName",

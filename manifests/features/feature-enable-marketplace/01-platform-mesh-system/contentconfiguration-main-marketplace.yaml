@@ -20,6 +20,7 @@ spec:
                 "icon": "retail-store",
                 "hideFromNav": false,
                 "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
+                "viewGroup": "marketplace",
                 "context": {
                   "entityContext": {
                     "account": {
@@ -32,6 +33,7 @@ spec:
                 "pathSegment": "provider",
                 "entityType": "main",
                 "hideFromNav": true,
+                "viewGroup": "marketplace",
                 "children": [
                   {
                     "pathSegment": ":providerName",
