@@ -113,6 +113,8 @@ spec:
                   extraInitializerConnections:
                     items:
                       properties:
+                        namespace:
+                          type: string
                         path:
                           type: string
                         secret:
@@ -131,6 +133,8 @@ spec:
                           type: string
                         external:
                           type: boolean
+                        namespace:
+                          type: string
                         path:
                           type: string
                         rawPath:
@@ -175,6 +179,8 @@ spec:
                   initializerConnections:
                     items:
                       properties:
+                        namespace:
+                          type: string
                         path:
                           type: string
                         secret:
@@ -193,6 +199,8 @@ spec:
                           type: string
                         external:
                           type: boolean
+                        namespace:
+                          type: string
                         path:
                           type: string
                         rawPath:

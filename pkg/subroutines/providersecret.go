@@ -240,10 +240,14 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
+	namespace := "platform-mesh-system"
+	if pc.Namespace != "" {
+		namespace = pc.Namespace
+	}
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pc.Secret,
-			Namespace: "platform-mesh-system",
+			Namespace: namespace,
 		},
 	}
 
@@ -308,10 +312,14 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
+	namespace := "platform-mesh-system"
+	if ic.Namespace != "" {
+		namespace = ic.Namespace
+	}
 	initializerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ic.Secret,
-			Namespace: "platform-mesh-system",
+			Namespace: namespace,
 		},
 	}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
