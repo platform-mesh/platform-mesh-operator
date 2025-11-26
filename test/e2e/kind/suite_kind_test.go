@@ -492,7 +492,11 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	appConfig := config.OperatorConfig{}
 
-	defaults.Set(&appConfig)
+	err := defaults.Set(&appConfig)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to set default operator config")
+		return
+	}
 
 	appConfig.Subroutines.Deployment.Enabled = true
 	appConfig.Subroutines.Deployment.EnableIstio = false
