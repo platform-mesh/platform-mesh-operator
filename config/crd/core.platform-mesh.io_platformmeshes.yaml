@@ -91,8 +91,13 @@ spec:
                       type: object
                   type: object
                 type: array
-              infraValues:
-                x-kubernetes-preserve-unknown-fields: true
+              infra:
+                properties:
+                  enable:
+                    type: boolean
+                  values:
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
               kcp:
                 properties:
                   extraDefaultAPIBindings:

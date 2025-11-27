@@ -28,7 +28,12 @@ type PlatformMeshSpec struct {
 	Values         apiextensionsv1.JSON `json:"values,omitempty"`
 	OCM            *OCMConfig           `json:"ocm,omitempty"`
 	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
-	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
+	Infra          *InfraConfig         `json:"infra,omitempty"`
+}
+
+type InfraConfig struct {
+	Enable bool                 `json:"enable,omitempty"`
+	Values apiextensionsv1.JSON `json:"values,omitempty"`
 }
 
 type FeatureToggle struct {

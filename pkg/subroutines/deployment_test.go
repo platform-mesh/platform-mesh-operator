@@ -7,6 +7,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,10 +25,11 @@ import (
 
 type DeployTestSuite struct {
 	suite.Suite
-	clientMock *mocks.Client
-	helperMock *mocks.KcpHelper
-	testObj    *subroutines.DeploymentSubroutine
-	log        *logger.Logger
+	clientMock           *mocks.Client
+	helperMock           *mocks.KcpHelper
+	testSubroutineDeploy *subroutines.DeploymentSubroutine
+	log                  *logger.Logger
+	operatorCfg          *config.OperatorConfig
 }
 
 func TestDeployTestSuite(t *testing.T) {
@@ -44,11 +46,14 @@ func (s *DeployTestSuite) SetupTest() {
 	s.log, _ = logger.New(cfgLog)
 
 	cfg := pmconfig.CommonServiceConfig{}
-	operatorCfg := config.OperatorConfig{
+	s.operatorCfg = &config.OperatorConfig{
 		WorkspaceDir: "../../",
 	}
+	s.operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName = "kcp-webhook-secret"
+	s.operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretCAName = "rebac-authz-webhook-cert"
+	s.operatorCfg.Subroutines.Deployment.Enabled = true
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
+	s.testSubroutineDeploy = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, s.operatorCfg)
 }
 
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {
@@ -59,7 +64,11 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			Name:      "test-platform-mesh",
 			Namespace: "default",
 		},
-		Spec: v1alpha1.PlatformMeshSpec{},
+		Spec: v1alpha1.PlatformMeshSpec{
+			Infra: &v1alpha1.InfraConfig{
+				Enable: true,
+			},
+		},
 	}
 
 	// mocks
@@ -107,7 +116,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
-	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
+	err = s.testSubroutineDeploy.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
 
 	// switch to standard port 443
@@ -150,7 +159,165 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
-	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
+	err = s.testSubroutineDeploy.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
+
+}
+
+func (s *DeployTestSuite) Test_disableInfra() {
+
+	// resource configuration
+	inst := &v1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-platform-mesh",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.PlatformMeshSpec{
+			Infra: &v1alpha1.InfraConfig{
+				Enable: false,
+			},
+			OCM: &v1alpha1.OCMConfig{
+				Component: &v1alpha1.ComponentConfig{
+					Name: "platform-mesh",
+				},
+				Repo: &v1alpha1.RepoConfig{
+					Name: "platform-mesh",
+				},
+				ReferencePath: []v1alpha1.ReferencePathElement{},
+			},
+		},
+	}
+
+	// mocks
+	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, client.FieldOwner("platform-mesh-operator")).Return(nil)
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "kcp-webhook-secret"}, mock.Anything).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"kubeconfig": secretKubeconfigData,
+			}
+			return nil
+		},
+	)
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt": []byte("test-ca-data"),
+			}
+			return nil
+		},
+	)
+	s.clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"status": map[string]interface{}{
+					"phase": "Ready",
+					"conditions": []interface{}{
+						map[string]interface{}{
+							"type":   "Available",
+							"status": "True",
+						},
+					},
+				},
+			}
+			return nil
+		})
+
+	// context
+	ctx := pmconfig.SetConfigInContext(context.TODO(), *s.operatorCfg)
+
+	res, err := s.testSubroutineDeploy.Process(ctx, inst)
+	s.Assert().Nil(err)
+	s.Assert().False(res.Requeue, "Process should not request requeue")
+
+}
+
+func (s *DeployTestSuite) Test_enableInfra() {
+
+	// resource configuration
+	inst := &v1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-platform-mesh",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.PlatformMeshSpec{
+			Infra: &v1alpha1.InfraConfig{
+				Enable: true,
+			},
+			OCM: &v1alpha1.OCMConfig{
+				Component: &v1alpha1.ComponentConfig{
+					Name: "platform-mesh",
+				},
+				Repo: &v1alpha1.RepoConfig{
+					Name: "platform-mesh",
+				},
+				ReferencePath: []v1alpha1.ReferencePathElement{},
+			},
+		},
+	}
+
+	// mocks
+	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, client.FieldOwner("platform-mesh-operator")).Return(nil)
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "kcp-webhook-secret"}, mock.Anything).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"kubeconfig": secretKubeconfigData,
+			}
+			return nil
+		},
+	)
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).RunAndReturn(
+		func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt": []byte("test-ca-data"),
+			}
+			return nil
+		},
+	)
+	s.clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"status": map[string]interface{}{
+					"phase": "Ready",
+					"conditions": []interface{}{
+						map[string]interface{}{
+							"type":   "Available",
+							"status": "True",
+						},
+					},
+				},
+			}
+			return nil
+		})
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "platform-mesh-infra-operator-components"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"status": map[string]interface{}{
+					"phase": "Ready",
+					"conditions": []interface{}{
+						map[string]interface{}{
+							"type":   "Available",
+							"status": "True",
+						},
+					},
+				},
+			}
+			return nil
+		})
+
+	// context
+	ctx := pmconfig.SetConfigInContext(context.TODO(), *s.operatorCfg)
+
+	res, err := s.testSubroutineDeploy.Process(ctx, inst)
+	s.Assert().Nil(err)
+	s.Assert().False(res.Requeue, "Process should not request requeue")
 
 }

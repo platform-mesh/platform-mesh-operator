@@ -40,6 +40,9 @@ spec:iam-service
     extraProviderConnections:
     - path: "root:orgs:my-new-workspace"
       secret: "my-new-workspace-kubeconfig"
+  infra:
+    enabled: true
+    values: {}
   values:
     service1:
       enabled: true

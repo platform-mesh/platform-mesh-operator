@@ -256,7 +256,7 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 }
 
 func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	valuesInfra := inst.Spec.InfraValues
+	valuesInfra := inst.Spec.Infra.Values
 	var mapValues map[string]interface{}
 	if len(templateVars.Raw) > 0 {
 		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
