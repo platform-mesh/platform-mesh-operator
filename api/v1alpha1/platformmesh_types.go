@@ -29,6 +29,20 @@ type PlatformMeshSpec struct {
 	OCM            *OCMConfig           `json:"ocm,omitempty"`
 	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
 	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
+	Wait           *WaitConfig          `json:"wait,omitempty"`
+}
+
+type WaitConfig struct {
+	ResourceTypes []ResourceType `json:"resourceTypes,omitempty"` // e.g., apps/v1/Deployment, core/v1/
+}
+
+type ResourceType struct {
+	metav1.APIVersions      `json:"apiVersions,inline,omitempty"`
+	metav1.GroupKind        `json:"groupKind,inline,omitempty"`
+	Namespace               string `json:"namespace,omitempty"`
+	metav1.LabelSelector    `json:"labelSelector,inline,omitempty"`
+	metav1.ConditionStatus  `json:"conditionStatus,omitempty"` // e.g., "True"
+	metav1.RowConditionType `json:"conditionType,omitempty"`   // e.g., "Ready"
 }
 
 type FeatureToggle struct {
