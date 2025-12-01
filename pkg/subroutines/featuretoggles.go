@@ -11,14 +11,15 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 const FeatureToggleSubroutineName = "FeatureToggleSubroutine"
@@ -86,9 +87,17 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'IAM configuration' feature")
-		case "feature-enable-marketplace":
+		case "feature-enable-marketplace-account":
 			// Implement the logic to enable the marketplace feature
-			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace")
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-account")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply marketplace manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Marketplace configuration' feature")
+		case "feature-enable-marketplace-org":
+			// Implement the logic to enable the marketplace feature
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-org")
 			if opErr != nil {
 				log.Error().Err(opErr.Err()).Msg("Failed to apply marketplace manifests")
 				return ctrl.Result{}, opErr

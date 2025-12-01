@@ -151,33 +151,39 @@ spec:
 
 Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
 
-### Feature toggles
+### Feature Toggles
 
-Certain features can be toggled by the user via the API:
-
-#### feature-enable-getting-started
+Certain features can be enabled or disabled using feature toggles in the PlatformMesh resource specification. Feature toggles are configured as follows:
 
 ```yaml
+spec:
+  featureToggles:
+  - name: "<feature-name>"
+```
+
+#### Available Feature Toggles
+
+| Feature Toggle Name | Description |
+|---------------------|-------------|
+| `feature-enable-getting-started` | Applies the ContentConfiguration resources required for the Getting Started UI page |
+| `feature-enable-iam` | Applies the ContentConfiguration resources for Identity and Access Management (IAM) integration |
+| `feature-enable-marketplace-account` | Applies the ContentConfiguration resources for the Marketplace feature at the account level |
+| `feature-enable-marketplace-org` | Applies the ContentConfiguration resources for the Marketplace feature at the organization level |
+
+#### Example Usage
+
+```yaml
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: PlatformMesh
+metadata:
+  name: platform-mesh-sample
+  namespace: platform-mesh-system
 spec:
   featureToggles:
   - name: "feature-enable-getting-started"
-```
-
-This applies the needed ContentConfiguration for the Getting Started UI page.
-
-#### feature-enable-iam
-
-```yaml
-spec:
-  featureToggles:
   - name: "feature-enable-iam"
-```
-
-#### feature-enable-marketplace
-```yaml
-spec:
-  featureToggles:
-  - name: "feature-enable-marketplace"
+  - name: "feature-enable-marketplace-account"
+  # ... other configuration
 ```
 
 
