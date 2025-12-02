@@ -168,7 +168,7 @@ func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
 
 	s.Assert().NotNil(err)
 	s.Assert().Equal(ctrl.Result{}, result)
-	s.Assert().Contains(err.Err(), "is not ready yet")
+	s.Assert().Contains(err.Err().Error(), "is not ready yet")
 }
 
 func (s *WaitTestSuite) TestProcess_ListError() {
@@ -192,9 +192,9 @@ func (s *WaitTestSuite) TestProcess_ListError() {
 
 	result, err := s.testObj.Process(ctx, instance)
 
-	s.Assert().Nil(err)
+	s.Assert().NotNil(err)
 	s.Assert().Equal(ctrl.Result{}, result)
-	s.Assert().Contains(err.Err(), "mock list error")
+	s.Assert().Contains(err.Err().Error(), "mock list error")
 }
 
 func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
@@ -264,6 +264,75 @@ func (s *WaitTestSuite) TestFinalizers() {
 func (s *WaitTestSuite) TestGetName() {
 	name := s.testObj.GetName()
 	s.Assert().Equal(subroutines.WaitSubroutineName, name)
+}
+
+func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	instance := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mesh",
+			Namespace: "default",
+		},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Wait: &corev1alpha1.WaitConfig{
+				ResourceTypes: []corev1alpha1.ResourceType{
+					{
+						APIVersions: metav1.APIVersions{
+							Versions: []string{"v1"},
+						},
+						GroupKind: metav1.GroupKind{
+							Group: "kustomize.toolkit.fluxcd.io",
+							Kind:  "Kustomization",
+						},
+						Namespace: "flux-system",
+						LabelSelector: metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app": "platform-mesh",
+							},
+						},
+						ConditionStatus:  metav1.ConditionTrue,
+						RowConditionType: "Ready",
+					},
+				},
+			},
+		},
+	}
+
+	// Mock List call returning ready Kustomization resource
+	s.clientMock.EXPECT().
+		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+			unstructuredList := list.(*unstructured.UnstructuredList)
+			readyResource := unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+					"kind":       "Kustomization",
+					"metadata": map[string]interface{}{
+						"name":      "test-kustomization",
+						"namespace": "flux-system",
+						"labels": map[string]interface{}{
+							"app": "platform-mesh",
+						},
+					},
+					"status": map[string]interface{}{
+						"conditions": []interface{}{
+							map[string]interface{}{
+								"type":   "Ready",
+								"status": "True",
+							},
+						},
+					},
+				},
+			}
+			unstructuredList.Items = []unstructured.Unstructured{readyResource}
+			return nil
+		}).Once()
+
+	result, err := s.testObj.Process(ctx, instance)
+
+	s.Assert().Nil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
 }
 
 func (s *WaitTestSuite) TestFinalize() {
