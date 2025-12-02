@@ -148,6 +148,21 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 		}).
 		Once() // Only called once due to caching
 
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{
+			Name:      "domain-certificate-ca",
+			Namespace: "platform-mesh-system",
+		}, mock.Anything).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt":  []byte("test-ca-data"),
+				"tls.crt": []byte("test-tls-crt"),
+				"tls.key": []byte("test-tls-key"),
+			}
+			return nil
+		})
+
 	// First call should fetch from secrets
 	inventory, err := s.testObj.GetCABundleInventory(ctx)
 	s.Assert().NoError(err)
@@ -313,6 +328,20 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		Get(mock.Anything, types.NamespacedName{
 			Name:      "kcp-cluster-admin",
 			Namespace: "default",
+		}, mock.Anything).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt":  []byte("test-ca-data"),
+				"tls.crt": []byte("test-tls-crt"),
+				"tls.key": []byte("test-tls-key"),
+			}
+			return nil
+		})
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{
+			Name:      "domain-certificate-ca",
+			Namespace: "platform-mesh-system",
 		}, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
@@ -571,6 +600,21 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		}).
 		Return(nil).
 		Once()
+
+		// Mock the mutating webhook secret lookup (called once due to caching)
+	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
+		Name:      "domain-certificate-ca",
+		Namespace: webhookConfig.SecretRef.Namespace,
+	}, mock.AnythingOfType("*v1.Secret")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			sec := obj.(*corev1.Secret)
+			sec.Data = map[string][]byte{
+				"ca.crt":  []byte("test-ca-data"),
+				"tls.crt": []byte("test-tls-crt"),
+				"tls.key": []byte("test-tls-key"),
+			}
+		}).
+		Return(nil)
 
 	// Mock the validating webhook secret lookup (called once due to caching)
 	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
