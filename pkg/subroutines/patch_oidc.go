@@ -78,7 +78,7 @@ func (p *PatchOIDCSubroutine) Finalize(ctx context.Context, instance runtimeobje
 }
 
 // Finalizers implements subroutine.Subroutine.
-func (p *PatchOIDCSubroutine) Finalizers() []string {
+func (p *PatchOIDCSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string {
 	return []string{"platform-mesh.io/patch-oidc"}
 }
 

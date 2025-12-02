@@ -57,7 +57,7 @@ func (r *ResourceSubroutine) Finalize(_ context.Context, _ runtimeobject.Runtime
 	return ctrl.Result{}, nil
 }
 
-func (r *ResourceSubroutine) Finalizers() []string { // coverage-ignore
+func (r *ResourceSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{}
 }
 

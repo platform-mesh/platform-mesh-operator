@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
@@ -257,8 +256,8 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{Requeue: false, RequeueAfter: 5 * time.Second}, res)
+	s.Require().NotNil(opErr)
+	s.Assert().Equal(ctrl.Result{}, res)
 }
 
 func (s *ProvidersecretTestSuite) TestWrongScheme() {
@@ -724,7 +723,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 }
 
 func (s *ProvidersecretTestSuite) TestFinalizers() {
-	res := s.testObj.Finalizers()
+	res := s.testObj.Finalizers(s.getBaseInstance())
 	s.Assert().Equal(res, []string{subroutines.ProvidersecretSubroutineFinalizer})
 }
 

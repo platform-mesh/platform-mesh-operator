@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	pmctrl "github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -39,7 +41,13 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 			"RealmReconciler",
 			mgr.GetClient(),
 			log,
-		),
+		).WithConditionManagement().
+			WithStaticThenExponentialRateLimiter(
+				ratelimiter.WithRequeueDelay(5*time.Second),
+				ratelimiter.WithStaticWindow(10*time.Minute),
+				ratelimiter.WithExponentialInitialBackoff(10*time.Second),
+				ratelimiter.WithExponentialMaxBackoff(120*time.Second),
+			),
 	}
 }
 
