@@ -4,6 +4,8 @@ metadata:
   name: platform-mesh
   namespace: platform-mesh-system
 spec:
+  infra:
+    enable: true
   exposure:
     port: 8443
   ocm:
