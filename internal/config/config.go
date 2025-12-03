@@ -38,4 +38,7 @@ type OperatorConfig struct {
 			Enabled bool `mapstructure:"subroutines-wait-enabled" default:"true"`
 		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
+	Deployment struct {
+		Kubeconfig string `mapstructure:"deployment-kubeconfig"`
+	} `mapstructure:",squash"`
 }

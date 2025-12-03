@@ -50,6 +50,22 @@ spec:iam-service
       enabled: false
 ```
 
+## platform-mesh-operator Configuration
+
+The platform-mesh-operator can be configured using environment variables to control which Kubernetes clusters it interacts with during operation.
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `KUBECONFIG` | Path to the kubeconfig file for the cluster where the `PlatformMesh` resource is reconciled | In-cluster configuration |
+| `DEPLOYMENT_KUBECONFIG` | Path to the kubeconfig file for the cluster where platform-mesh components are deployed | In-cluster configuration |
+
+**Notes:**
+- When running the operator inside a Kubernetes cluster without these variables set, it will use the in-cluster service account credentials.
+- Setting `DEPLOYMENT_KUBECONFIG` enables remote deployment scenarios where the control plane (operator) runs in one cluster while deploying components to another cluster.
+- Both variables accept standard kubeconfig file paths as supported by the Kubernetes client libraries.
+
 ## PlatformMesh Resource Configuration
 
 The `PlatformMesh` resource provides a comprehensive way to configure your platform-mesh environment. Below is a detailed explanation of each section and field available in the resource specification:
