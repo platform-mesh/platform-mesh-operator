@@ -35,4 +35,7 @@ type OperatorConfig struct {
 			Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
 		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
+	Deployment struct {
+		Kubeconfig string `mapstructure:"deployment-kubeconfig"`
+	} `mapstructure:",squash"`
 }
