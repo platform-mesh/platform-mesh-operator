@@ -52,19 +52,72 @@ spec:iam-service
 
 ## platform-mesh-operator Configuration
 
-The platform-mesh-operator can be configured using environment variables to control which Kubernetes clusters it interacts with during operation.
+The platform-mesh-operator can be configured using environment variables or command-line parameters to control its behavior, cluster interactions, and subroutine execution. Command-line parameters use kebab-case format (e.g., `--workspace-dir`, `--kcp-url`) corresponding to the mapstructure tags in the configuration.
 
-### Environment Variables
+### General Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `KUBECONFIG` | Path to the kubeconfig file for the cluster where the `PlatformMesh` resource is reconciled | In-cluster configuration |
 | `DEPLOYMENT_KUBECONFIG` | Path to the kubeconfig file for the cluster where platform-mesh components are deployed | In-cluster configuration |
+| `WORKSPACE_DIR` | Working directory for operator files and temporary data | `/operator/` |
+| `PATCH_OIDC_CONTROLLER_ENABLED` | Enable the OIDC controller patching functionality | `false` |
 
-**Notes:**
-- When running the operator inside a Kubernetes cluster without these variables set, it will use the in-cluster service account credentials.
-- Setting `DEPLOYMENT_KUBECONFIG` enables remote deployment scenarios where the control plane (operator) runs in one cluster while deploying components to another cluster.
-- Both variables accept standard kubeconfig file paths as supported by the Kubernetes client libraries.
+### KCP Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `KCP_URL` | URL of the KCP API server | (required) |
+| `KCP_NAMESPACE` | Namespace where KCP components are deployed | `platform-mesh-system` |
+| `KCP_ROOT_SHARD_NAME` | Name of the KCP root shard | `root` |
+| `KCP_FRONT_PROXY_NAME` | Name of the KCP front proxy component | `frontproxy` |
+| `KCP_FRONT_PROXY_PORT` | Port for the KCP front proxy | `6443` |
+| `KCP_CLUSTER_ADMIN_SECRET_NAME` | Name of the secret containing KCP cluster admin client certificate | `kcp-cluster-admin-client-cert` |
+
+### Subroutines Configuration
+
+#### Deployment Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_DEPLOYMENT_ENABLED` | Enable the deployment subroutine | `true` |
+| `AUTHORIZATION_WEBHOOK_SECRET_NAME` | Name of the authorization webhook secret | `kcp-webhook-secret` |
+| `AUTHORIZATION_WEBHOOK_SECRET_CA_NAME` | Name of the authorization webhook CA certificate | `rebac-authz-webhook-cert` |
+| `SUBROUTINES_DEPLOYMENT_ENABLE_ISTIO` | Enable Istio integration in deployment subroutine | `true` |
+
+#### KCP Setup Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_KCP_SETUP_ENABLED` | Enable the KCP setup subroutine | `true` |
+
+#### Provider Secret Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_PROVIDER_SECRET_ENABLED` | Enable the provider secret subroutine | `true` |
+
+#### Patch OIDC Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_PATCH_OIDC_CONFIGMAP_NAME` | Name of the OIDC authentication ConfigMap | `oidc-authentication-config` |
+| `SUBROUTINES_PATCH_OIDC_NAMESPACE` | Namespace for OIDC configuration | `platform-mesh-system` |
+| `SUBROUTINES_PATCH_OIDC_BASEDOMAIN` | Base domain for OIDC configuration | `portal.dev.local:8443` |
+| `SUBROUTINES_PATCH_OIDC_DOMAIN_CA_LOOKUP` | Enable domain CA lookup for OIDC | `false` |
+
+#### Feature Toggles Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_FEATURE_TOGGLES_ENABLED` | Enable the feature toggles subroutine | `false` |
+
+### Configuration Notes
+
+- **Configuration methods**: All parameters can be set via environment variables (using underscore-separated uppercase names) or command-line flags (using kebab-case format, e.g., `--kcp-url`, `--workspace-dir`).
+- **In-cluster behavior**: When running the operator inside a Kubernetes cluster without `KUBECONFIG` or `DEPLOYMENT_KUBECONFIG` set, it will use the in-cluster service account credentials.
+- **Remote deployment**: Setting `DEPLOYMENT_KUBECONFIG` enables scenarios where the control plane (operator) runs in one cluster while deploying components to another cluster.
+- **Subroutine control**: Individual subroutines can be disabled by setting their respective `_ENABLED` variables to `false`, allowing fine-grained control over operator behavior.
 
 ## PlatformMesh Resource Configuration
 
