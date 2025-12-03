@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.25.4-trixie AS builder
+FROM golang:1.25.5-trixie AS builder
 
 WORKDIR /workspace
 
