@@ -546,23 +546,3 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 
 	return false
 }
-
-// MatchesCondition checks the Ready Condition if it has status true
-func MatchesCondition(release *unstructured.Unstructured, conditionType string) bool {
-	if release == nil {
-		return false
-	}
-	conditions, found, err := unstructured.NestedSlice(release.Object, "status", "conditions")
-	if err != nil || !found {
-		return false
-	}
-
-	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
-		if c["type"] == conditionType && c["status"] == "True" {
-			return true
-		}
-	}
-
-	return false
-}
