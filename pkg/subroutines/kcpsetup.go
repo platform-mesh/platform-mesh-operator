@@ -244,21 +244,19 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	validatingB64Data := base64.StdEncoding.EncodeToString(validatingCaData)
 	caBundles[validatingKey] = validatingB64Data
 
-	if r.cfg.Subroutines.PatchOIDC.DomainCALookup {
-		domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
-			SecretData: "tls.crt",
-			SecretRef: corev1alpha1.SecretReference{
-				Name:      "domain-certificate-ca",
-				Namespace: "platform-mesh-system",
-			},
-		})
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to get Domain CA bundle")
-			return nil, errors.Wrap(err, "Failed to get Domain CA bundle")
-		}
-
-		caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
+	domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
+		SecretData: "tls.crt",
+		SecretRef: corev1alpha1.SecretReference{
+			Name:      "domain-certificate-ca",
+			Namespace: "platform-mesh-system",
+		},
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get Domain CA bundle")
+		return nil, errors.Wrap(err, "Failed to get Domain CA bundle")
 	}
+
+	caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
 
 	// Cache the results
 	r.caBundleCache = caBundles
