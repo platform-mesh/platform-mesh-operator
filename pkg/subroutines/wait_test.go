@@ -258,7 +258,7 @@ func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 
 func (s *WaitTestSuite) TestFinalizers() {
 	finalizers := s.testObj.Finalizers()
-	s.Assert().Equal([]string{subroutines.WaitSubroutineFinalizer}, finalizers)
+	s.Assert().Equal([]string{}, finalizers)
 }
 
 func (s *WaitTestSuite) TestGetName() {

@@ -29,14 +29,13 @@ type WaitSubroutine struct {
 }
 
 const (
-	WaitSubroutineName      = "WaitSubroutine"
-	WaitSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
+	WaitSubroutineName = "WaitSubroutine"
 )
 
 func (r *WaitSubroutine) Finalize(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
-	return ctrl.Result{}, nil // TODO: Implement
+	return ctrl.Result{}, nil
 }
 
 func (r *WaitSubroutine) Process(
@@ -87,7 +86,7 @@ func (r *WaitSubroutine) Process(
 }
 
 func (r *WaitSubroutine) Finalizers() []string { // coverage-ignore
-	return []string{WaitSubroutineFinalizer}
+	return []string{}
 }
 
 func (r *WaitSubroutine) GetName() string {
