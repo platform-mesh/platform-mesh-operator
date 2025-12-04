@@ -37,14 +37,13 @@ type WaitConfig struct {
 }
 
 type ResourceType struct {
-	metav1.APIVersions      `json:"apiVersions,inline,omitempty"`
-	metav1.GroupKind        `json:"groupKind,inline,omitempty"`
+	metav1.APIVersions      `json:",inline"`
+	metav1.GroupKind        `json:",inline"`
 	Namespace               string `json:"namespace,omitempty"`
-	metav1.LabelSelector    `json:"labelSelector,inline,omitempty"`
+	metav1.LabelSelector    `json:",inline"`
 	metav1.ConditionStatus  `json:"conditionStatus,omitempty"` // e.g., "True"
 	metav1.RowConditionType `json:"conditionType,omitempty"`   // e.g., "Ready"
 }
-
 type FeatureToggle struct {
 	Name       string            `json:"name,omitempty"`
 	Parameters map[string]string `json:"parameters,omitempty"`

@@ -139,26 +139,6 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 }
 
-// MatchesCondition checks the Ready Condition if it has status true
-func MatchesCondition(release *unstructured.Unstructured, conditionType string) bool {
-	if release == nil {
-		return false
-	}
-	conditions, found, err := unstructured.NestedSlice(release.Object, "status", "conditions")
-	if err != nil || !found {
-		return false
-	}
-
-	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
-		if c["type"] == conditionType && c["status"] == "True" {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes

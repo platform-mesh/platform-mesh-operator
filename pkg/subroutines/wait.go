@@ -74,7 +74,7 @@ func (r *WaitSubroutine) Process(
 			}
 
 			for _, item := range waitList.Items {
-				if !MatchesCondition(&item, string(resourceType.RowConditionType)) {
+				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet, requeuing", item.GetNamespace(), item.GetName(), waitList.GetKind())
 					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet, requeuing", item.GetNamespace(), item.GetName(), item.GetKind()), true, false)
 				}
