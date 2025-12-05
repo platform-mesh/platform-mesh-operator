@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -37,6 +38,7 @@ import (
 
 var (
 	resourceReconcilerName = "ResourceReconciler"
+	id                     = 1
 )
 
 // ResourceReconciler reconciles a PlatformMesh object
@@ -66,8 +68,9 @@ func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.Co
 	mgr.GetScheme().AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
 	mgr.GetScheme().AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
 
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, resourceReconcilerName, obj,
+	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, fmt.Sprintf("%s-%d", resourceReconcilerName, id), obj,
 		cfg.DebugLabelValue, log, eventPredicates...)
+	id++
 	if err != nil {
 		return err
 	}
@@ -77,7 +80,7 @@ func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.Co
 func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig) *ResourceReconciler {
 	var subs []subroutine.Subroutine
 
-	subs = append(subs, resource.NewResourceSubroutine(mgr))
+	subs = append(subs, resource.NewResourceSubroutine(mgr.GetClient()))
 
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

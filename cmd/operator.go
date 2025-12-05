@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 var operatorCmd = &cobra.Command{
@@ -107,8 +108,37 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
+	_, restConfigDeploy, err := subroutines.GetDeploymentClient(&operatorCfg, mgr)
+	if err != nil {
+		setupLog.Error(err, "unable to create deployment client")
+		os.Exit(1)
+	}
+	mgrDeploy, err := ctrl.NewManager(restConfigDeploy, ctrl.Options{
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress:   ":9091",
+			SecureServing: defaultCfg.Metrics.Secure,
+			TLSOpts:       tlsOpts,
+		},
+		BaseContext:                   func() context.Context { return ctx },
+		HealthProbeBindAddress:        ":8091",
+		LeaderElection:                defaultCfg.LeaderElection.Enabled,
+		LeaderElectionID:              "81924e50.platform-mesh.org",
+		LeaderElectionReleaseOnCancel: true,
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to start deploymentmanager")
+		os.Exit(1)
+	}
+
 	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
 	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
+		os.Exit(1)
+	}
+
+	resourceReconcilerDeploy := controller.NewResourceReconciler(log, mgrDeploy, &operatorCfg)
+	if err := resourceReconcilerDeploy.SetupWithManager(mgrDeploy, defaultCfg, log); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
@@ -136,8 +166,18 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
+	signalHandler := ctrl.SetupSignalHandler()
+
+	go func() {
+		setupLog.Info("starting deployment manager")
+		if err := mgrDeploy.Start(signalHandler); err != nil {
+			log.Fatal().Err(err).Msg("problem running deployment manager")
+		}
+	}()
+
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(signalHandler); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
+
 }

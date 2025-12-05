@@ -80,16 +80,14 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		kcpUrl = cfg.KCP.Url
 	}
 
-	if cfg.Deployment.Kubeconfig != "" && cfg.Deployment.Kubeconfig != nil {
-		deployClient, err := ctrl.GetConfig()
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to get deployment kubeconfig")
-		}
+	deployClient, _, err := subroutines.GetDeploymentClient(cfg, mgr)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to get deployment kubeconfig")
 	}
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		subs = append(subs, subroutines.NewDeploymentSubroutine(deployClient, commonCfg, cfg))
+		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), deployClient, commonCfg, cfg))
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
 		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp", kcpUrl))
