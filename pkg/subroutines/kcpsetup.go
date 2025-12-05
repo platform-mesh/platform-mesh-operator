@@ -86,7 +86,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !MatchesCondition(rootShard, "Available") {
+	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -95,7 +95,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
-	if err != nil || !MatchesCondition(frontProxy, "Available") {
+	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -137,26 +137,6 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 	return ctrl.Result{}, nil
 
-}
-
-// MatchesCondition checks the Ready Condition if it has status true
-func MatchesCondition(release *unstructured.Unstructured, conditionType string) bool {
-	if release == nil {
-		return false
-	}
-	conditions, found, err := unstructured.NestedSlice(release.Object, "status", "conditions")
-	if err != nil || !found {
-		return false
-	}
-
-	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
-		if c["type"] == conditionType && c["status"] == "True" {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {

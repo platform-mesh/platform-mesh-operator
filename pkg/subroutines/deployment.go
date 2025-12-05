@@ -114,7 +114,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
-	if !MatchesCondition(rel, "Ready") {
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -125,7 +125,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		log.Error().Err(err).Msg("Failed to get cert-manager Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
-	if !MatchesCondition(rel, "Ready") {
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("cert-manager Release is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -172,7 +172,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 		}
 
-		if !MatchesCondition(rel, "Ready") {
+		if !matchesConditionWithStatus(rel, "Ready", "True") {
 			log.Info().Msg("istio-istiod Release is not ready.. Retry in 5 seconds")
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
@@ -200,7 +200,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !MatchesCondition(rootShard, "Available") {
+	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
@@ -209,7 +209,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
-	if err != nil || !MatchesCondition(frontProxy, "Available") {
+	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}

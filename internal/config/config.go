@@ -34,5 +34,8 @@ type OperatorConfig struct {
 		FeatureToggles struct {
 			Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
 		} `mapstructure:",squash"`
+		Wait struct {
+			Enabled bool `mapstructure:"subroutines-wait-enabled" default:"true"`
+		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 }
