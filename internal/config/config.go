@@ -34,6 +34,9 @@ type OperatorConfig struct {
 		FeatureToggles struct {
 			Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
 		} `mapstructure:",squash"`
+		Resource struct {
+			Enabled bool `mapstructure:"subroutines-resource-enabled" default:"true"`
+		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 	Deployment struct {
 		Kubeconfig string `mapstructure:"deployment-kubeconfig"`

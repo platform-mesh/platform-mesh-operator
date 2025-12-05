@@ -48,7 +48,7 @@ func (s *DeployTestSuite) SetupTest() {
 		WorkspaceDir: "../../",
 	}
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
+	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg)
 }
 
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {

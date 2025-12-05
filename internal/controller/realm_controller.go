@@ -24,6 +24,12 @@ type RealmReconciler struct {
 }
 
 func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) *RealmReconciler {
+
+	client, _, err := subroutines.GetDeploymentClient(cfg, mgr)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to create deployment client")
+	}
+
 	return &RealmReconciler{
 		lifecycle: pmctrl.NewLifecycleManager(
 			[]subroutine.Subroutine{
@@ -37,7 +43,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 			},
 			"platform-mesh-operator",
 			"RealmReconciler",
-			mgr.GetClient(),
+			client,
 			log,
 		),
 	}
