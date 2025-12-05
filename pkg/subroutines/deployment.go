@@ -250,7 +250,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
-	_, err := GetSecret(r.clientDeploy, webhookSecret, inst.Namespace)
+	_, err := GetSecret(r.clientPlatformMesh, webhookSecret, inst.Namespace)
 	if err != nil && !kerrors.IsNotFound(err) {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
 		return errors.NewOperatorError(err, true, true)
@@ -267,7 +267,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	obj.SetNamespace(inst.Namespace)
 
 	// create system masters secret (idempotent)
-	if err := r.clientDeploy.Create(ctx, &obj); err != nil {
+	if err := r.clientPlatformMesh.Create(ctx, &obj); err != nil {
 		if kerrors.IsAlreadyExists(err) {
 			log.Info().Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("KCP webhook secret already exists, skipping create")
 			return nil
@@ -283,7 +283,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 
 	// Retrieve the ca.crt from the rebac-authz-webhook-cert secret
 	caSecretName := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretCAName
-	webhookCertSecret, err := GetSecret(r.clientDeploy, caSecretName, inst.Namespace)
+	webhookCertSecret, err := GetSecret(r.clientPlatformMesh, caSecretName, inst.Namespace)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
@@ -302,7 +302,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 
 	// Get the kcp-webhook-secret
 	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
-	kcpWebhookSecret, err := GetSecret(r.clientDeploy, webhookSecret, inst.Namespace)
+	kcpWebhookSecret, err := GetSecret(r.clientPlatformMesh, webhookSecret, inst.Namespace)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -350,7 +350,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	// Update the secret with the new kubeconfig
 	kcpWebhookSecret.Data["kubeconfig"] = updatedKubeconfigData
 
-	err = r.clientDeploy.Update(ctx, kcpWebhookSecret)
+	err = r.clientPlatformMesh.Update(ctx, kcpWebhookSecret)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -426,14 +426,14 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
 	// Create Issuer
 	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
-	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.clientDeploy, map[string]string{})
+	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.clientPlatformMesh, map[string]string{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
 	// Create Certificate
 	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
-	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.clientDeploy, map[string]string{})
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.clientPlatformMesh, map[string]string{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
