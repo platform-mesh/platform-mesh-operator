@@ -8,13 +8,15 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 )
 
 var ociRepoGvk = schema.GroupVersionKind{
@@ -94,7 +96,7 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 			return result, err
 		}
 	}
-	if repo == "helm" && artifact == "image" {
+	if (repo == "helm" && artifact == "image") || (repo == "oci" && artifact == "image") {
 		log.Debug().Msg("Update Helm Release with Image Tag")
 		result, err := r.updateHelmReleaseWithImageTag(ctx, inst, log)
 		if err != nil {
@@ -107,21 +109,41 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
+
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
+	forVal := inst.GetAnnotations()["for"]
+	log.Info().Msgf("Update Helm Release with Image Tag: %s", forVal)
+	if forVal != "" {
+		forValElems := strings.Split(forVal, "/")
+		if len(forValElems) == 2 {
+			obj.SetNamespace(forValElems[0])
+			obj.SetName(forValElems[1])
+		} else {
+			obj.SetName(forVal)
+		}
+	}
+
+	pathLabel := inst.GetAnnotations()["path"]
+	updatePath := []string{"spec", "values", "image", "tag"}
+	if pathLabel != "" {
+		pathElems := strings.Split(pathLabel, ".")
+		updatePath = []string{"spec", "values"}
+		updatePath = append(updatePath, pathElems...)
+	}
 
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(inst), obj)
+	err = r.mgr.GetClient().Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	err = unstructured.SetNestedField(obj.Object, version, "spec", "values", "image", "tag")
+	err = unstructured.SetNestedField(obj.Object, version, updatePath...)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
