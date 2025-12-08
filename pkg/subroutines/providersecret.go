@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -95,8 +94,8 @@ func (r *ProvidersecretSubroutine) Process(
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !MatchesCondition(rootShard, "Available") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Info().Msg("RootShard is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -105,8 +104,8 @@ func (r *ProvidersecretSubroutine) Process(
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 
 	if err != nil || !MatchesCondition(frontProxy, "Available") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Info().Msg("FrontProxy is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
 	}
 
 	// Determine which provider connections to use based on configuration:
@@ -172,7 +171,7 @@ func (r *ProvidersecretSubroutine) Process(
 	return ctrl.Result{}, nil
 }
 
-func (r *ProvidersecretSubroutine) Finalizers() []string { // coverage-ignore
+func (r *ProvidersecretSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{ProvidersecretSubroutineFinalizer}
 }
 

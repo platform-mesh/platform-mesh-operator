@@ -11,6 +11,7 @@ import (
 	"time"
 
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	"github.com/creasty/defaults"
 	"github.com/platform-mesh/golang-commons/context/keys"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -490,7 +491,15 @@ func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
 func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	appConfig := config.OperatorConfig{}
+
+	err := defaults.Set(&appConfig)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to set default operator config")
+		return
+	}
+
 	appConfig.Subroutines.Deployment.Enabled = true
+	appConfig.Subroutines.Deployment.EnableIstio = false
 	appConfig.Subroutines.KcpSetup.Enabled = true
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true

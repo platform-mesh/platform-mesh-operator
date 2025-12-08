@@ -551,7 +551,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
-	res := s.testObj.Finalizers()
+	res := s.testObj.Finalizers(&corev1alpha1.PlatformMesh{})
 	s.Assert().Equal(res, []string{subroutines.KcpsetupSubroutineFinalizer})
 }
 
