@@ -39,8 +39,9 @@ type WaitConfig struct {
 type ResourceType struct {
 	metav1.APIVersions      `json:",inline"`
 	metav1.GroupKind        `json:",inline"`
+	Name                    string `json:"name,omitempty"`
 	Namespace               string `json:"namespace,omitempty"`
-	metav1.LabelSelector    `json:",inline"`
+	metav1.LabelSelector    `json:",inline,omitempty"`
 	metav1.ConditionStatus  `json:"conditionStatus,omitempty"` // e.g., "True"
 	metav1.RowConditionType `json:"conditionType,omitempty"`   // e.g., "Ready"
 }

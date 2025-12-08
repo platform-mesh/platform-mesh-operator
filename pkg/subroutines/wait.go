@@ -59,6 +59,22 @@ func (r *WaitSubroutine) Process(
 			waitList := &unstructured.UnstructuredList{}
 
 			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
+			if resourceType.Name != "" {
+				res := &unstructured.Unstructured{}
+				res.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
+				err := r.client.Get(ctx, client.ObjectKey{Namespace: resourceType.Namespace, Name: resourceType.Name}, res)
+				if err != nil {
+					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
+					return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+				}
+				if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
+					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind()), true, false)
+				}
+				continue
+			}
+
+			// use LabelSelector if no Name is specified
 			ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
 			if err != nil {
 				log.Info().Msgf("Error converting label selector: %v", err)
@@ -75,8 +91,8 @@ func (r *WaitSubroutine) Process(
 
 			for _, item := range waitList.Items {
 				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet, requeuing", item.GetNamespace(), item.GetName(), waitList.GetKind())
-					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet, requeuing", item.GetNamespace(), item.GetName(), item.GetKind()), true, false)
+					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
+					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind()), true, false)
 				}
 			}
 		}

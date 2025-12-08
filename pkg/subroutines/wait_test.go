@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -346,6 +347,70 @@ func (s *WaitTestSuite) TestFinalize() {
 	}
 
 	result, err := s.testObj.Finalize(ctx, instance)
+
+	s.Assert().Nil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	instance := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mesh",
+			Namespace: "default",
+		},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Wait: &corev1alpha1.WaitConfig{
+				ResourceTypes: []corev1alpha1.ResourceType{
+					{
+						APIVersions: metav1.APIVersions{
+							Versions: []string{"v2"},
+						},
+						GroupKind: metav1.GroupKind{
+							Group: "helm.toolkit.fluxcd.io",
+							Kind:  "HelmRelease",
+						},
+						Namespace:        "default",
+						Name:             "platform-mesh-operator-components",
+						ConditionStatus:  metav1.ConditionTrue,
+						RowConditionType: "Ready",
+					},
+				},
+			},
+		},
+	}
+
+	// Mock Get call returning a ready resource
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "platform-mesh-operator-components"}, mock.Anything).
+		// List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+				"kind":       "Kustomization",
+				"metadata": map[string]interface{}{
+					"name":      "test-kustomization",
+					"namespace": "flux-system",
+					"labels": map[string]interface{}{
+						"app": "platform-mesh",
+					},
+				},
+				"status": map[string]interface{}{
+					"conditions": []interface{}{
+						map[string]interface{}{
+							"type":   "Ready",
+							"status": "True",
+						},
+					},
+				},
+			}
+
+			return nil
+		})
+
+	result, err := s.testObj.Process(ctx, instance)
 
 	s.Assert().Nil(err)
 	s.Assert().Equal(ctrl.Result{}, result)
