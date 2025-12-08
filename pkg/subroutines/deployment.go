@@ -113,20 +113,20 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
-	if !MatchesCondition(rel, "Ready") {
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("platform-mesh-operator-infra-components Release is not ready"), true, true)
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("platform-mesh-operator-infra-components Release is not ready"), true, false)
 	}
 
 	// Wait for cert-manager to be ready
 	rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get cert-manager Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	if !MatchesCondition(rel, "Ready") {
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("cert-manager Release is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, true)
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
 	}
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
@@ -168,12 +168,12 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get istio-istiod Release")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 
-		if !MatchesCondition(rel, "Ready") {
+		if !matchesConditionWithStatus(rel, "Ready", "True") {
 			log.Info().Msg("istio-istiod Release is not ready..")
-			return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, true)
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
 		}
 
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
@@ -199,18 +199,18 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !MatchesCondition(rootShard, "Available") {
+	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, false)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
-	if err != nil || !MatchesCondition(frontProxy, "Available") {
+	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, false)
 	}
 	return ctrl.Result{}, nil
 }

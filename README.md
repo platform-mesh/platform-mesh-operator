@@ -254,6 +254,42 @@ The Webhook subroutine handles webhook configurations for the platform-mesh:
 - Configures webhook secrets and references as defined in the configuration
 - Ensures proper webhook functionality for platform-mesh resources
 
+### Wait
+
+The Wait subroutine ensures that specified resources are ready before proceeding with the reconciliation:
+
+- Waits for resources to match specific conditions (e.g., HelmRelease resources with Ready condition)
+- Uses configurable wait criteria defined in the `spec.wait` section of the PlatformMesh resource
+- Falls back to default wait configurations when no custom wait configuration is specified
+- By default, waits for `platform-mesh-operator-components` and `platform-mesh-operator-infra-components` HelmRelease resources to be ready
+- Supports filtering resources by namespace, labels, and API versions
+- Requeues the reconciliation if any monitored resource is not yet ready
+
+#### Wait Configuration
+
+The wait behavior can be customized through the `spec.wait` section:
+
+```yaml
+spec:
+  wait:
+    resourceTypes:
+    - apiVersions:
+        versions: ["v2"]
+      groupKind:
+        group: "helm.toolkit.fluxcd.io"
+        kind: "HelmRelease"
+      namespace: "default"
+      labelSelector:
+        matchExpressions:
+        - key: "helm.toolkit.fluxcd.io/name"
+          operator: In
+          values: ["my-release"]
+      conditionStatus: "True"
+      conditionType: "Ready"
+```
+
+If `spec.wait` is not specified, the subroutine uses default configurations that wait for the core platform-mesh HelmRelease resources.
+
 
 ## Releasing
 
