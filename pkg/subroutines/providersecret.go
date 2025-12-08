@@ -47,22 +47,23 @@ func NewProviderSecretSubroutine(
 	client client.Client,
 	helper KcpHelper,
 	helm HelmGetter,
-	kcpUrl string,
+	cfgOperator *config.OperatorConfig,
 ) *ProvidersecretSubroutine {
 	sub := &ProvidersecretSubroutine{
-		client:    client,
-		kcpUrl:    kcpUrl,
-		kcpHelper: helper,
-		helm:      helm,
+		client:      client,
+		kcpHelper:   helper,
+		helm:        helm,
+		cfgOperator: cfgOperator,
 	}
 	return sub
 }
 
 type ProvidersecretSubroutine struct {
-	client    client.Client
-	kcpHelper KcpHelper
-	kcpUrl    string
-	helm      HelmGetter
+	client      client.Client
+	kcpHelper   KcpHelper
+	kcpUrl      string
+	helm        HelmGetter
+	cfgOperator *config.OperatorConfig
 }
 
 const (
@@ -130,7 +131,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(instance, r.cfgOperator))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -184,7 +185,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	var address *url.URL
 
@@ -227,11 +227,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	newConfig := rest.CopyConfig(cfg)
-	if pc.External {
-		newConfig.Host = fmt.Sprintf("https://kcp.api.%s:%d/%s", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, address.Path)
-	} else {
-		newConfig.Host = fmt.Sprintf("https://%s-front-proxy.%s:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort, address.Path)
-	}
+	newConfig.Host = getExternalKcpHost(instance, r.cfgOperator) + "/" + address.Path
 
 	apiConfig := restConfigToAPIConfig(newConfig)
 	kcpConfigBytes, err := clientcmd.Write(*apiConfig)

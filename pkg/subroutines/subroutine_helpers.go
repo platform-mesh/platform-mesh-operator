@@ -603,7 +603,19 @@ func unstructuredFromFile(path string, templateData map[string]string, log *logg
 
 func GetDeploymentClient(cfg *config.OperatorConfig, mgr ctrl.Manager) (client.Client, *rest.Config, error) {
 	if cfg.Deployment.Kubeconfig == "" {
-		return mgr.GetClient(), mgr.GetConfig(), nil
+		// get in-cluster config
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
+			return nil, nil, err
+		}
+		// get client with in-cluster config
+		deployClient, err := client.New(config, client.Options{Scheme: getClientScheme()})
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to create in-cluster deployment client")
+			return nil, nil, err
+		}
+		return deployClient, config, nil
 	}
 
 	log.Info().Msgf("Using deployment kubeconfig: %s", cfg.Deployment.Kubeconfig)
@@ -652,4 +664,12 @@ func getClientScheme() *runtime.Scheme {
 	scheme.AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
 
 	return scheme
+}
+
+func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
+	if inst.Spec.Exposure == nil {
+		return fmt.Sprintf("https://%s-front-proxy:%s", cfg.KCP.FrontProxyName, cfg.KCP.FrontProxyPort)
+	}
+	kcpUrl := inst.Spec.Exposure.Protocol + "://kcp.api." + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	return kcpUrl
 }
