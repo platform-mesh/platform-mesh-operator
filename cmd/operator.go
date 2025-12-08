@@ -123,7 +123,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		BaseContext:                   func() context.Context { return ctx },
 		HealthProbeBindAddress:        ":8091",
 		LeaderElection:                defaultCfg.LeaderElection.Enabled,
-		LeaderElectionID:              "81924e50.platform-mesh.org",
+		LeaderElectionID:              "81924e50-deploy.platform-mesh.org",
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {

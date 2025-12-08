@@ -47,6 +47,11 @@ func (s *DeployTestSuite) SetupTest() {
 	operatorCfg := config.OperatorConfig{
 		WorkspaceDir: "../../",
 	}
+	operatorCfg.KCP.RootShardName = "root"
+	operatorCfg.KCP.Namespace = "platform-mesh-system"
+	operatorCfg.KCP.FrontProxyName = "frontproxy"
+	operatorCfg.KCP.FrontProxyPort = "6443"
+	operatorCfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
 
 	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg)
 }
@@ -86,7 +91,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local:8443","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local:8443","fluxCD":{"kubeConfig":{"enabled":true,"secretRef":{"key":"kubeconfig","name":"platform-mesh-kubeconfig"}}},"iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil
@@ -140,7 +145,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local","iamWebhookCA":"","port":"443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local","fluxCD":{"kubeConfig":{"enabled":true,"secretRef":{"key":"kubeconfig","name":"platform-mesh-kubeconfig"}}},"iamWebhookCA":"","port":"443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil

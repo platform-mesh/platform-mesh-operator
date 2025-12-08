@@ -125,7 +125,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	rel, err = getHelmRelease(ctx, r.clientDeploy, "cert-manager", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get cert-manager Release")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 	if !MatchesCondition(rel, "Ready") {
 		log.Info().Msg("cert-manager Release is not ready.. Retry in 5 seconds")

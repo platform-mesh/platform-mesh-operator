@@ -36,7 +36,6 @@ import (
 type KcpsetupSubroutine struct {
 	client       client.Client
 	kcpHelper    KcpHelper
-	kcpUrl       string
 	helm         HelmGetter
 	kcpDirectory string
 	// Cache for CA bundles to avoid redundant secret lookups
@@ -49,11 +48,10 @@ const (
 	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string) *KcpsetupSubroutine {
 	return &KcpsetupSubroutine{
 		client:        client,
 		kcpDirectory:  kcpdir,
-		kcpUrl:        kcpUrl,
 		kcpHelper:     helper,
 		helm:          DefaultHelmGetter{},
 		caBundleCache: make(map[string]string),
@@ -101,7 +99,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
