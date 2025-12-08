@@ -36,16 +36,14 @@ func (defaultKubeconfigBuilder) Build(ctx context.Context, client client.Client,
 type FeatureToggleSubroutine struct {
 	client             client.Client
 	workspaceDirectory string
-	kcpUrl             string
 	kubeconfigBuilder  KubeconfigBuilder
 	kcpHelper          KcpHelper
 }
 
-func NewFeatureToggleSubroutine(client client.Client, helper KcpHelper, operatorCfg *config.OperatorConfig, kcpUrl string) *FeatureToggleSubroutine {
+func NewFeatureToggleSubroutine(client client.Client, helper KcpHelper, operatorCfg *config.OperatorConfig) *FeatureToggleSubroutine {
 	return &FeatureToggleSubroutine{
 		client:             client,
 		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/features/"),
-		kcpUrl:             kcpUrl,
 		kubeconfigBuilder:  defaultKubeconfigBuilder{},
 		kcpHelper:          helper,
 	}
@@ -130,7 +128,7 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 	}
 
 	// Build kcp kubeconfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(inst, &operatorCfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)

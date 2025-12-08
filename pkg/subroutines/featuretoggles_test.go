@@ -44,7 +44,7 @@ func (s *FeaturesTestSuite) SetupTest() {
 	s.log, _ = logger.New(cfg)
 	s.testObj = subroutines.NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
-	}, "https://kcp.example.com")
+	})
 }
 
 func (s *FeaturesTestSuite) TearDownTest() {

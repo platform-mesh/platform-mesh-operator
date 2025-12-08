@@ -25,7 +25,7 @@ func TestResourceTestSuite(t *testing.T) {
 
 func (s *ResourceTestSuite) SetupTest() {
 	s.managerMock = new(mocks.Manager)
-	s.subroutine = subroutines.NewResourceSubroutine(s.managerMock)
+	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client))
 }
 
 func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
@@ -76,6 +76,7 @@ func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
 			return nil
 		},
 	)
+	s.subroutine = subroutines.NewResourceSubroutine(clientMock)
 
 	result, err := s.subroutine.Process(ctx, inst)
 	s.Nil(err)

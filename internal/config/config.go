@@ -5,7 +5,6 @@ type OperatorConfig struct {
 	WorkspaceDir               string `mapstructure:"workspace-dir" default:"/operator/"`
 	PatchOIDCControllerEnabled bool   `mapstructure:"patch-oidc-controller-enabled" default:"false"`
 	KCP                        struct {
-		Url                    string `mapstructure:"kcp-url"`
 		Namespace              string `mapstructure:"kcp-namespace" default:"platform-mesh-system"`
 		RootShardName          string `mapstructure:"kcp-root-shard-name" default:"root"`
 		FrontProxyName         string `mapstructure:"kcp-front-proxy-name" default:"frontproxy"`
