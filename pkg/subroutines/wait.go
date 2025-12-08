@@ -101,7 +101,7 @@ func (r *WaitSubroutine) Process(
 	return ctrl.Result{}, nil
 }
 
-func (r *WaitSubroutine) Finalizers() []string { // coverage-ignore
+func (r *WaitSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{}
 }
 

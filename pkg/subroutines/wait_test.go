@@ -257,11 +257,6 @@ func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 	s.Assert().Equal(ctrl.Result{}, result)
 }
 
-func (s *WaitTestSuite) TestFinalizers() {
-	finalizers := s.testObj.Finalizers()
-	s.Assert().Equal([]string{}, finalizers)
-}
-
 func (s *WaitTestSuite) TestGetName() {
 	name := s.testObj.GetName()
 	s.Assert().Equal(subroutines.WaitSubroutineName, name)

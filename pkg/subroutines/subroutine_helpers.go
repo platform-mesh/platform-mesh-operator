@@ -546,3 +546,27 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 
 	return false
 }
+
+func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
+	manifestBytes, err := os.ReadFile(path)
+	if err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
+	}
+
+	res, err := ReplaceTemplate(templateData, manifestBytes)
+	if err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to replace template with path: %s", path)
+	}
+
+	var objMap map[string]interface{}
+	if err := yaml.Unmarshal(res, &objMap); err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
+	}
+
+	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
+
+	obj := unstructured.Unstructured{Object: objMap}
+
+	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
+	return obj, err
+}

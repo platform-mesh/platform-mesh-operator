@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -21,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -71,7 +68,7 @@ func (r *KcpsetupSubroutine) Finalize(
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
-func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
+func (r *KcpsetupSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
@@ -87,8 +84,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Info().Msg("RootShard is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -96,8 +93,8 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		log.Info().Msg("FrontProxy is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
 	}
 
 	// Build kcp kubeonfig
@@ -426,28 +423,4 @@ func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath str
 	}
 
 	return res
-}
-
-func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
-	manifestBytes, err := os.ReadFile(path)
-	if err != nil {
-		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
-	}
-
-	res, err := ReplaceTemplate(templateData, manifestBytes)
-	if err != nil {
-		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to replace template with path: %s", path)
-	}
-
-	var objMap map[string]interface{}
-	if err := yaml.Unmarshal(res, &objMap); err != nil {
-		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
-	}
-
-	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
-
-	obj := unstructured.Unstructured{Object: objMap}
-
-	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
-	return obj, err
 }
