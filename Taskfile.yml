@@ -17,7 +17,7 @@ vars:
   GOOS:
     sh: go env GOOS
   KUSTOMIZE: "{{.LOCAL_BIN}}/kustomize"
-  TEST_TIMEOUT: 15m
+  TEST_TIMEOUT: 10m
 tasks:
   ## Setup
   setup:mockery:
