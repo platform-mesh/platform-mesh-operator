@@ -227,7 +227,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	newConfig := rest.CopyConfig(cfg)
-	newConfig.Host = getExternalKcpHost(instance, r.cfgOperator) + "/" + address.Path
+	if pc.External {
+		newConfig.Host = getExternalKcpHost(instance, r.cfgOperator) + address.Path
+	} else {
+		newConfig.Host = getInternalKcpHost(r.cfgOperator) + address.Path
+	}
 
 	apiConfig := restConfigToAPIConfig(newConfig)
 	kcpConfigBytes, err := clientcmd.Write(*apiConfig)

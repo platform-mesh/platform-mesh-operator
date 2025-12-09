@@ -1639,6 +1639,12 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			External:          true,
 			Namespace:         ptr.To("test"),
 		},
+		{
+			EndpointSliceName: "",
+			Path:              "root:platform-mesh-system",
+			Secret:            "internal-kubeconfig",
+			Namespace:         "test",
+		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
 		BaseDomain: "example.com",
@@ -1715,7 +1721,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 				}
 				if key.Namespace == "test" {
 					switch key.Name {
-					case "external-kubeconfig":
+					case "external-kubeconfig",
+						"internal-kubeconfig":
 						return true
 					}
 				}
@@ -1739,7 +1746,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					} else {
 						for _, c := range cfg.Clusters {
 							if c != nil {
-								if c.Server == "https://kcp.api.example.com:8443//clusters/root:platform-mesh-system" {
+								if c.Server == "https://kcp.api.example.com:8443/clusters/root:platform-mesh-system" {
 									return nil
 								}
 								return fmt.Errorf("unexpected server URL: %s", c.Server)
@@ -1751,6 +1758,31 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			}
 			return nil
 		})
+	s.clientMock.EXPECT().
+		Update(mock.Anything,
+			mock.Anything).
+		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+			sec := obj.(*corev1.Secret)
+			if sec.Name == "internal-kubeconfig" {
+				if data, ok := sec.Data["kubeconfig"]; ok {
+					cfg, err := clientcmd.Load(data)
+					if err != nil {
+						s.log.Error().Msgf("failed to parse kubeconfig: %v", err)
+					} else {
+						for _, c := range cfg.Clusters {
+							if c != nil {
+								if c.Server == "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:platform-mesh-system" {
+									return nil
+								}
+								return fmt.Errorf("unexpected server URL: %s", c.Server)
+							}
+							break
+						}
+					}
+				}
+			}
+			return nil
+		}).Once()
 
 	// Setup mock KCP client
 	mockedKcpClient := new(mocks.Client)

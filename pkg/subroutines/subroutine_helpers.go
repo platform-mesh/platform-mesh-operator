@@ -668,8 +668,12 @@ func getClientScheme() *runtime.Scheme {
 
 func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
 	if inst.Spec.Exposure == nil {
-		return fmt.Sprintf("https://%s-front-proxy:%s", cfg.KCP.FrontProxyName, cfg.KCP.FrontProxyPort)
+		return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	}
 	kcpUrl := inst.Spec.Exposure.Protocol + "://kcp.api." + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
 	return kcpUrl
+}
+
+func getInternalKcpHost(cfg *config.OperatorConfig) string {
+	return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 }
