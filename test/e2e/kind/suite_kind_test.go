@@ -155,7 +155,7 @@ func (s *KindTestSuite) createKindCluster() error {
 		return err
 	}
 
-	if data, err = runCommand("kind", "export", "kubeconfig", "--name", clusterName, "--kubeconfig=kind-testcluster.kubeconfig"); err != nil {
+	if _, err = runCommand("kind", "export", "kubeconfig", "--name", clusterName, "--kubeconfig=kind-testcluster.kubeconfig"); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to export kubeconfig")
 		return err
 	}
