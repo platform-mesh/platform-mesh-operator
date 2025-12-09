@@ -792,11 +792,11 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	}
 
 	clientMock := new(mocks.Client)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 	s.managerMock.On("GetClient").Return(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
-
-	result, err := s.subroutine.Process(ctx, inst)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
 }
