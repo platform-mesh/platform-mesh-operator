@@ -151,6 +151,12 @@ func (s *KindTestSuite) createKindCluster() error {
 	s.logger.Info().Msg("Retrieving kubeconfig for Kind cluster...")
 	var kubeconfig []byte
 	if kubeconfig, err = runCommand("kind", "get", "kubeconfig", "--name", clusterName); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to get kubeconfig")
+		return err
+	}
+
+	if data, err = runCommand("kind", "export", "kubeconfig", "--name", clusterName, "--kubeconfig=kind-testcluster.kubeconfig"); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to export kubeconfig")
 		return err
 	}
 
@@ -509,6 +515,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.FrontProxyName = "frontproxy"
 	appConfig.KCP.FrontProxyPort = "6443"
 	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	appConfig.Deployment.Kubeconfig = "kind-testcluster.kubeconfig"
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
