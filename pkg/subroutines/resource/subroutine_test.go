@@ -2,6 +2,7 @@ package resource_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
@@ -79,6 +80,24 @@ func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
 	result, err := s.subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_GetName() {
+	s.Equal("ResourceSubroutine", s.subroutine.GetName())
+}
+
+func (s *ResourceTestSuite) Test_Finalize() {
+	ctx := context.TODO()
+	inst := &unstructured.Unstructured{}
+	result, err := s.subroutine.Finalize(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_Finalizers() {
+	inst := &unstructured.Unstructured{}
+	finalizers := s.subroutine.Finalizers(inst)
+	s.Empty(finalizers)
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
@@ -245,4 +264,520 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			s.NotNil(result)
 		})
 	}
+}
+
+func (s *ResourceTestSuite) Test_updateGitRepo() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-git-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"access": map[string]interface{}{
+						"type":    "gitHub",
+						"commit":  "abc123def456",
+						"repoUrl": "https://github.com/example/repo.git",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	s.managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+			gitRepo := obj.(*unstructured.Unstructured)
+
+			commit, found, err := unstructured.NestedString(gitRepo.Object, "spec", "ref", "commit")
+			s.Require().NoError(err)
+			s.Require().True(found)
+			s.Require().Equal("abc123def456", commit)
+
+			url, found, err := unstructured.NestedString(gitRepo.Object, "spec", "url")
+			s.Require().NoError(err)
+			s.Require().True(found)
+			s.Require().Equal("https://github.com/example/repo.git", url)
+
+			interval, found, err := unstructured.NestedString(gitRepo.Object, "spec", "interval")
+			s.Require().NoError(err)
+			s.Require().True(found)
+			s.Require().Equal("1m0s", interval)
+
+			return nil
+		},
+	)
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-git-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"access": map[string]interface{}{
+						"type":    "gitHub",
+						"commit":  "abc123def456",
+						"repoUrl": "https://github.com/example/repo.git",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	s.managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmRepository() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	s.managerMock.On("GetClient").Return(clientMock)
+
+	getCallCount := 0
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			getCallCount++
+			return nil
+		},
+	)
+
+	updateCallCount := 0
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+			updateCallCount++
+			unstr := obj.(*unstructured.Unstructured)
+
+			if unstr.GetKind() == "HelmRepository" {
+				url, found, err := unstructured.NestedString(unstr.Object, "spec", "url")
+				s.Require().NoError(err)
+				s.Require().True(found)
+				s.Require().Equal("https://charts.example.com", url)
+
+				provider, found, err := unstructured.NestedString(unstr.Object, "spec", "provider")
+				s.Require().NoError(err)
+				s.Require().True(found)
+				s.Require().Equal("generic", provider)
+
+				interval, found, err := unstructured.NestedString(unstr.Object, "spec", "interval")
+				s.Require().NoError(err)
+				s.Require().True(found)
+				s.Require().Equal("5m", interval)
+			} else if unstr.GetKind() == "HelmRelease" {
+				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
+				s.Require().NoError(err)
+				s.Require().True(found)
+				s.Require().Equal("1.2.3", version)
+			}
+
+			return nil
+		},
+	)
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+	s.Equal(2, getCallCount)
+	s.Equal(2, updateCallCount)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+					"access":  map[string]interface{}{},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	s.managerMock.On("GetClient").Return(clientMock)
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmRelease() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.5.0",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	managerMock := new(mocks.Manager)
+	subroutine := subroutines.NewResourceSubroutine(managerMock)
+	clientMock := new(mocks.Client)
+	managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+
+			if unstr.GetKind() == "HelmRepository" {
+				return nil
+			}
+			if unstr.GetKind() == "HelmRelease" {
+				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
+				s.Require().NoError(err)
+				s.Require().True(found)
+				s.Require().Equal("2.5.0", version)
+			}
+			return nil
+		},
+	).Times(2)
+
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.5.0",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	managerMock := new(mocks.Manager)
+	subroutine := subroutines.NewResourceSubroutine(managerMock)
+	clientMock := new(mocks.Client)
+	managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Times(1)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error")).Times(1)
+
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.5.0",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	managerMock := new(mocks.Manager)
+	subroutine := subroutines.NewResourceSubroutine(managerMock)
+	clientMock := new(mocks.Client)
+	managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Times(1)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(errors.New("update error")).Times(1)
+
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	managerMock := new(mocks.Manager)
+	subroutine := subroutines.NewResourceSubroutine(managerMock)
+	clientMock := new(mocks.Client)
+	managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
+
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	managerMock := new(mocks.Manager)
+	subroutine := subroutines.NewResourceSubroutine(managerMock)
+	clientMock := new(mocks.Client)
+	managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(errors.New("update error"))
+
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateOciRepo_ParseRefError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"type":           "ociArtifact",
+						"imageReference": "oci://invalid url with spaces",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	s.managerMock.On("GetClient").Return(clientMock)
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"type":           "ociArtifact",
+						"imageReference": "oci://registry.example.com/charts/mychart:1.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	s.managerMock.On("GetClient").Return(clientMock)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	result, err := s.subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
 }
