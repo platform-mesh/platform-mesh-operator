@@ -360,7 +360,9 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 		},
 	)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	sub := subroutines.NewResourceSubroutine(clientMock)
+	result, err := sub.Process(ctx, inst)
+
 	s.Nil(err)
 	s.NotNil(result)
 }
@@ -398,7 +400,9 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 
-	result, err := s.subroutine.Process(ctx, inst)
+	sub := subroutines.NewResourceSubroutine(clientMock)
+	result, err := sub.Process(ctx, inst)
+
 	s.NotNil(err)
 	s.NotNil(result)
 }
@@ -474,7 +478,11 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 		},
 	)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
+
+	sub := subroutines.NewResourceSubroutine(clientMock)
+	result, err := sub.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
 	s.Equal(2, getCallCount)
