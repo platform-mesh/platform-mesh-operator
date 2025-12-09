@@ -6,6 +6,8 @@ metadata:
 spec:
   exposure:
     port: 8443
+    baseDomain: portal.dev.local
+    protocol: https
   ocm:
     repo:
       name: platform-mesh
