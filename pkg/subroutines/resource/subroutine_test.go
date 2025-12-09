@@ -235,7 +235,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			managerMock := new(mocks.Manager)
-			subroutine := subroutines.NewResourceSubroutine(managerMock)
+			clientMock := new(mocks.Client)
+			subroutine := subroutines.NewResourceSubroutine(clientMock)
 			ctx := context.TODO()
 
 			annotations := map[string]interface{}{
@@ -274,7 +275,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 				s.Require().NoError(err)
 			}
 
-			clientMock := new(mocks.Client)
+			clientMock = new(mocks.Client)
 			managerMock.On("GetClient").Return(clientMock)
 
 			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
@@ -542,8 +543,8 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
@@ -598,8 +599,8 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
@@ -640,8 +641,8 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
@@ -678,8 +679,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
@@ -714,8 +715,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
