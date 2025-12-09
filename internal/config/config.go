@@ -36,6 +36,9 @@ type OperatorConfig struct {
 		Resource struct {
 			Enabled bool `mapstructure:"subroutines-resource-enabled" default:"true"`
 		} `mapstructure:",squash"`
+		Wait struct {
+			Enabled bool `mapstructure:"subroutines-wait-enabled" default:"true"`
+		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 	Deployment struct {
 		Kubeconfig string `mapstructure:"deployment-kubeconfig"`

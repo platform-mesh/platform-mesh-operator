@@ -3,7 +3,7 @@ kind: ContentConfiguration
 metadata:
   labels:
     ui.platform-mesh.io/entity: main
-  name: main-account-ui
+  name: main-accounts
 spec:
   inlineConfiguration:
     content: |-
@@ -34,7 +34,10 @@ spec:
                                   "singular": "account",
                                   "kind": "Account",
                                   "scope": "Cluster",
-                                  "namespace": null,
+                                  "readyCondition": {
+                                    "jsonPathExpression": "status.conditions[?(@.type=='Ready' && @.status=='True')]",
+                                    "property": ["status.conditions.status", "status.conditions.type"]
+                                  },
                                   "ui": {
                                       "logoUrl": "https://www.kcp.io/icons/logo.svg",
                                       "listView": {

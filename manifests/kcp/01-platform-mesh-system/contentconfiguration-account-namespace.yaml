@@ -3,7 +3,7 @@ kind: ContentConfiguration
 metadata:
   labels:
     ui.platform-mesh.io/entity: core_platform-mesh_io_account
-  name: account-namespace
+  name: account-namespaces
 spec:
   inlineConfiguration:
     content: |-

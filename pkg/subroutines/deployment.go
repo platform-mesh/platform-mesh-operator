@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -56,7 +55,7 @@ func (r *DeploymentSubroutine) Finalize(_ context.Context, _ runtimeobject.Runti
 	return ctrl.Result{}, nil
 }
 
-func (r *DeploymentSubroutine) Finalizers() []string { // coverage-ignore
+func (r *DeploymentSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{}
 }
 
@@ -116,9 +115,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
-	if !MatchesCondition(rel, "Ready") {
-		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
+		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("platform-mesh-operator-infra-components Release is not ready"), true, false)
 	}
 
 	// Wait for cert-manager to be ready
@@ -127,9 +126,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		log.Error().Err(err).Msg("Failed to get cert-manager Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	if !MatchesCondition(rel, "Ready") {
-		log.Info().Msg("cert-manager Release is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
+		log.Info().Msg("cert-manager Release is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
 	}
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
@@ -171,12 +170,12 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		rel, err := getHelmRelease(ctx, r.clientDeploy, "istio-istiod", "default")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get istio-istiod Release")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 
-		if !MatchesCondition(rel, "Ready") {
-			log.Info().Msg("istio-istiod Release is not ready.. Retry in 5 seconds")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		if !matchesConditionWithStatus(rel, "Ready", "True") {
+			log.Info().Msg("istio-istiod Release is not ready..")
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
 		}
 
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
@@ -202,18 +201,18 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err = r.clientPlatformMesh.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !MatchesCondition(rootShard, "Available") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
+		log.Info().Msg("RootShard is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, false)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
 	err = r.clientPlatformMesh.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
-	if err != nil || !MatchesCondition(frontProxy, "Available") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
+		log.Info().Msg("FrontProxy is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, false)
 	}
 	return ctrl.Result{}, nil
 }
@@ -288,7 +287,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("Webhook secret does not exist"), true, true)
 		}
 		log.Error().Err(err).Str("secret", caSecretName).Str("namespace", inst.Namespace).Msg("Failed to get webhook cert secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
