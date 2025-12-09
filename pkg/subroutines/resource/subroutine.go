@@ -71,13 +71,27 @@ func getAnnotations(obj *unstructured.Unstructured) map[string]string {
 	return annotations
 }
 
+// getMetadataValue retrieves a value from annotations first, then falls back to labels for backwards compatibility
+func getMetadataValue(obj *unstructured.Unstructured, key string) string {
+	annotations := getAnnotations(obj)
+	if value, ok := annotations[key]; ok && value != "" {
+		return value
+	}
+
+	labels := obj.GetLabels()
+	if labels != nil {
+		return labels[key]
+	}
+
+	return ""
+}
+
 func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	inst := runtimeObj.(*unstructured.Unstructured)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("name", r.GetName())
 
-	annotations := getAnnotations(inst)
-	repo := annotations["repo"]
-	artifact := annotations["artifact"]
+	repo := getMetadataValue(inst, "repo")
+	artifact := getMetadataValue(inst, "artifact")
 
 	if repo == "oci" && artifact == "chart" {
 		log.Debug().Msg("Create/Update OCI Repo")
@@ -122,8 +136,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
 
-	annotations := getAnnotations(inst)
-	forVal := annotations["for"]
+	forVal := getMetadataValue(inst, "for")
 	log.Info().Msgf("Update Helm Release with Image Tag: %s", forVal)
 	if forVal != "" {
 		forValElems := strings.Split(forVal, "/")
@@ -135,7 +148,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		}
 	}
 
-	pathLabel := annotations["path"]
+	pathLabel := getMetadataValue(inst, "path")
 	updatePath := []string{"spec", "values", "image", "tag"}
 	if pathLabel != "" {
 		pathElems := strings.Split(pathLabel, ".")
