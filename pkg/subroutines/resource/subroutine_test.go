@@ -102,102 +102,132 @@ func (s *ResourceTestSuite) Test_Finalizers() {
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 	tests := []struct {
-		name            string
-		repo            string
-		artifact        string
-		forAnnotation   string
-		pathAnnotation  string
-		resourceName    string
-		resourceNs      string
-		version         string
-		expectedName    string
-		expectedNs      string
-		expectedPath    []string
-		expectedVersion string
+		name                  string
+		repo                  string
+		artifact              string
+		forAnnotation         string
+		pathAnnotation        string
+		versionPathAnnotation string
+		resourceName          string
+		resourceNs            string
+		version               string
+		versionPath           []string
+		expectedName          string
+		expectedNs            string
+		expectedPath          []string
+		expectedVersion       string
 	}{
 		{
-			name:            "helm image without annotations",
-			repo:            "helm",
-			artifact:        "image",
-			forAnnotation:   "",
-			pathAnnotation:  "",
-			resourceName:    "test-resource",
-			resourceNs:      "default",
-			version:         "1.2.3",
-			expectedName:    "test-resource",
-			expectedNs:      "default",
-			expectedPath:    []string{"spec", "values", "image", "tag"},
-			expectedVersion: "1.2.3",
+			name:                  "helm image without annotations",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "1.2.3",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "1.2.3",
 		},
 		{
-			name:            "oci image without annotations",
-			repo:            "oci",
-			artifact:        "image",
-			forAnnotation:   "",
-			pathAnnotation:  "",
-			resourceName:    "test-resource",
-			resourceNs:      "default",
-			version:         "2.0.0",
-			expectedName:    "test-resource",
-			expectedNs:      "default",
-			expectedPath:    []string{"spec", "values", "image", "tag"},
-			expectedVersion: "2.0.0",
+			name:                  "oci image without annotations",
+			repo:                  "oci",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "2.0.0",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "2.0.0",
 		},
 		{
-			name:            "helm image with for annotation - name only",
-			repo:            "helm",
-			artifact:        "image",
-			forAnnotation:   "target-release",
-			pathAnnotation:  "",
-			resourceName:    "test-resource",
-			resourceNs:      "default",
-			version:         "1.2.3",
-			expectedName:    "target-release",
-			expectedNs:      "default",
-			expectedPath:    []string{"spec", "values", "image", "tag"},
-			expectedVersion: "1.2.3",
+			name:                  "helm image with for annotation - name only",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "target-release",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "1.2.3",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "target-release",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "1.2.3",
 		},
 		{
-			name:            "helm image with for annotation - namespace and name",
-			repo:            "helm",
-			artifact:        "image",
-			forAnnotation:   "target-namespace/target-release",
-			pathAnnotation:  "",
-			resourceName:    "test-resource",
-			resourceNs:      "default",
-			version:         "1.2.3",
-			expectedName:    "target-release",
-			expectedNs:      "target-namespace",
-			expectedPath:    []string{"spec", "values", "image", "tag"},
-			expectedVersion: "1.2.3",
+			name:                  "helm image with for annotation - namespace and name",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "target-namespace/target-release",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "1.2.3",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "target-release",
+			expectedNs:            "target-namespace",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "1.2.3",
 		},
 		{
-			name:            "oci image with custom path annotation",
-			repo:            "oci",
-			artifact:        "image",
-			forAnnotation:   "",
-			pathAnnotation:  "container.imageTag",
-			resourceName:    "test-resource",
-			resourceNs:      "default",
-			version:         "2.0.0",
-			expectedName:    "test-resource",
-			expectedNs:      "default",
-			expectedPath:    []string{"spec", "values", "container", "imageTag"},
-			expectedVersion: "2.0.0",
+			name:                  "oci image with custom path annotation",
+			repo:                  "oci",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "container.imageTag",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "2.0.0",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "container", "imageTag"},
+			expectedVersion:       "2.0.0",
 		},
 		{
-			name:            "helm image with both for and path annotations",
-			repo:            "helm",
-			artifact:        "image",
-			forAnnotation:   "other-namespace/other-release",
-			pathAnnotation:  "app.version",
-			resourceName:    "test-resource",
-			resourceNs:      "default",
-			version:         "3.0.0",
-			expectedName:    "other-release",
-			expectedNs:      "other-namespace",
-			expectedPath:    []string{"spec", "values", "app", "version"},
-			expectedVersion: "3.0.0",
+			name:                  "helm image with both for and path annotations",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "other-namespace/other-release",
+			pathAnnotation:        "app.version",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "3.0.0",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "other-release",
+			expectedNs:            "other-namespace",
+			expectedPath:          []string{"spec", "values", "app", "version"},
+			expectedVersion:       "3.0.0",
+		},
+		{
+			name:                  "helm image with custom version-path annotation",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "",
+			versionPathAnnotation: "spec.imageVersion",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "4.5.6",
+			versionPath:           []string{"spec", "imageVersion"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "4.5.6",
 		},
 	}
 
@@ -217,6 +247,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			if tt.pathAnnotation != "" {
 				annotations["path"] = tt.pathAnnotation
 			}
+			if tt.versionPathAnnotation != "" {
+				annotations["version-path"] = tt.versionPathAnnotation
+			}
 
 			inst := &unstructured.Unstructured{
 				Object: map[string]interface{}{
@@ -234,6 +267,10 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 					},
 					"spec": map[string]interface{}{},
 				},
+			}
+
+			if err := unstructured.SetNestedField(inst.Object, tt.version, tt.versionPath...); err != nil {
+				s.Require().NoError(err)
 			}
 
 			clientMock := new(mocks.Client)
