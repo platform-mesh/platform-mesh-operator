@@ -148,15 +148,23 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		}
 	}
 
-	pathLabel := getMetadataValue(inst, "path")
+	pathLabelStr := getMetadataValue(inst, "path")
 	updatePath := []string{"spec", "values", "image", "tag"}
-	if pathLabel != "" {
-		pathElems := strings.Split(pathLabel, ".")
+	if pathLabelStr != "" {
+		pathElems := strings.Split(pathLabelStr, ".")
 		updatePath = []string{"spec", "values"}
 		updatePath = append(updatePath, pathElems...)
 	}
 
-	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
+	versionPathStr := getMetadataValue(inst, "version-path")
+	versionPath := []string{"status", "resource", "version"}
+	if versionPathStr != "" {
+		versionPathElems := strings.Split(versionPathStr, ".")
+		versionPath = []string{}
+		versionPath = append(versionPath, versionPathElems...)
+	}
+
+	version, found, err := unstructured.NestedString(inst.Object, versionPath...)
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
