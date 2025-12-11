@@ -24,10 +24,11 @@ import (
 
 type DeployTestSuite struct {
 	suite.Suite
-	clientMock *mocks.Client
-	helperMock *mocks.KcpHelper
-	testObj    *subroutines.DeploymentSubroutine
-	log        *logger.Logger
+	clientMock     *mocks.Client
+	helperMock     *mocks.KcpHelper
+	testObj        *subroutines.DeploymentSubroutine
+	log            *logger.Logger
+	operatorConfig *config.OperatorConfig
 }
 
 func TestDeployTestSuite(t *testing.T) {
@@ -52,6 +53,11 @@ func (s *DeployTestSuite) SetupTest() {
 	operatorCfg.KCP.FrontProxyName = "frontproxy"
 	operatorCfg.KCP.FrontProxyPort = "6443"
 	operatorCfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	operatorCfg.RemoteFluxCD.Kubeconfig = "platform-mesh-kubeconfig"
+	operatorCfg.RemoteFluxCD.PlatformMeshKubeconfigSecretKey = "kubeconfig"
+	operatorCfg.RemoteFluxCD.PlatformMeshKubeconfigSecretName = "platform-mesh-kubeconfig"
+
+	s.operatorConfig = &operatorCfg
 
 	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg)
 }
@@ -109,7 +115,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	}
 
-	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars, *s.operatorConfig)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
@@ -152,7 +158,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	).Once()
 
-	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars, *s.operatorConfig)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
