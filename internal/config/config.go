@@ -39,7 +39,26 @@ type OperatorConfig struct {
 			Enabled bool `mapstructure:"subroutines-resource-enabled" default:"true"`
 		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
-	Deployment struct {
-		Kubeconfig string `mapstructure:"deployment-kubeconfig"`
+	RemoteFluxCD struct {
+		Enabled    bool   `mapstructure:"remote-fluxcd-enabled" default:"false"`
+		Kubeconfig string `mapstructure:"remote-fluxcd-kubeconfig" default:"/operator/fluxcd-kubeconfig"`
+		Metrics    struct {
+			BindAddress            string `mapstructure:"remote-fluxcd-metrics-bind-address" default:":9091" description:"Set the metrics bind address"`
+			Secure                 bool   `mapstructure:"remote-fluxcd-metrics-secure" default:"false" description:"Set if metrics should be exposed via https"`
+			HealthProbeBindAddress string `mapstructure:"remote-fluxcd-health-probe-bind-address" default:":8091" description:"Set the health probe bind address"`
+			LeaderElectionEnabled  bool   `mapstructure:"remote-fluxcd-leader-elect" default:"true" description:"Enable leader election for the controller manager"`
+		} `mapstructure:",squash"`
+	} `mapstructure:",squash"`
+	RemotePlatformMesh struct {
+		Enabled          bool   `mapstructure:"remote-platform-mesh-enabled" default:"false"`
+		Kubeconfig       string `mapstructure:"remote-platform-mesh-kubeconfig" default:"/operator/platform-mesh-kubeconfig"`
+		FluxCDSecretName string `mapstructure:"remote-platform-mesh-fluxcd-secret-name" default:"platform-mesh-secret"`
+		FluxCDSecretKey  string `mapstructure:"remote-platform-mesh-fluxcd-secret-key" default:"kubeconfig"`
+		Metrics          struct {
+			BindAddress            string `mapstructure:"remote-platform-mesh-metrics-bind-address" default:":9090" description:"Set the metrics bind address"`
+			Secure                 bool   `mapstructure:"remote-platform-mesh-metrics-secure" default:"false" description:"Set if metrics should be exposed via https"`
+			HealthProbeBindAddress string `mapstructure:"remote-platform-mesh-health-probe-bind-address" default:":8090" description:"Set the health probe bind address"`
+			LeaderElectionEnabled  bool   `mapstructure:"remote-platform-mesh-leader-elect" default:"true" description:"Enable leader election for the controller manager"`
+		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
 }

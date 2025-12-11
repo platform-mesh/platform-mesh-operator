@@ -28,18 +28,18 @@ import (
 const DeploymentSubroutineName = "DeploymentSubroutine"
 
 type DeploymentSubroutine struct {
-	clientDeploy       client.Client
-	clientPlatformMesh client.Client
+	clientFluxCD       client.Client
+	clientPM           client.Client
 	cfg                *pmconfig.CommonServiceConfig
 	workspaceDirectory string
 	cfgOperator        *config.OperatorConfig
 }
 
-func NewDeploymentSubroutine(clientPlatformMesh, clientDeploy client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
+func NewDeploymentSubroutine(clientPM client.Client, clientFluxCD client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
 	sub := &DeploymentSubroutine{
 		cfg:                cfg,
-		clientDeploy:       clientDeploy,
-		clientPlatformMesh: clientPlatformMesh,
+		clientFluxCD:       clientFluxCD,
+		clientPM:           clientPM,
 		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/"),
 		cfgOperator:        operatorCfg,
 	}
@@ -65,12 +65,12 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Create DeploymentComponents Version
-	templateVars, err := TemplateVars(ctx, inst, r.clientPlatformMesh)
+	templateVars, err := TemplateVars(ctx, inst, r.clientPM)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	mergedInfraValues, err := MergeValuesAndInfraValues(inst, templateVars)
+	mergedInfraValues, err := MergeValuesAndInfraValues(inst, templateVars, *r.cfgOperator)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to merge templateVars and infra values")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -94,7 +94,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			return out
 		}(),
 	}
-	err = applyManifestFromFileWithMergedValues(ctx, path, r.clientDeploy, tplValues)
+	err = applyManifestFromFileWithMergedValues(ctx, path, r.clientFluxCD, tplValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
@@ -102,14 +102,15 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 
 	// apply infra release
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-infra-components/release.yaml")
-	err = applyReleaseWithValues(ctx, path, r.clientDeploy, mergedInfraValues)
+	err = applyReleaseWithValues(ctx, path, r.clientFluxCD, mergedInfraValues)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to apply infra release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
 	// Wait for infra-components release to be ready before continuing
-	rel, err := getHelmRelease(ctx, r.clientDeploy, "platform-mesh-operator-infra-components", "default")
+	rel, err := getHelmRelease(ctx, r.clientFluxCD, "platform-mesh-operator-infra-components", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get platform-mesh-operator-infra-components Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
@@ -121,7 +122,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 
 	// Wait for cert-manager to be ready
-	rel, err = getHelmRelease(ctx, r.clientDeploy, "cert-manager", "default")
+	rel, err = getHelmRelease(ctx, r.clientFluxCD, "cert-manager", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get cert-manager Release")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -131,7 +132,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
 	}
 
-	mergedValues, err := MergeValuesAndServices(inst, templateVars)
+	mergedValues, err := MergeValuesAndServices(inst, templateVars, *r.cfgOperator)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to merge templateVars and services")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -140,7 +141,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 
 	// apply resource
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/resource.yaml")
-	err = applyManifestFromFileWithMergedValues(ctx, path, r.clientDeploy, tplValues)
+	err = applyManifestFromFileWithMergedValues(ctx, path, r.clientFluxCD, tplValues)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
@@ -148,8 +149,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 
 	// apply release and merge templateVars from spec.templateVars
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/release.yaml")
-	err = applyReleaseWithValues(ctx, path, r.clientDeploy, mergedValues)
+	err = applyReleaseWithValues(ctx, path, r.clientFluxCD, mergedValues)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to apply components release with values")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
@@ -167,7 +169,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	if r.cfgOperator.Subroutines.Deployment.EnableIstio {
 
 		// Wait for istiod release to be ready before continuing
-		rel, err := getHelmRelease(ctx, r.clientDeploy, "istio-istiod", "default")
+		rel, err := getHelmRelease(ctx, r.clientFluxCD, "istio-istiod", "default")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get istio-istiod Release")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -186,7 +188,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		// When running the operator locally there will never be a proxy
 		if !r.cfg.IsLocal && !hasProxy {
 			log.Info().Msg("Restarting operator to ensure istio-proxy is injected")
-			err := r.clientDeploy.Delete(ctx, pod)
+			err := r.clientFluxCD.Delete(ctx, pod)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
 				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -200,7 +202,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	rootShard := &unstructured.Unstructured{}
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
-	err = r.clientDeploy.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	err = r.clientPM.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, false)
@@ -209,7 +211,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	frontProxy := &unstructured.Unstructured{}
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
-	err = r.clientDeploy.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
+	err = r.clientPM.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, false)
@@ -250,7 +252,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
-	_, err := GetSecret(r.clientPlatformMesh, webhookSecret, inst.Namespace)
+	_, err := GetSecret(r.clientPM, webhookSecret, inst.Namespace)
 	if err != nil && !kerrors.IsNotFound(err) {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
 		return errors.NewOperatorError(err, true, true)
@@ -267,7 +269,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	obj.SetNamespace(inst.Namespace)
 
 	// create system masters secret (idempotent)
-	if err := r.clientPlatformMesh.Create(ctx, &obj); err != nil {
+	if err := r.clientPM.Create(ctx, &obj); err != nil {
 		if kerrors.IsAlreadyExists(err) {
 			log.Info().Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("KCP webhook secret already exists, skipping create")
 			return nil
@@ -283,7 +285,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 
 	// Retrieve the ca.crt from the rebac-authz-webhook-cert secret
 	caSecretName := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretCAName
-	webhookCertSecret, err := GetSecret(r.clientPlatformMesh, caSecretName, inst.Namespace)
+	webhookCertSecret, err := GetSecret(r.clientPM, caSecretName, inst.Namespace)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
@@ -302,7 +304,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 
 	// Get the kcp-webhook-secret
 	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
-	kcpWebhookSecret, err := GetSecret(r.clientPlatformMesh, webhookSecret, inst.Namespace)
+	kcpWebhookSecret, err := GetSecret(r.clientPM, webhookSecret, inst.Namespace)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -350,7 +352,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	// Update the secret with the new kubeconfig
 	kcpWebhookSecret.Data["kubeconfig"] = updatedKubeconfigData
 
-	err = r.clientPlatformMesh.Update(ctx, kcpWebhookSecret)
+	err = r.clientPM.Update(ctx, kcpWebhookSecret)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -379,7 +381,7 @@ func getHelmRelease(ctx context.Context, client client.Client, releaseName strin
 func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelSelector, namespace string) (bool, *unstructured.Unstructured, error) {
 	pods := &unstructured.UnstructuredList{}
 	pods.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Pod"})
-	err := r.clientDeploy.List(ctx, pods, &client.ListOptions{
+	err := r.clientFluxCD.List(ctx, pods, &client.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{"app": labelSelector}),
 		Namespace:     namespace,
 	})
@@ -426,14 +428,14 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
 	// Create Issuer
 	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
-	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.clientPlatformMesh, map[string]string{})
+	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.clientPM, map[string]string{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
 	// Create Certificate
 	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
-	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.clientPlatformMesh, map[string]string{})
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.clientPM, map[string]string{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
