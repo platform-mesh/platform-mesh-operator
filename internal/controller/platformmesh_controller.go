@@ -26,6 +26,7 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
@@ -71,15 +72,14 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 	return builder.Complete(r)
 }
 
-func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) *PlatformMeshReconciler {
-	deployClient, _, err := subroutines.GetDeploymentClient(cfg, mgr)
-	if err != nil {
-		log.Fatal().Err(err).Msg("unable to get deployment kubeconfig")
-	}
+func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientFluxCD client.Client) *PlatformMeshReconciler {
+
+	// log mgr.GetConfig().Host
+	log.Info().Msg("PlatformMesh Host: " + mgr.GetConfig().Host)
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), deployClient, commonCfg, cfg))
+		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientFluxCD, commonCfg, cfg))
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
 		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp"))
@@ -91,7 +91,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg))
 	}
 	if cfg.Subroutines.Wait.Enabled {
-		subs = append(subs, subroutines.NewWaitSubroutine(mgr.GetClient()))
+		subs = append(subs, subroutines.NewWaitSubroutine(clientFluxCD))
 	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

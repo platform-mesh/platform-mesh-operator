@@ -54,14 +54,15 @@ spec:iam-service
 
 The platform-mesh-operator can be configured using environment variables or command-line parameters to control its behavior, cluster interactions, and subroutine execution. Command-line parameters use kebab-case format (e.g., `--workspace-dir`, `--kcp-url`) corresponding to the mapstructure tags in the configuration.
 
+
 ### General Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `KUBECONFIG` | Path to the kubeconfig file for the cluster where the `PlatformMesh` resource is reconciled | In-cluster configuration |
-| `DEPLOYMENT_KUBECONFIG` | Path to the kubeconfig file for the cluster where platform-mesh components are deployed | In-cluster configuration |
 | `WORKSPACE_DIR` | Working directory for operator files and temporary data | `/operator/` |
 | `PATCH_OIDC_CONTROLLER_ENABLED` | Enable the OIDC controller patching functionality | `false` |
+| `LEADER_ELECTION_ID` | Leader election ID for the main manager instance | `81924e50.platform-mesh.org` |
 
 ### KCP Configuration
 
@@ -111,6 +112,42 @@ The platform-mesh-operator can be configured using environment variables or comm
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SUBROUTINES_FEATURE_TOGGLES_ENABLED` | Enable the feature toggles subroutine | `false` |
+
+#### Resource Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_RESOURCE_ENABLED` | Enable the resource subroutine | `true` |
+
+#### Wait Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_WAIT_ENABLED` | Enable the wait subroutine | `true` |
+
+### Remote FluxCD Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REMOTE_FLUXCD_ENABLED` | Enables deployment of FluxCD resources to a remote cluster | `false` |
+| `REMOTE_FLUXCD_KUBECONFIG` | Path to the kubeconfig for remote FluxCD | `/operator/fluxcd-kubeconfig` |
+| `REMOTE_FLUXCD_PLATFORM_MESH_KUBECONFIG_SECRET_NAME` | Name of the secret containing PlatformMesh kubeconfig in the remote cluster | `platform-mesh-kubeconfig` |
+| `REMOTE_FLUXCD_PLATFORM_MESH_KUBECONFIG_SECRET_KEY` | Key in the secret containing PlatformMesh kubeconfig in the remote cluster| `kubeconfig` |
+| `REMOTE_FLUXCD_METRICS_BIND_ADDRESS` | Bind address for metrics | `:9091` |
+| `REMOTE_FLUXCD_METRICS_SECURE` | Enable secure metrics | `false` |
+| `REMOTE_FLUXCD_HEALTH_PROBE_BIND_ADDRESS` | Bind address for health probe | `:8091` |
+| `REMOTE_FLUXCD_LEADER_ELECT` | Enable leader election | `false` |
+
+### Remote PlatformMesh Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REMOTE_PLATFORM_MESH_ENABLED` | Enable reconciliation of PlatformMesh resource on a remote cluster | `false` |
+| `REMOTE_PLATFORM_MESH_KUBECONFIG` | Path to the kubeconfig for remote PlatformMesh cluster | `/operator/platform-mesh-kubeconfig` |
+| `REMOTE_PLATFORM_MESH_METRICS_BIND_ADDRESS` | Bind address for metrics | `:9090` |
+| `REMOTE_PLATFORM_MESH_METRICS_SECURE` | Enable secure metrics | `false` |
+| `REMOTE_PLATFORM_MESH_HEALTH_PROBE_BIND_ADDRESS` | Bind address for health probe | `:8090` |
+| `REMOTE_PLATFORM_MESH_LEADER_ELECT` | Enable leader election | `false` |
 
 ### Configuration Notes
 

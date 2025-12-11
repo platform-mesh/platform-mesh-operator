@@ -515,7 +515,6 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.FrontProxyName = "frontproxy"
 	appConfig.KCP.FrontProxyPort = "6443"
 	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
-	appConfig.Deployment.Kubeconfig = "kind-testcluster.kubeconfig"
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
