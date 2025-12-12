@@ -534,7 +534,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	s.kubernetesManager = mgr
 
-	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../")
+	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetClient())
 	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
