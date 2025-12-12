@@ -14,7 +14,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 )
@@ -44,11 +43,11 @@ var helmReleaseGvk = schema.GroupVersionKind{
 }
 
 type ResourceSubroutine struct {
-	mgr manager.Manager
+	client client.Client
 }
 
-func NewResourceSubroutine(mgr manager.Manager) *ResourceSubroutine {
-	return &ResourceSubroutine{mgr: mgr}
+func NewResourceSubroutine(client client.Client) *ResourceSubroutine {
+	return &ResourceSubroutine{client: client}
 }
 
 func (r *ResourceSubroutine) GetName() string {
@@ -169,7 +168,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.mgr.GetClient().Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, obj)
+	err = r.client.Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -181,7 +180,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.mgr.GetClient().Update(ctx, obj)
+	err = r.client.Update(ctx, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -200,7 +199,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(inst), obj)
+	err = r.client.Get(ctx, client.ObjectKeyFromObject(inst), obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -212,7 +211,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.mgr.GetClient().Update(ctx, obj)
+	err = r.client.Update(ctx, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -232,7 +231,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	obj.SetGroupVersionKind(helmRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, url, "spec", "url")
 		if err != nil {
 			return err
@@ -283,7 +282,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	obj.SetGroupVersionKind(ociRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag")
 		if err != nil {
 			return err
@@ -332,7 +331,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 
 		err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit")
 		if err != nil {

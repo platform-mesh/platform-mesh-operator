@@ -25,7 +25,7 @@ func TestResourceTestSuite(t *testing.T) {
 
 func (s *ResourceTestSuite) SetupTest() {
 	s.managerMock = new(mocks.Manager)
-	s.subroutine = subroutines.NewResourceSubroutine(s.managerMock)
+	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client))
 }
 
 func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
@@ -76,6 +76,7 @@ func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
 			return nil
 		},
 	)
+	s.subroutine = subroutines.NewResourceSubroutine(clientMock)
 
 	result, err := s.subroutine.Process(ctx, inst)
 	s.Nil(err)
@@ -234,7 +235,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			managerMock := new(mocks.Manager)
-			subroutine := subroutines.NewResourceSubroutine(managerMock)
+			clientMock := new(mocks.Client)
+			subroutine := subroutines.NewResourceSubroutine(clientMock)
 			ctx := context.TODO()
 
 			annotations := map[string]interface{}{
@@ -273,7 +275,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 				s.Require().NoError(err)
 			}
 
-			clientMock := new(mocks.Client)
+			// clientMock = new(mocks.Client)
 			managerMock.On("GetClient").Return(clientMock)
 
 			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
@@ -358,7 +360,9 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 		},
 	)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	sub := subroutines.NewResourceSubroutine(clientMock)
+	result, err := sub.Process(ctx, inst)
+
 	s.Nil(err)
 	s.NotNil(result)
 }
@@ -396,7 +400,9 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 
-	result, err := s.subroutine.Process(ctx, inst)
+	sub := subroutines.NewResourceSubroutine(clientMock)
+	result, err := sub.Process(ctx, inst)
+
 	s.NotNil(err)
 	s.NotNil(result)
 }
@@ -472,7 +478,11 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 		},
 	)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
+
+	sub := subroutines.NewResourceSubroutine(clientMock)
+	result, err := sub.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
 	s.Equal(2, getCallCount)
@@ -541,8 +551,8 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
@@ -597,8 +607,8 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
@@ -639,8 +649,8 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
@@ -677,8 +687,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
@@ -713,8 +723,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -790,11 +800,11 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	}
 
 	clientMock := new(mocks.Client)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 	s.managerMock.On("GetClient").Return(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
-
-	result, err := s.subroutine.Process(ctx, inst)
+	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
 }

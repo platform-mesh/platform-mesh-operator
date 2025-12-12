@@ -13,18 +13,24 @@ import (
 	"text/template"
 	"time"
 
+	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
+	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	"github.com/rs/zerolog/log"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -32,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
+	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
 	"k8s.io/client-go/tools/clientcmd"
@@ -211,7 +218,7 @@ func MergeJSON(a, b apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
 }
 
-func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
 	services := inst.Spec.Values
 	var mapValues map[string]interface{}
 	if len(templateVars.Raw) > 0 {
@@ -246,6 +253,18 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 	mergeOCMConfig(mapValues, inst)
 
+	if config.RemotePlatformMesh.Enabled {
+		mapValues["fluxCD"] = map[string]interface{}{
+			"kubeConfig": map[string]interface{}{
+				"enabled": true,
+				"secretRef": map[string]interface{}{
+					"name": config.RemotePlatformMesh.FluxCDSecretName,
+					"key":  config.RemotePlatformMesh.FluxCDSecretKey,
+				},
+			},
+		}
+	}
+
 	// Marshal back to apiextensionsv1.JSON
 	mergedRaw, err := json.Marshal(mapValues)
 	if err != nil {
@@ -255,7 +274,7 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 }
 
-func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
 	valuesInfra := inst.Spec.InfraValues
 	var mapValues map[string]interface{}
 	if len(templateVars.Raw) > 0 {
@@ -278,6 +297,18 @@ func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiexte
 	// add 'valuesInfra' to mapValues
 	for k, v := range mapValuesInfra {
 		mapValues[k] = v
+	}
+
+	if config.RemotePlatformMesh.Enabled {
+		mapValues["fluxCD"] = map[string]interface{}{
+			"kubeConfig": map[string]interface{}{
+				"enabled": true,
+				"secretRef": map[string]interface{}{
+					"name": config.RemotePlatformMesh.FluxCDSecretName,
+					"key":  config.RemotePlatformMesh.FluxCDSecretKey,
+				},
+			},
+		}
 	}
 
 	// Marshal back to apiextensionsv1.JSON
@@ -526,6 +557,80 @@ func ApplyDirStructure(
 	}
 
 	return nil
+}
+
+func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, error) {
+	if kubeconfig == "" {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
+			return nil, nil, err
+		}
+		deployClient, err := client.New(config, client.Options{Scheme: GetClientScheme()})
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to create in-cluster deployment client")
+			return nil, nil, err
+		}
+		return deployClient, config, nil
+	}
+
+	config, err := clientcmd.LoadFromFile(kubeconfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to build Config")
+		return nil, nil, err
+	}
+	cfgBytes, err := clientcmd.Write(*config)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to serialize config to bytes")
+		return nil, nil, err
+	}
+	restCfg, err := clientcmd.RESTConfigFromKubeConfig(cfgBytes)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to build rest config from kubeconfig")
+		return nil, nil, err
+	}
+	deployClient, err := client.New(restCfg, client.Options{Scheme: GetClientScheme()})
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to create client")
+		return nil, nil, err
+	}
+	return deployClient, restCfg, nil
+
+}
+
+func GetClientScheme() *runtime.Scheme {
+
+	var gvk = schema.GroupVersionKind{
+		Group:   "delivery.ocm.software",
+		Version: "v1alpha1",
+		Kind:    "Resource",
+	}
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(helmv2beta.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
+	utilruntime.Must(certmanager.AddToScheme(scheme))
+	utilruntime.Must(fluxcdv1.AddToScheme(scheme))
+	utilruntime.Must(fluxcdv2.AddToScheme(scheme))
+
+	scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
+
+	return scheme
+}
+
+func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
+	if inst.Spec.Exposure == nil {
+		return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
+	}
+	kcpUrl := inst.Spec.Exposure.Protocol + "://kcp.api." + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	return kcpUrl
+}
+
+func getInternalKcpHost(cfg *config.OperatorConfig) string {
+	return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 }
 
 func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionType string, conditionStatus string) bool {

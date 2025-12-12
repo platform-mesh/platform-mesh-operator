@@ -77,7 +77,7 @@ func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.Co
 func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig) *ResourceReconciler {
 	var subs []subroutine.Subroutine
 
-	subs = append(subs, resource.NewResourceSubroutine(mgr))
+	subs = append(subs, resource.NewResourceSubroutine(mgr.GetClient()))
 
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

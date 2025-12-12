@@ -26,6 +26,17 @@ type RealmReconciler struct {
 }
 
 func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) *RealmReconciler {
+
+	clientFluxCD := mgr.GetClient()
+	if cfg.RemoteFluxCD.Enabled {
+		var err error
+		clientFluxCD, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteFluxCD.Kubeconfig)
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get remote fluxcd kubeconfig")
+			return nil
+		}
+	}
+
 	return &RealmReconciler{
 		lifecycle: pmctrl.NewLifecycleManager(
 			[]subroutine.Subroutine{
@@ -39,7 +50,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 			},
 			"platform-mesh-operator",
 			"RealmReconciler",
-			mgr.GetClient(),
+			clientFluxCD,
 			log,
 		).WithConditionManagement().
 			WithStaticThenExponentialRateLimiter(
