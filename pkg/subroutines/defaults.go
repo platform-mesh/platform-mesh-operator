@@ -1,8 +1,10 @@
 package subroutines
 
 import (
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"
@@ -14,39 +16,37 @@ var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		EndpointSliceName: "core.platform-mesh.io",
+		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "account-operator-kubeconfig",
 	},
 	{
-		EndpointSliceName: "core.platform-mesh.io",
+		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "rebac-authz-webhook-kubeconfig",
 	},
 	{
-		EndpointSliceName: "core.platform-mesh.io",
+		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "security-operator-kubeconfig",
 	},
 	{
-		EndpointSliceName: "core.platform-mesh.io",
+		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 	},
 	{
-		EndpointSliceName: "core.platform-mesh.io",
+		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "extension-manager-operator-kubeconfig",
 	},
 	{
-		EndpointSliceName: "core.platform-mesh.io",
-		Path:              "root:platform-mesh-system",
-		Secret:            "iam-service-kubeconfig",
+		Path:   "root:platform-mesh-system",
+		Secret: "iam-service-kubeconfig",
 	},
 	{
-		EndpointSliceName: "",
-		RawPath:           "/services/contentconfigurations",
-		Secret:            "portal-kubeconfig",
+		RawPath: ptr.To("/services/contentconfigurations"),
+		Secret:  "portal-kubeconfig",
 	},
 }
 var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
