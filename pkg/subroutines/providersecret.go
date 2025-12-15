@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -187,7 +188,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 
 	var address *url.URL
 
-	if pc.EndpointSliceName != "" {
+	if ptr.Deref(pc.EndpointSliceName, "") != "" {
 		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to create KCP client")
@@ -195,7 +196,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 
 		var slice kcpapiv1alpha.APIExportEndpointSlice
-		err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
+		err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -217,8 +218,8 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			log.Error().Err(err).Msg("Failed to parse KCP URL")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
-		if pc.RawPath != "" {
-			kcpUrl.Path = pc.RawPath
+		if ptr.Deref(pc.RawPath, "") != "" {
+			kcpUrl.Path = *pc.RawPath
 		} else {
 			kcpUrl.Path = path.Join("/clusters", pc.Path)
 		}
@@ -240,8 +241,8 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	namespace := "platform-mesh-system"
-	if pc.Namespace != "" {
-		namespace = pc.Namespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
 	}
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

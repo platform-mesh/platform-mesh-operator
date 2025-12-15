@@ -142,7 +142,7 @@ spec:
                         secret:
                           type: string
                       required:
-                      - endpointSliceName
+                      - secret
                       type: object
                     type: array
                   extraWorkspaces:
@@ -208,7 +208,7 @@ spec:
                         secret:
                           type: string
                       required:
-                      - endpointSliceName
+                      - secret
                       type: object
                     type: array
                 type: object

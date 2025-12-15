@@ -139,12 +139,12 @@ type SecretReference struct {
 }
 
 type ProviderConnection struct {
-	EndpointSliceName string `json:"endpointSliceName"`
-	Path              string `json:"path,omitempty"`
-	RawPath           string `json:"rawPath,omitempty"`
-	Secret            string `json:"secret,omitempty"`
-	External          bool   `json:"external,omitempty"`
-	Namespace         string `json:"namespace,omitempty"`
+	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
+	Path              string  `json:"path,omitempty"`
+	RawPath           *string `json:"rawPath,omitempty"`
+	Secret            string  `json:"secret"`
+	External          bool    `json:"external,omitempty"`
+	Namespace         *string `json:"namespace,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh
