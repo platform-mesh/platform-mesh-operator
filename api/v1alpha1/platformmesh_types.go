@@ -139,7 +139,7 @@ type SecretReference struct {
 }
 
 type ProviderConnection struct {
-	EndpointSliceName *string `json:"endpointSliceName,omitempty""`
+	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
 	Path              string  `json:"path,omitempty"`
 	RawPath           *string `json:"rawPath,omitempty"`
 	Secret            string  `json:"secret"`

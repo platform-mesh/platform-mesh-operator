@@ -9,6 +9,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	"github.com/platform-mesh/golang-commons/context/keys"
@@ -100,7 +101,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
@@ -274,7 +275,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -371,7 +372,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -539,7 +540,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -648,7 +649,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -757,7 +758,7 @@ func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
@@ -1602,11 +1603,11 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	instance.Spec.Kcp.ProviderConnections = nil
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
-			EndpointSliceName: "",
+			EndpointSliceName: ptr.To(""),
 			Path:              "root:platform-mesh-system",
 			Secret:            "external-kubeconfig",
 			External:          true,
-			Namespace:         "test",
+			Namespace:         ptr.To("test"),
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
