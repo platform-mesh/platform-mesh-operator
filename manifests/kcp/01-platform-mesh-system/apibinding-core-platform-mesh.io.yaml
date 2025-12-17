@@ -48,6 +48,13 @@ spec:
     verbs:
       - '*'
     state: Accepted
+  - resource: secrets
+    group: ""
+    selector:
+      matchAll: true
+    verbs:
+      - '*'
+    state: Accepted
   reference:
     export:
       name: core.platform-mesh.io
