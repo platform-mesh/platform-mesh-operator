@@ -5,7 +5,7 @@ metadata:
 spec:
   jwt:
     - issuer:
-        url: https://{{ .baseDomainWithPort }}/keycloak/realms/welcome
+        url: https://{{ .baseDomainPort }}/keycloak/realms/welcome
         audiences:
           - welcome
         audienceMatchPolicy: MatchAny
