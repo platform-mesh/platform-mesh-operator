@@ -78,14 +78,6 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Getting started configuration' feature")
-		case "feature-enable-iam":
-			// Implement the logic to enable the IAM feature
-			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-iam")
-			if opErr != nil {
-				log.Error().Err(opErr.Err()).Msg("Failed to apply IAM manifests")
-				return ctrl.Result{}, opErr
-			}
-			log.Info().Msg("Enabled 'IAM configuration' feature")
 		case "feature-enable-marketplace-account":
 			// Implement the logic to enable the marketplace feature
 			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-account")
