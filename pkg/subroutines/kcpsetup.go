@@ -172,13 +172,6 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	return nil
 }
 
-func getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
-	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
-		return "portal.dev.local"
-	}
-	return inst.Spec.Exposure.BaseDomain
-}
-
 func (r *KcpsetupSubroutine) getCABundleInventory(
 	ctx context.Context,
 ) (map[string]string, error) {
