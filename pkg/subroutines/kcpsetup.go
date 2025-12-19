@@ -156,18 +156,12 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	for k, v := range apiExportHashes {
 		templateData[k] = v
 	}
-	templateData["baseDomain"] = getBaseDomainInventory(inst)
 
-	templateData["port"] = "443"
-	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Port != 0 {
-		templateData["port"] = fmt.Sprintf("%d", inst.Spec.Exposure.Port)
-	}
-
-	if templateData["port"] != "443" {
-		templateData["baseDomainWithPort"] = fmt.Sprintf("%s:%s", templateData["baseDomain"], templateData["port"])
-	} else {
-		templateData["baseDomainWithPort"] = templateData["baseDomain"]
-	}
+	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
+	templateData["baseDomain"] = baseDomain
+	templateData["baseDomainPort"] = baseDomainPort
+	templateData["port"] = fmt.Sprintf("%d", port)
+	templateData["protocol"] = protocol
 
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {
