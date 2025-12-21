@@ -172,14 +172,24 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+	// Create a minimal patch object with only the field we're updating
+	// This ensures Server-Side Apply only tracks ownership of this specific field
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(helmReleaseGvk)
+	patchObj.SetName(obj.GetName())
+	patchObj.SetNamespace(obj.GetNamespace())
 
-	err = unstructured.SetNestedField(obj.Object, version, updatePath...)
-	if err != nil {
+	// Set only the field we're managing (the version at the specified path)
+	if err = unstructured.SetNestedField(patchObj.Object, version, updatePath...); err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.client.Update(ctx, obj)
+	// Use Server-Side Apply with field manager to update only the specific field
+	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
+	err = r.client.Patch(ctx, patchObj, client.Apply,
+		client.FieldOwner("platform-mesh-resource"),
+		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -198,19 +208,24 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.client.Get(ctx, client.ObjectKeyFromObject(inst), obj)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
+	// Create a minimal patch object with only the field we're updating
+	// This ensures Server-Side Apply only tracks ownership of this specific field
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(helmReleaseGvk)
+	patchObj.SetName(obj.GetName())
+	patchObj.SetNamespace(obj.GetNamespace())
 
-	err = unstructured.SetNestedField(obj.Object, version, "spec", "chart", "spec", "version")
-	if err != nil {
+	// Set only the field we're managing (spec.chart.spec.version)
+	if err = unstructured.SetNestedField(patchObj.Object, version, "spec", "chart", "spec", "version"); err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.client.Update(ctx, obj)
+	// Use Server-Side Apply with field manager to update only the specific field
+	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
+	err = r.client.Patch(ctx, patchObj, client.Apply,
+		client.FieldOwner("platform-mesh-resource"),
+		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)

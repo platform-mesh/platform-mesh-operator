@@ -1,0 +1,24 @@
+{{- if .gatewayApi.enabled }}
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: {{ .gatewayApi.name }}
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    enabled: true
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
+  force: false
+  install:
+    crds: {{ .gatewayApi.kustomization.install.crds }}
+  interval: {{ .gatewayApi.kustomization.interval }}
+  path: {{ .gatewayApi.kustomization.path }}
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: {{ .gatewayApi.name }}
+{{- end }}

@@ -1,0 +1,28 @@
+{{- if .traefikCRDs.enabled }}
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: {{ .traefikCRDs.name }}
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    enabled: true
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
+  chart:
+    spec:
+      chart: {{ .traefikCRDs.chart.name }}
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: {{ .traefikCRDs.name }}
+        namespace: {{ .helmReleaseNamespace }}
+  dependsOn: []
+  interval: {{ .traefikCRDs.interval }}
+  releaseName: {{ .traefikCRDs.name }}
+  targetNamespace: {{ .traefikCRDs.targetNamespace }}
+  timeout: 15m
+{{- end }}

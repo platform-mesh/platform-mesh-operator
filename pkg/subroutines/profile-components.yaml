@@ -1,0 +1,352 @@
+targetNamespace: platform-mesh-system
+protocol: https
+port: 443
+ocm:
+  skipVerify: true
+  interval: 3m
+  referencePath: []
+  component:
+    create: true
+    name: platform-mesh
+  repo:
+    create: true
+    name: platform-mesh
+iamWebhookCA: null
+services:
+  account-operator:
+    enabled: true
+    values:
+      tracing:
+        enabled: false
+        collector:
+          host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
+      kubeconfigSecret: account-operator-kubeconfig
+      log:
+        level: debug
+      crds:
+        enabled: false
+      kcp:
+        enabled: true
+        apiExportEndpointSliceName: ""
+      subroutines:
+        fga:
+          grpcAddr: openfga:8081
+  crossplane:
+    helmRepo: true
+    enabled: true
+    targetNamespace: crossplane-system
+    values:
+      provider:
+        packages:
+          - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
+  etcd-druid:
+    imageResources:
+      - annotations:
+          repo: oci
+          artifact: image
+          for: etcd-druid
+    enabled: true
+    gitRepo: true
+    path: charts
+    targetNamespace: etcd-druid-system
+    values: {}
+  extension-manager-operator:
+    enabled: true
+    values:
+      crds:
+        enabled: false
+      kcp:
+        enabled: true
+        kubeconfigSecret: extension-manager-operator-kubeconfig
+      tracing:
+        enabled: false
+        collector:
+          host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
+  security-operator:
+    enabled: true
+    values:
+      crds:
+        enabled: false
+      fga:
+        target: openfga.platform-mesh-system.svc.cluster.local:8081
+        inviteKeycloakBaseUrl: "https://{{ .Values.baseDomainPort }}/keycloak"
+      initializer:
+        kubeconfigSecret: security-initializer-kubeconfig
+      baseDomain: "{{ .Values.baseDomainPort }}"
+      kubeconfigSecret: security-operator-kubeconfig
+      log:
+        level: debug
+      operator:
+        shutdownTimeout: 1m
+        maxConcurrentReconciles: 1
+  rebac-authz-webhook:
+    enabled: true
+    values:
+      log:
+        level: debug
+      openfga:
+        url: openfga:8081
+      istio:
+        exposed: false
+        dnsNames:
+          - rebac-authz-webhook.platform-mesh-system.svc.cluster.local
+      certManager:
+        enabled: true
+        createCA: true
+  infra:
+    enabled: true
+    dependsOn:
+      - name: kcp-operator
+        namespace: platform-mesh-system
+    values:
+      hostAliases:
+        enabled: true
+      kcp:
+        image:
+          # FIXME: this is a temporary fix until we have support for the latest version
+          tag: 8265c399b
+        rootShard:
+          extraArgs:
+            - --feature-gates=WorkspaceAuthentication=true
+            - --shard-virtual-workspace-url=https://kcp.api.{{ .Values.baseDomainPort }}
+        webhook:
+          enabled: true
+      istio:
+        enabled: false
+      gatewayApi:
+        enabled: true
+      keycloak:
+        istio:
+          virtualservice:
+            hosts:
+              - "{{ .Values.baseDomain }}"
+        crossplane:
+          clients:
+            welcome:
+              validRedirectUris:
+                - "https://{{ .Values.baseDomainPort }}/callback*"
+  kcp-operator:
+    imageResource:
+      name: kcp-image
+      enabled: true
+      labels:
+        infra: "true"
+        component: infra
+    enabled: true
+    helmRepo: true
+    targetNamespace: kcp-operator
+  keycloak:
+    enabled: true
+    values:
+      global:
+        imagePullSecrets:
+          - name: github
+        security:
+          allowInsecureImages: true
+      resources:
+        limits:
+          cpu: "2"
+          ephemeral-storage: 2Gi
+          memory: 2Gi
+        requests:
+          cpu: 750m
+          ephemeral-storage: 50Mi
+          memory: 1Gi
+      image:
+        registry: ghcr.io/platform-mesh
+        repository: upstream-images/keycloak
+      auth:
+        # -- keycloak admin user
+        adminUser: keycloak-admin
+        # -- keycloak admin secret
+        existingSecret: keycloak-admin
+        # -- keycloak admin secret key
+        passwordSecretKey: secret
+      # -- keycloak http relative path
+      httpRelativePath: "/keycloak/"
+      # -- keycloak environment variables (raw)
+      # For Arm64 arch (especially Apple M4), add -XX:UseSVE=0 to JAVA_OPTS_APPEND
+      extraEnvVars:
+        - name: JAVA_OPTS_APPEND
+          value: |-
+            -Djgroups.dns.query=keycloak-headless.platform-mesh-system.svc.cluster.local
+        - name: KC_PROXY_HEADERS
+          value: xforwarded
+        - name: KC_HOSTNAME_STRICT
+          value: "false"
+      # -- configuration for the postgresql sub-chart
+      postgresql:
+        image:
+          registry: ghcr.io/platform-mesh
+          repository: upstream-images/postgresql
+          tag: 17.6.0-debian-12-r4
+        primary:
+          # -- primary postgresql resources preset
+          resourcesPreset: none
+        # -- postgresql name override
+        nameOverride: postgresql-keycloak
+        # -- authorization configuration
+        auth:
+          # -- postgresql username
+          username: keycloak
+          # -- existing secret name
+          existingSecret: ""
+          secretKeys:
+            # -- user password key
+            userPasswordKey: password
+            # -- admin password key
+            adminPasswordKey: password
+  kubernetes-graphql-gateway:
+    enabled: true
+    values:
+      hostAliases:
+        enabled: true
+        # entries:
+        #   - ip: "10.96.188.4"
+        #     hostnames:
+        #       - "kcp.api.portal.dev.local"
+        #       - "portal.dev.local"
+      tracing:
+        enabled: false
+      trust:
+        default:
+          trustedIssuer: "https://{{ .Values.baseDomainPort }}/keycloak/realms/default"
+          jwksUrl: http://keycloak-headless.platform-mesh-system:8080/keycloak/realms/default/protocol/openid-connect/certs
+          audience: default
+      kubeConfig:
+        enabled: true
+        secretName: kubernetes-grapqhl-gateway-kubeconfig
+      virtualService:
+        pathPrefix: /api/kubernetes-graphql-gateway/
+        hosts:
+          - "{{ .Values.baseDomain }}"
+          - "*.{{ .Values.baseDomain }}"
+        httpRules:
+          - name: default
+            cors:
+              allowHeaders:
+                - "*"
+              allowMethods:
+                - GET
+                - POST
+              allowOrigins:
+                - regex: .*
+      listener:
+        virtualWorkspacesConfig:
+          enabled: true
+          content:
+            virtualWorkspaces:
+              - name: contentconfigurations
+                url: "https://kcp-front-proxy.platform-mesh-system:8443/services/contentconfigurations"
+                kubeconfig: /app/kubeconfig/kubeconfig
+              - name: marketplace
+                url: "https://kcp-front-proxy.platform-mesh-system:8443/services/marketplace"
+                kubeconfig: /app/kubeconfig/kubeconfig
+  openfga:
+    enabled: true
+    helmRepo: true
+    values:
+      global:
+        imagePullSecrets:
+          - name: github
+      migrate:
+        annotations:
+          sidecar.istio.io/inject: "false"
+      extraEnvVars:
+        - name: OPENFGA_EXPERIMENTALS
+          value: enable-list-users
+      log:
+        level: info
+      autoscaling:
+        enabled: false
+      image:
+        repository: "openfga/openfga"
+        tag: ""
+      replicaCount: 1
+      podAnnotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "2112"
+      checkQueryCache:
+        enabled: true
+        limit: 10000
+        ttl: 10s
+      datastore:
+        engine: postgres
+        maxOpenConns: 30
+        applyMigrations: true
+        migrationType: "initContainer"
+        migrations:
+          image:
+            repository: groundnuty/k8s-wait-for
+            pullPolicy: Always
+            tag: "v2.0"
+      postgresql:
+        ## @param postgresql.enabled enable the bitnami/postgresql subchart and deploy Postgres
+        enabled: true
+        nameOverride: postgres
+        image:
+          registry: ghcr.io/platform-mesh
+          repository: images/postgresql
+      telemetry:
+        trace:
+          enabled: true
+          otlp:
+            endpoint: observability-opentelemetry-collector.openmfp-observability.svc.cluster.local:4317
+            tls:
+              enabled: false
+  portal:
+    enabled: false
+    values:
+      kcp:
+        kubeconfigSecret: portal-kubeconfig
+      crdGatewayApiUrl: "https://${org-subdomain}{{ .Values.baseDomain }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+      environment: kind
+      http:
+        protocol: https
+      frontendPort: '{{ .Values.port }}'
+      auth:
+        default:
+          discoveryUrl: "https://{{ .Values.baseDomainPort }}/keycloak/realms/${org-name}/.well-known/openid-configuration"
+          clientSecretName: "portal-client-secret-welcome"
+          clientSecretKey: "attribute.client_secret"
+          clientId: "welcome"
+          baseDomain: "{{ .Values.baseDomain }}"
+      virtualService:
+        hosts:
+          - "{{ .Values.baseDomain }}"
+          - "*.{{ .Values.baseDomain }}"
+      cookieDomain: "{{ .Values.baseDomain }}"
+      extraEnvVars:
+        - name: DEFAULT_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
+          value: https://${org-subdomain}{{ .Values.baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
+        - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
+          value: "https://${org-subdomain}{{ .Values.baseDomainPort }}/iam/graphql"
+  observability:
+    enabled: false
+    targetNamespace: observability
+    values:
+      istio:
+        grafana:
+          virtualService:
+            hosts: ["grafana.{{ .Values.baseDomain }}"]
+        tracing:
+          enabled: false
+      opentelemetry-collector:
+        service:
+          type: ClusterIP
+        ports:
+          metrics:
+            enabled: true
+  virtual-workspaces:
+    enabled: true
+  organization-idp:
+    enabled: true
+    skipHelmRelease: true
+    dependsOn:
+      - name: keycloak
+        namespace: platform-mesh-system
+  iam-service:
+    enabled: false
+    values:
+      istio:
+        hosts:
+          - "*.{{ .Values.baseDomain }}"

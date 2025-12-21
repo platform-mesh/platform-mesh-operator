@@ -28,9 +28,9 @@ type RealmReconciler struct {
 func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) *RealmReconciler {
 
 	clientFluxCD := mgr.GetClient()
-	if cfg.RemoteFluxCD.Enabled {
+	if cfg.RemoteInfra.Enabled {
 		var err error
-		clientFluxCD, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteFluxCD.Kubeconfig)
+		clientFluxCD, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteInfra.Kubeconfig)
 		if err != nil {
 			log.Fatal().Err(err).Msg("unable to get remote fluxcd kubeconfig")
 			return nil

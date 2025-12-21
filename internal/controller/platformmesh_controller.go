@@ -72,14 +72,16 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 	return builder.Complete(r)
 }
 
-func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientFluxCD client.Client) *PlatformMeshReconciler {
-
-	// log mgr.GetConfig().Host
-	log.Info().Msg("PlatformMesh Host: " + mgr.GetConfig().Host)
+func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client) *PlatformMeshReconciler {
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientFluxCD, commonCfg, cfg))
+		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg)
+		// Set the REST config from the manager to ensure dynamic client uses the correct config
+		if err := deploymentSub.SetRestConfig(mgr.GetConfig()); err != nil {
+			log.Error().Err(err).Msg("Failed to set REST config for DeploymentSubroutine")
+		}
+		subs = append(subs, deploymentSub)
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
 		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp"))
@@ -91,7 +93,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg))
 	}
 	if cfg.Subroutines.Wait.Enabled {
-		subs = append(subs, subroutines.NewWaitSubroutine(clientFluxCD))
+		subs = append(subs, subroutines.NewWaitSubroutine(clientInfra))
 	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

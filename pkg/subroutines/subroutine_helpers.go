@@ -24,7 +24,6 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog/log"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -64,7 +63,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	}
 	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
 	scheme := runtime.NewScheme()
-	utilruntime.Must(v1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
@@ -140,10 +139,6 @@ func GetWorkspaceDirs(dir string) []string {
 			if IsWorkspace(d.Name()) {
 				workspaces = append(workspaces, d.Name())
 			}
-			if err != nil {
-				return workspaces
-			}
-			workspaces = append(workspaces, d.Name())
 		}
 	}
 	return workspaces
@@ -184,40 +179,6 @@ func ListFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-func MergeJSON(a, b apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	// Unmarshal 'a'
-	var mapA map[string]interface{}
-	if len(a.Raw) > 0 {
-		if err := json.Unmarshal(a.Raw, &mapA); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapA = map[string]interface{}{}
-	}
-
-	// Unmarshal 'b'
-	var mapB map[string]interface{}
-	if len(b.Raw) > 0 {
-		if err := json.Unmarshal(b.Raw, &mapB); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapB = map[string]interface{}{}
-	}
-
-	// Merge mapB into mapA (b overwrites a on conflict)
-	for k, v := range mapB {
-		mapA[k] = v
-	}
-
-	// Marshal back to apiextensionsv1.JSON
-	mergedRaw, err := json.Marshal(mapA)
-	if err != nil {
-		return apiextensionsv1.JSON{}, err
-	}
-	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-}
-
 func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
 	services := inst.Spec.Values
 	var mapValues map[string]interface{}
@@ -253,16 +214,10 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 	mergeOCMConfig(mapValues, inst)
 
-	if config.RemotePlatformMesh.Enabled {
-		mapValues["fluxCD"] = map[string]interface{}{
-			"kubeConfig": map[string]interface{}{
-				"enabled": true,
-				"secretRef": map[string]interface{}{
-					"name": config.RemotePlatformMesh.FluxCDSecretName,
-					"key":  config.RemotePlatformMesh.FluxCDSecretKey,
-				},
-			},
-		}
+	mapValues["kubeConfigEnabled"] = config.RemoteRuntime.Enabled
+	if config.RemoteRuntime.Enabled {
+		mapValues["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
+		mapValues["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}
 
 	// Marshal back to apiextensionsv1.JSON
@@ -272,51 +227,6 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 	}
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
 
-}
-
-func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
-	valuesInfra := inst.Spec.InfraValues
-	var mapValues map[string]interface{}
-	if len(templateVars.Raw) > 0 {
-		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapValues = map[string]interface{}{}
-	}
-	// Unmarshal 'valuesInfra'
-	var mapValuesInfra map[string]interface{}
-	if len(valuesInfra.Raw) > 0 {
-		if err := json.Unmarshal(valuesInfra.Raw, &mapValuesInfra); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapValuesInfra = map[string]interface{}{}
-	}
-
-	// add 'valuesInfra' to mapValues
-	for k, v := range mapValuesInfra {
-		mapValues[k] = v
-	}
-
-	if config.RemotePlatformMesh.Enabled {
-		mapValues["fluxCD"] = map[string]interface{}{
-			"kubeConfig": map[string]interface{}{
-				"enabled": true,
-				"secretRef": map[string]interface{}{
-					"name": config.RemotePlatformMesh.FluxCDSecretName,
-					"key":  config.RemotePlatformMesh.FluxCDSecretKey,
-				},
-			},
-		}
-	}
-
-	// Marshal back to apiextensionsv1.JSON
-	mergedRaw, err := json.Marshal(mapValues)
-	if err != nil {
-		return apiextensionsv1.JSON{}, err
-	}
-	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
 }
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
@@ -358,11 +268,12 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	}
 
 	values := map[string]interface{}{
-		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"baseDomain":     baseDomain,
-		"protocol":       protocol,
-		"port":           fmt.Sprintf("%d", port),
-		"baseDomainPort": baseDomainPort,
+		"iamWebhookCA":         base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":           baseDomain,
+		"protocol":             protocol,
+		"port":                 fmt.Sprintf("%d", port),
+		"baseDomainPort":       baseDomainPort,
+		"helmReleaseNamespace": inst.Namespace,
 	}
 
 	result := apiextensionsv1.JSON{}

@@ -39,7 +39,7 @@ spec:
     infra:
       dependsOn:
         - name: kcp-operator
-          namespace: default
+          namespace: platform-mesh-system
       values:
         cors:
           enabled: true
