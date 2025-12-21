@@ -232,11 +232,10 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 		},
 	}
 
-	for _, tt := range tests {
+		for _, tt := range tests {
 		s.Run(tt.name, func() {
 			managerMock := new(mocks.Manager)
 			clientMock := new(mocks.Client)
-			subroutine := subroutines.NewResourceSubroutine(clientMock)
 			ctx := context.TODO()
 
 			annotations := map[string]interface{}{
@@ -275,8 +274,8 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 				s.Require().NoError(err)
 			}
 
-			clientMock = new(mocks.Client)
 			managerMock.On("GetClient").Return(clientMock)
+			subroutine := subroutines.NewResourceSubroutine(clientMock)
 
 			// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
 			// Patch is called with: ctx, obj, patch, fieldOwner, forceOwnership (5 args total)

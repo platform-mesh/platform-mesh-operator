@@ -39,7 +39,7 @@ type OperatorConfig struct {
 				Enabled bool `mapstructure:"subroutines-resource-enabled" default:"true"`
 			} `mapstructure:",squash"`
 		} `mapstructure:",squash"`
-	}
+	} `mapstructure:",squash"`
 	RemoteInfra struct {
 		Enabled    bool   `mapstructure:"remote-infra-enabled" default:"false"`
 		Kubeconfig string `mapstructure:"remote-infra-kubeconfig" default:"/operator/infra-kubeconfig"`

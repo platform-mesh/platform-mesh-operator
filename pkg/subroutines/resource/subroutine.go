@@ -167,13 +167,10 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.client.Get(ctx, client.ObjectKeyFromObject(inst), obj)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
 	// Create a minimal patch object with only the field we're updating
 	// This ensures Server-Side Apply only tracks ownership of this specific field
+	// We don't need to Get the existing object since we already have name/namespace
+	// from the 'for' annotation or the Resource instance itself
 	patchObj := &unstructured.Unstructured{}
 	patchObj.SetGroupVersionKind(helmReleaseGvk)
 	patchObj.SetName(obj.GetName())
