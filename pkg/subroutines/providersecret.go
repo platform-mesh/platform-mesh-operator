@@ -61,7 +61,6 @@ func NewProviderSecretSubroutine(
 type ProvidersecretSubroutine struct {
 	client      client.Client
 	kcpHelper   KcpHelper
-	kcpUrl      string
 	helm        HelmGetter
 	cfgOperator *config.OperatorConfig
 }

@@ -71,9 +71,6 @@ func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string
 			// dst has higher precedence, so we keep the object value from dst
 			// Only warn if the types are fundamentally incompatible
 			log.Debug().Msgf("keeping object value for %s from destination (destination has higher precedence)", key)
-		} else {
-			// Both are non-objects, dst has higher precedence so we keep dst's value
-			// No action needed as dst[key] already has the correct value
 		}
 	}
 	return dst
