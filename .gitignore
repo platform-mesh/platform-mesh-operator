@@ -43,3 +43,4 @@ test/e2e/kind/certs/
 **/__debug_bin*
 gha-logs.txt
 *.kubeconfig
+debug

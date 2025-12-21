@@ -61,10 +61,19 @@ func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string
 			if isObject(dv) {
 				mergeObject(dv.(map[string]interface{}), val.(map[string]interface{}), log)
 			} else {
-				log.Warn().Msgf("warning: cannot overwrite object with non object for %s (%v)", key, val)
+				// dst has higher precedence, so we keep the non-object value from dst
+				// Only warn if the types are fundamentally incompatible (not just a simple value)
+				if val != nil {
+					log.Debug().Msgf("keeping non-object value for %s from destination (destination has higher precedence)", key)
+				}
 			}
 		} else if isObject(dv) && val != nil {
-			log.Warn().Msgf("warning: destination for %s is a object. Ignoring non-object value (%v)", key, val)
+			// dst has higher precedence, so we keep the object value from dst
+			// Only warn if the types are fundamentally incompatible
+			log.Debug().Msgf("keeping object value for %s from destination (destination has higher precedence)", key)
+		} else {
+			// Both are non-objects, dst has higher precedence so we keep dst's value
+			// No action needed as dst[key] already has the correct value
 		}
 	}
 	return dst

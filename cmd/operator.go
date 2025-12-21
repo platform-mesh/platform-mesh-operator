@@ -20,12 +20,15 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net/http"
 	"os"
 
 	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -81,20 +84,20 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}()
 
-	restConfigPlatformMesh := ctrl.GetConfigOrDie()
-	if operatorCfg.RemotePlatformMesh.Enabled {
-		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemotePlatformMesh.Kubeconfig)
-		_, restConfigPlatformMesh, err = subroutines.GetClientAndRestConfig(operatorCfg.RemotePlatformMesh.Kubeconfig)
+	config := ctrl.GetConfigOrDie()
+	if operatorCfg.RemoteRuntime.Enabled {
+		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
+		_, config, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
 	}
 	if err != nil {
 		setupLog.Error(err, "unable to create PlatformMesh client")
 		os.Exit(1)
 	}
-	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", restConfigPlatformMesh.Host))
-	// restConfigPlatformMesh.Wrap(func(rt http.RoundTripper) http.RoundTripper {
-	// 	return otelhttp.NewTransport(rt)
-	// })
-	mgrPlatformMesh, err := ctrl.NewManager(restConfigPlatformMesh, ctrl.Options{
+	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", config.Host))
+	config.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
+	mgr, err := ctrl.NewManager(config, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -102,9 +105,9 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 			TLSOpts:       tlsOpts,
 		},
 		BaseContext:                   func() context.Context { return ctx },
-		HealthProbeBindAddress:        operatorCfg.RemotePlatformMesh.Metrics.HealthProbeBindAddress,
-		LeaderElection:                operatorCfg.RemotePlatformMesh.Metrics.LeaderElectionEnabled,
-		LeaderElectionID:              "81924e50-platformmesh.platform-mesh.org",
+		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
+		LeaderElection:                defaultCfg.LeaderElection.Enabled,
+		LeaderElectionID:              "81924e50.platform-mesh.org",
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
@@ -112,76 +115,44 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	restConfigFluxCD := ctrl.GetConfigOrDie()
-	if operatorCfg.RemoteFluxCD.Enabled {
-		setupLog.Info("Remote FluxCD deployment enabled")
-		_, restConfigFluxCD, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteFluxCD.Kubeconfig)
+	var fluxClient client.Client
+	if operatorCfg.RemoteInfra.Enabled {
+		fluxClient, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
+		if err != nil {
+			setupLog.Error(err, "unable to create FluxCD client")
+			os.Exit(1)
+		}
 	}
-	if err != nil {
-		setupLog.Error(err, "unable to create FluxCD client")
-		os.Exit(1)
-	}
-	setupLog.Info(fmt.Sprintf("FluxCD Host: %s", restConfigFluxCD.Host))
-	// restConfigFluxCD.Wrap(func(rt http.RoundTripper) http.RoundTripper {
-	// 	return otelhttp.NewTransport(rt)
-	// })
-	mgrFluxCD, err := ctrl.NewManager(restConfigFluxCD, ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress:   operatorCfg.RemoteFluxCD.Metrics.BindAddress, // ":9091",
-			SecureServing: operatorCfg.RemoteFluxCD.Metrics.Secure,
-			TLSOpts:       tlsOpts,
-		},
-		BaseContext:                   func() context.Context { return ctx },
-		HealthProbeBindAddress:        operatorCfg.RemoteFluxCD.Metrics.HealthProbeBindAddress,
-		LeaderElection:                operatorCfg.RemoteFluxCD.Metrics.LeaderElectionEnabled,
-		LeaderElectionID:              "81924e50.platform-mesh.org",
-		LeaderElectionReleaseOnCancel: true,
-	})
-	if err != nil {
-		setupLog.Error(err, "unable to start deploymentmanager")
-		os.Exit(1)
-	}
-
-	pmReconciler := controller.NewPlatformMeshReconciler(log, mgrPlatformMesh, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, mgrFluxCD.GetClient())
-	if err := pmReconciler.SetupWithManager(mgrPlatformMesh, defaultCfg, log.ChildLogger("type", "PlatformMesh")); err != nil {
+	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, fluxClient)
+	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "PlatformMesh")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(log, mgrFluxCD, &operatorCfg)
-	if err := resourceReconciler.SetupWithManager(mgrFluxCD, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
+	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, fluxClient)
+	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 	if operatorCfg.PatchOIDCControllerEnabled {
-		realmReconciler := controller.NewRealmReconciler(mgrPlatformMesh, log, &operatorCfg)
-		if err := realmReconciler.SetupWithManager(mgrPlatformMesh, defaultCfg, log.ChildLogger("type", "Realm")); err != nil {
+		realmReconciler := controller.NewRealmReconciler(mgr, log, &operatorCfg)
+		if err := realmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Realm")); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "Realm")
 			os.Exit(1)
 		}
 	}
 
-	if err := mgrPlatformMesh.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
-	if err := mgrPlatformMesh.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
 
-	signalHandler := ctrl.SetupSignalHandler()
-
-	go func() {
-		setupLog.Info("starting resource manager")
-		if err := mgrFluxCD.Start(signalHandler); err != nil {
-			log.Fatal().Err(err).Msg("problem running resource manager")
-		}
-	}()
-
 	setupLog.Info("starting manager")
-	if err := mgrPlatformMesh.Start(signalHandler); err != nil {
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
 

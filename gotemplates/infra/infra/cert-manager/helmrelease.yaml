@@ -1,0 +1,25 @@
+{{- if .certManager.enabled }}
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: {{ .certManager.name }}
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    enabled: true
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
+  chartRef:
+    kind: OCIRepository
+    name: {{ .certManager.name }}
+    namespace: {{ .helmReleaseNamespace }}
+  interval: {{ .certManager.interval }}
+  releaseName: {{ .certManager.name }}
+  targetNamespace: {{ .certManager.targetNamespace }}
+  timeout: 15m
+  values:
+{{ .certManager.values }}
+{{- end }}

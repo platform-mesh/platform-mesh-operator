@@ -515,6 +515,8 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.FrontProxyName = "frontproxy"
 	appConfig.KCP.FrontProxyPort = "6443"
 	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	appConfig.RemoteRuntime.Enabled = false
+	appConfig.RemoteInfra.Enabled = false
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
@@ -541,7 +543,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 		return
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig)
+	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig, mgr.GetClient())
 	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return
