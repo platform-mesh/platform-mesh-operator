@@ -1640,10 +1640,10 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			Namespace:         ptr.To("test"),
 		},
 		{
-			EndpointSliceName: "",
+			EndpointSliceName: ptr.To(""),
 			Path:              "root:platform-mesh-system",
 			Secret:            "internal-kubeconfig",
-			Namespace:         "test",
+			Namespace:         ptr.To("test"),
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
