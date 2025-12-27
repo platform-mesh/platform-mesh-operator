@@ -232,7 +232,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 		},
 	}
 
-		for _, tt := range tests {
+	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			managerMock := new(mocks.Manager)
 			clientMock := new(mocks.Client)
