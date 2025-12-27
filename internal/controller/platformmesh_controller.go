@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -27,6 +26,7 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
@@ -72,29 +72,28 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 	return builder.Complete(r)
 }
 
-func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) *PlatformMeshReconciler {
-	//FIXME swith back to the commented out variation when the front-proxy certificate accepts it
-	//kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
-	kcpUrl := fmt.Sprintf("https://%s-front-proxy:%s", cfg.KCP.FrontProxyName, cfg.KCP.FrontProxyPort)
-	if cfg.KCP.Url != "" {
-		kcpUrl = cfg.KCP.Url
-	}
+func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client) *PlatformMeshReconciler {
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), commonCfg, cfg))
+		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg)
+		// Set the REST config from the manager to ensure dynamic client uses the correct config
+		if err := deploymentSub.SetRestConfig(mgr.GetConfig()); err != nil {
+			log.Error().Err(err).Msg("Failed to set REST config for DeploymentSubroutine")
+		}
+		subs = append(subs, deploymentSub)
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
-		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp", kcpUrl))
+		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp"))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
-		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))
+		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, cfg))
 	}
 	if cfg.Subroutines.FeatureToggles.Enabled {
-		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, kcpUrl))
+		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg))
 	}
 	if cfg.Subroutines.Wait.Enabled {
-		subs = append(subs, subroutines.NewWaitSubroutine(mgr.GetClient()))
+		subs = append(subs, subroutines.NewWaitSubroutine(clientInfra))
 	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

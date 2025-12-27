@@ -6,6 +6,8 @@ metadata:
 spec:
   exposure:
     port: 8443
+    baseDomain: portal.dev.local
+    protocol: https
   ocm:
     repo:
       name: platform-mesh
@@ -37,7 +39,7 @@ spec:
     infra:
       dependsOn:
         - name: kcp-operator
-          namespace: default
+          namespace: platform-mesh-system
       values:
         cors:
           enabled: true

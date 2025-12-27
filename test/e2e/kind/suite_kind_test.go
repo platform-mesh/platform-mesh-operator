@@ -151,6 +151,12 @@ func (s *KindTestSuite) createKindCluster() error {
 	s.logger.Info().Msg("Retrieving kubeconfig for Kind cluster...")
 	var kubeconfig []byte
 	if kubeconfig, err = runCommand("kind", "get", "kubeconfig", "--name", clusterName); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to get kubeconfig")
+		return err
+	}
+
+	if _, err = runCommand("kind", "export", "kubeconfig", "--name", clusterName, "--kubeconfig=kind-testcluster.kubeconfig"); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to export kubeconfig")
 		return err
 	}
 
@@ -504,12 +510,13 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
-	appConfig.KCP.Url = "https://kcp.api.portal.dev.local:8443"
 	appConfig.KCP.RootShardName = "root"
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"
 	appConfig.KCP.FrontProxyPort = "6443"
 	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	appConfig.RemoteRuntime.Enabled = false
+	appConfig.RemoteInfra.Enabled = false
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
@@ -529,14 +536,14 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	s.kubernetesManager = mgr
 
-	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../")
+	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetClient())
 	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig)
+	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig, mgr.GetClient())
 	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return

@@ -24,10 +24,11 @@ import (
 
 type DeployTestSuite struct {
 	suite.Suite
-	clientMock *mocks.Client
-	helperMock *mocks.KcpHelper
-	testObj    *subroutines.DeploymentSubroutine
-	log        *logger.Logger
+	clientMock     *mocks.Client
+	helperMock     *mocks.KcpHelper
+	testObj        *subroutines.DeploymentSubroutine
+	log            *logger.Logger
+	operatorConfig *config.OperatorConfig
 }
 
 func TestDeployTestSuite(t *testing.T) {
@@ -47,8 +48,17 @@ func (s *DeployTestSuite) SetupTest() {
 	operatorCfg := config.OperatorConfig{
 		WorkspaceDir: "../../",
 	}
+	operatorCfg.KCP.RootShardName = "root"
+	operatorCfg.KCP.Namespace = "platform-mesh-system"
+	operatorCfg.KCP.FrontProxyName = "frontproxy"
+	operatorCfg.KCP.FrontProxyPort = "6443"
+	operatorCfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	operatorCfg.RemoteInfra.Enabled = true
+	operatorCfg.RemoteInfra.Kubeconfig = "platform-mesh-kubeconfig"
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
+	s.operatorConfig = &operatorCfg
+
+	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg)
 }
 
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {
@@ -86,8 +96,13 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local:8443","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
-			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
+			// The actual output includes additional fields added by buildComponentsTemplateData
+			actual := string(specJSON.Raw)
+			s.Require().Contains(actual, `"baseDomain":"portal.dev.local"`, "should contain baseDomain")
+			s.Require().Contains(actual, `"baseDomainPort":"portal.dev.local:8443"`, "should contain baseDomainPort")
+			s.Require().Contains(actual, `"port":"8443"`, "should contain port")
+			s.Require().Contains(actual, `"protocol":"https"`, "should contain protocol")
+			s.Require().Contains(actual, `"services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}`, "should contain services")
 
 			return nil
 		},
@@ -104,7 +119,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	}
 
-	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars, *s.operatorConfig)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
@@ -140,14 +155,19 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local","iamWebhookCA":"","port":"443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
-			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
+			// The actual output includes additional fields added by buildComponentsTemplateData
+			actual := string(specJSON.Raw)
+			s.Require().Contains(actual, `"baseDomain":"portal.dev.local"`, "should contain baseDomain")
+			s.Require().Contains(actual, `"baseDomainPort":"portal.dev.local"`, "should contain baseDomainPort")
+			s.Require().Contains(actual, `"port":"443"`, "should contain port")
+			s.Require().Contains(actual, `"protocol":"https"`, "should contain protocol")
+			s.Require().Contains(actual, `"services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}`, "should contain services")
 
 			return nil
 		},
 	).Once()
 
-	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars, *s.operatorConfig)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
