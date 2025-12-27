@@ -118,6 +118,10 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var clientInfra client.Client
 	configInfra := ctrl.GetConfigOrDie()
 	clientInfra, err = client.New(configInfra, client.Options{Scheme: subroutines.GetClientScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to create Infra client")
+		os.Exit(1)
+	}
 	if operatorCfg.RemoteInfra.Enabled {
 		clientInfra, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
 		if err != nil {

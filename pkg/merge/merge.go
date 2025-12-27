@@ -68,10 +68,10 @@ func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string
 			if val != nil {
 				log.Debug().Msgf("keeping object value for %s from destination (destination has higher precedence)", key)
 			}
-		} else {
-			// Both are non-objects (strings, arrays, numbers, etc.)
-			// dst already has the correct value since it has higher precedence
-			// No action needed - dst value is already in place
+			// } else {
+			// 	// Both are non-objects (strings, arrays, numbers, etc.)
+			// 	// dst already has the correct value since it has higher precedence
+			// 	// No action needed - dst value is already in place
 		}
 	}
 	return dst
