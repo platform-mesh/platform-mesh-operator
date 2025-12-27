@@ -199,6 +199,10 @@ services:
   kubernetes-graphql-gateway:
     enabled: true
     values:
+      istio:
+        enabled: false
+      gatewayApi:
+        enabled: true
       hostAliases:
         enabled: true
         # entries:
@@ -216,31 +220,16 @@ services:
       kubeConfig:
         enabled: true
         secretName: kubernetes-grapqhl-gateway-kubeconfig
-      virtualService:
-        pathPrefix: /api/kubernetes-graphql-gateway/
-        hosts:
-          - "{{ .Values.baseDomain }}"
-          - "*.{{ .Values.baseDomain }}"
-        httpRules:
-          - name: default
-            cors:
-              allowHeaders:
-                - "*"
-              allowMethods:
-                - GET
-                - POST
-              allowOrigins:
-                - regex: .*
       listener:
         virtualWorkspacesConfig:
           enabled: true
           content:
             virtualWorkspaces:
               - name: contentconfigurations
-                url: "https://kcp-front-proxy.platform-mesh-system:8443/services/contentconfigurations"
+                url: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations"
                 kubeconfig: /app/kubeconfig/kubeconfig
               - name: marketplace
-                url: "https://kcp-front-proxy.platform-mesh-system:8443/services/marketplace"
+                url: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace"
                 kubeconfig: /app/kubeconfig/kubeconfig
   openfga:
     enabled: true

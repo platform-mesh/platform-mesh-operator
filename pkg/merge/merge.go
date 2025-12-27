@@ -48,29 +48,30 @@ func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string
 	if dst == nil {
 		return src
 	}
-	for key, val := range dst {
-		if val == nil {
-			src[key] = nil
-		}
-	}
 	// Because dst has higher precedence than src, dst values override src values.
 	for key, val := range src {
 		if dv, ok := dst[key]; !ok {
+			// Key doesn't exist in dst, add it from src
 			dst[key] = val
 		} else if isObject(val) {
 			if isObject(dv) {
+				// Both are objects, recursively merge (dst has higher precedence)
 				mergeObject(dv.(map[string]interface{}), val.(map[string]interface{}), log)
 			} else {
-				// dst has higher precedence, so we keep the non-object value from dst
-				// Only warn if the types are fundamentally incompatible (not just a simple value)
+				// src is object but dst is not, keep dst (dst has higher precedence)
 				if val != nil {
 					log.Debug().Msgf("keeping non-object value for %s from destination (destination has higher precedence)", key)
 				}
 			}
-		} else if isObject(dv) && val != nil {
-			// dst has higher precedence, so we keep the object value from dst
-			// Only warn if the types are fundamentally incompatible
-			log.Debug().Msgf("keeping object value for %s from destination (destination has higher precedence)", key)
+		} else if isObject(dv) {
+			// dst is object but src is not, keep dst (dst has higher precedence)
+			if val != nil {
+				log.Debug().Msgf("keeping object value for %s from destination (destination has higher precedence)", key)
+			}
+		} else {
+			// Both are non-objects (strings, arrays, numbers, etc.)
+			// dst already has the correct value since it has higher precedence
+			// No action needed - dst value is already in place
 		}
 	}
 	return dst
