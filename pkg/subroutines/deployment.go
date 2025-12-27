@@ -17,8 +17,10 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog/log"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -27,6 +29,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
 
 	_ "embed"
@@ -46,8 +49,6 @@ type DeploymentSubroutine struct {
 	gotemplatesInfraDir      string
 	gotemplatesComponentsDir string
 	cfgOperator              *config.OperatorConfig
-	profileInfra             string
-	profileComponents        string
 	restConfig               *rest.Config
 }
 
@@ -56,6 +57,11 @@ var profileInfraEmbedded []byte
 
 //go:embed profile-components.yaml
 var profileComponentsEmbedded []byte
+
+const (
+	profileConfigMapKey           = "profile.yaml"
+	defaultProfileConfigMapSuffix = "-profile"
+)
 
 func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
 	workspaceDir := filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/")
@@ -73,8 +79,6 @@ func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Cli
 		gotemplatesInfraDir:      gotemplatesInfraDir,
 		gotemplatesComponentsDir: gotemplatesComponentsDir,
 		cfgOperator:              operatorCfg,
-		profileInfra:             string(profileInfraEmbedded),
-		profileComponents:        string(profileComponentsEmbedded),
 		restConfig:               nil, // Will be set via SetRestConfig()
 	}
 
@@ -89,6 +93,144 @@ func (r *DeploymentSubroutine) SetRestConfig(restConfig *rest.Config) error {
 	}
 	r.restConfig = restConfig
 	return nil
+}
+
+// getOrCreateProfileConfigMap ensures the profile ConfigMap exists, creating a default one if needed.
+func (r *DeploymentSubroutine) getOrCreateProfileConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (*corev1.ConfigMap, error) {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+
+	var configMapName, configMapNamespace string
+	if inst.Spec.ProfileConfigMap != nil {
+		configMapName = inst.Spec.ProfileConfigMap.Name
+		configMapNamespace = inst.Spec.ProfileConfigMap.Namespace
+		if configMapNamespace == "" {
+			configMapNamespace = inst.Namespace
+		}
+	} else {
+		// Use default ConfigMap name
+		configMapName = inst.Name + defaultProfileConfigMapSuffix
+		configMapNamespace = inst.Namespace
+	}
+
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: configMapNamespace,
+		},
+	}
+
+	// Try to get existing ConfigMap
+	err := r.clientRuntime.Get(ctx, client.ObjectKeyFromObject(configMap), configMap)
+	if err == nil {
+		// ConfigMap exists, verify it has the required key
+		if _, ok := configMap.Data[profileConfigMapKey]; !ok {
+			return nil, fmt.Errorf("configMap %s/%s exists but does not contain key %s", configMapNamespace, configMapName, profileConfigMapKey)
+		}
+		log.Debug().Str("configmap", configMapName).Str("namespace", configMapNamespace).Msg("Using existing profile ConfigMap")
+		return configMap, nil
+	}
+
+	if !kerrors.IsNotFound(err) {
+		return nil, errors.Wrap(err, "failed to get profile ConfigMap")
+	}
+
+	// ConfigMap doesn't exist, create default one
+	log.Info().Str("configmap", configMapName).Str("namespace", configMapNamespace).Msg("Creating default profile ConfigMap")
+
+	// Create unified profile from embedded files
+	unifiedProfile, err := r.createUnifiedProfile()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create unified profile")
+	}
+
+	configMap.Data = map[string]string{
+		profileConfigMapKey: unifiedProfile,
+	}
+
+	// Set owner reference to the PlatformMesh instance
+	if err := controllerutil.SetControllerReference(inst, configMap, r.clientRuntime.Scheme()); err != nil {
+		return nil, errors.Wrap(err, "failed to set controller reference")
+	}
+
+	if err := r.clientRuntime.Create(ctx, configMap); err != nil {
+		return nil, errors.Wrap(err, "failed to create default profile ConfigMap")
+	}
+
+	log.Info().Str("configmap", configMapName).Str("namespace", configMapNamespace).Msg("Created default profile ConfigMap")
+	return configMap, nil
+}
+
+// createUnifiedProfile creates a unified profile YAML combining infra and components sections.
+func (r *DeploymentSubroutine) createUnifiedProfile() (string, error) {
+	// Parse infra profile
+	var infraData map[string]interface{}
+	if err := yaml.Unmarshal(profileInfraEmbedded, &infraData); err != nil {
+		return "", errors.Wrap(err, "Failed to parse embedded profile-infra.yaml")
+	}
+
+	// Parse components profile
+	var componentsData map[string]interface{}
+	if err := yaml.Unmarshal(profileComponentsEmbedded, &componentsData); err != nil {
+		return "", errors.Wrap(err, "Failed to parse embedded profile-components.yaml")
+	}
+
+	// Create unified structure
+	unified := map[string]interface{}{
+		"infra":      infraData,
+		"components": componentsData,
+	}
+
+	// Marshal to YAML
+	unifiedYAML, err := yaml.Marshal(unified)
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to marshal unified profile")
+	}
+
+	return string(unifiedYAML), nil
+}
+
+// loadProfileFromConfigMap loads the profile from the ConfigMap and returns infra and components sections.
+func (r *DeploymentSubroutine) loadProfileFromConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (infraProfile string, componentsProfile string, err error) {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+
+	configMap, err := r.getOrCreateProfileConfigMap(ctx, inst)
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to get or create profile ConfigMap")
+	}
+
+	profileYAML, ok := configMap.Data[profileConfigMapKey]
+	if !ok {
+		return "", "", fmt.Errorf("configMap %s/%s does not contain key %s", configMap.Namespace, configMap.Name, profileConfigMapKey)
+	}
+
+	// Parse unified profile
+	var unifiedProfile map[string]interface{}
+	if err := yaml.Unmarshal([]byte(profileYAML), &unifiedProfile); err != nil {
+		return "", "", errors.Wrap(err, "failed to parse profile YAML from ConfigMap")
+	}
+
+	// Extract infra section
+	infraData, ok := unifiedProfile["infra"]
+	if !ok {
+		return "", "", fmt.Errorf("profile ConfigMap does not contain 'infra' section")
+	}
+	infraYAML, err := yaml.Marshal(infraData)
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to marshal infra profile")
+	}
+
+	// Extract components section
+	componentsData, ok := unifiedProfile["components"]
+	if !ok {
+		return "", "", fmt.Errorf("profile ConfigMap does not contain 'components' section")
+	}
+	componentsYAML, err := yaml.Marshal(componentsData)
+	if err != nil {
+		return "", "", errors.Wrap(err, "Failed to marshal components profile")
+	}
+
+	log.Debug().Str("configmap", configMap.Name).Str("namespace", configMap.Namespace).Msg("Loaded profile from ConfigMap")
+	return string(infraYAML), string(componentsYAML), nil
 }
 
 func (r *DeploymentSubroutine) GetName() string {
@@ -219,11 +361,16 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 }
 
 // templateVarsFromProfileInfra parses profile-infra.yaml and merges it with templateVars for rendering gotemplates/infra
-func (r *DeploymentSubroutine) templateVarsFromProfileInfra(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config *config.OperatorConfig) (map[string]interface{}, error) {
+func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config *config.OperatorConfig) (map[string]interface{}, error) {
+	// Load profile from ConfigMap
+	infraProfile, _, err := r.loadProfileFromConfigMap(ctx, inst)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
+	}
 
 	// Parse profile-infra.yaml
 	var profileData map[string]interface{}
-	if err := yaml.Unmarshal([]byte(r.profileInfra), &profileData); err != nil {
+	if err := yaml.Unmarshal([]byte(infraProfile), &profileData); err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-infra.yaml")
 	}
 
@@ -306,9 +453,15 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(inst *v1alpha1.Platf
 func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 
+	// Load profile from ConfigMap
+	infraProfile, componentsProfile, err := r.loadProfileFromConfigMap(ctx, inst)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
+	}
+
 	// Start with profile-infra.yaml as base (runtime templates need infra profile data)
 	var profileData map[string]interface{}
-	if err := yaml.Unmarshal([]byte(r.profileInfra), &profileData); err != nil {
+	if err := yaml.Unmarshal([]byte(infraProfile), &profileData); err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-infra.yaml for runtime templates")
 	}
 
@@ -323,9 +476,7 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	}
 
 	// Merge profile-infra.yaml (base) with templateVars (overrides)
-	var baseVars map[string]interface{}
-	var err error
-	baseVars, err = merge.MergeMaps(profileData, templateVarsMap, log)
+	baseVars, err := merge.MergeMaps(profileData, templateVarsMap, log)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to merge profile-infra.yaml with templateVars")
 	}
@@ -378,7 +529,7 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 
 	// Get profile-components.yaml services
 	// Render profile-components.yaml as a Go template with templateVars
-	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(string(profileComponentsEmbedded))
+	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(componentsProfile)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-components.yaml template")
 	}
@@ -497,15 +648,21 @@ func templateFuncMap() template.FuncMap {
 
 // buildComponentsTemplateData parses profile-components.yaml using TemplateVars and produces the data
 // structure expected by gotemplates/components (root keys: values, releaseNamespace).
-func (r *DeploymentSubroutine) buildComponentsTemplateData(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
+func (r *DeploymentSubroutine) buildComponentsTemplateData(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
 	log, err := logger.New(logger.DefaultConfig())
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create logger")
 	}
 
+	// Load profile from ConfigMap
+	_, componentsProfile, err := r.loadProfileFromConfigMap(ctx, inst)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
+	}
+
 	// Parse profile-components.yaml as YAML to get the base structure
 	var profileData map[string]interface{}
-	if err := yaml.Unmarshal([]byte(r.profileComponents), &profileData); err != nil {
+	if err := yaml.Unmarshal([]byte(componentsProfile), &profileData); err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-components.yaml")
 	}
 
@@ -527,7 +684,7 @@ func (r *DeploymentSubroutine) buildComponentsTemplateData(inst *v1alpha1.Platfo
 	}
 
 	// Render profile-components.yaml as a Go template with .Values = tv (merged values)
-	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(string(profileComponentsEmbedded))
+	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(componentsProfile)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-components.yaml template")
 	}
@@ -689,7 +846,7 @@ func renderTemplatesInValue(v interface{}, templateData map[string]interface{}) 
 func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	tmplVars, err := r.templateVarsFromProfileInfra(inst, templateVars, r.cfgOperator)
+	tmplVars, err := r.templateVarsFromProfileInfra(ctx, inst, templateVars, r.cfgOperator)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build template variables from profile")
 		return errors.NewOperatorError(err, true, true)
@@ -716,7 +873,7 @@ func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Contex
 func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	data, err := r.buildComponentsTemplateData(inst, templateVars)
+	data, err := r.buildComponentsTemplateData(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build components template data for infra")
 		return errors.NewOperatorError(err, true, true)
@@ -791,7 +948,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	data, err := r.buildComponentsTemplateData(inst, templateVars)
+	data, err := r.buildComponentsTemplateData(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build components template data for runtime")
 		return errors.NewOperatorError(err, true, true)

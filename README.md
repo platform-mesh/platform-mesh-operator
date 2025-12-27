@@ -257,6 +257,57 @@ spec:
 
 Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
 
+### Profile Configuration
+
+The deployment profile controls the configuration of infrastructure and component deployments. The profile is stored in a ConfigMap and can be customized per PlatformMesh instance.
+
+#### Default Profile
+
+If no custom profile is specified, the operator automatically creates a default ConfigMap named `<platform-mesh-name>-profile` in the same namespace as the PlatformMesh resource. This default ConfigMap contains a unified profile with two sections:
+
+- **infra**: Infrastructure components configuration (gateway-api, traefik, cert-manager, etc.)
+- **components**: Runtime components configuration (account-operator, security-operator, keycloak, etc.)
+
+#### Custom Profile
+
+You can specify a custom profile ConfigMap by referencing it in the PlatformMesh spec:
+
+```yaml
+spec:
+  profileConfigMap:
+    name: my-custom-profile
+    namespace: platform-mesh-system  # Optional, defaults to PlatformMesh namespace
+```
+
+The ConfigMap must contain a key `profile.yaml` with the unified profile structure:
+
+```yaml
+infra:
+  ocm:
+    skipVerify: true
+    interval: 3m
+  gatewayApi:
+    enabled: true
+    name: gateway-api
+  traefik:
+    enabled: true
+    targetNamespace: default
+  # ... other infra configuration
+
+components:
+  targetNamespace: platform-mesh-system
+  protocol: https
+  port: 443
+  services:
+    account-operator:
+      enabled: true
+      values:
+        # ... service configuration
+    # ... other services
+```
+
+The profile structure matches the original `profile-infra.yaml` and `profile-components.yaml` files, now unified into a single structure with `infra` and `components` sections.
+
 ### Feature Toggles
 
 Certain features can be enabled or disabled using feature toggles in the PlatformMesh resource specification. Feature toggles are configured as follows:
@@ -299,7 +350,8 @@ The platform-mesh-operator processes the PlatformMesh resource through several s
 
 The Deployment subroutine manages the deployment of platform-mesh components across the cluster:
 
-- Merges custom values from the `PlatformMesh` resource with default configurations.
+- Loads deployment profiles from ConfigMap (or creates a default one if not specified).
+- Merges custom values from the `PlatformMesh` resource with profile configurations.
 - Applies templated manifests for `platform-mesh-operator-infra-components` and waits for the HelmRelease to become ready and also for `cert-manager` to become ready.
 - Applies templated Kubernetes manifests for `platform-mesh-operator-components`, including `Resource` and `HelmRelease` objects.
 - Manages OCM (Open Component Model) integration by configuring resources based on repository, component, and reference path settings.

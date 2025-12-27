@@ -30,6 +30,21 @@ type PlatformMeshSpec struct {
 	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
 	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
 	Wait           *WaitConfig          `json:"wait,omitempty"`
+	// ProfileConfigMap references a ConfigMap containing the deployment profile.
+	// The ConfigMap should have a key "profile.yaml" containing the unified profile with "components" and "infra" sections.
+	// If not specified, the operator will create and use a default ConfigMap named "<resource-name>-profile" in the same namespace.
+	// +optional
+	ProfileConfigMap *ConfigMapReference `json:"profileConfigMap,omitempty"`
+}
+
+// ConfigMapReference references a ConfigMap by name and optional namespace.
+// If namespace is not specified, it defaults to the PlatformMesh resource's namespace.
+type ConfigMapReference struct {
+	// Name is the name of the ConfigMap.
+	Name string `json:"name"`
+	// Namespace is the namespace of the ConfigMap. If not specified, defaults to the PlatformMesh resource's namespace.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 type WaitConfig struct {
