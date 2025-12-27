@@ -36,3 +36,13 @@ spec:
       target:
         kind: Deployment
         name: controller-manager
+    - patch: |
+        - op: add
+          path: /rules/-
+          value:
+            apiGroups: ["delivery.ocm.software"]
+            resources: ["replications", "replications/status", "replications/finalizers"]
+            verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+      target:
+        kind: ClusterRole
+        name: manager-role
