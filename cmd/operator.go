@@ -115,21 +115,23 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	var fluxClient client.Client
+	var clientInfra client.Client
+	configInfra := ctrl.GetConfigOrDie()
+	clientInfra, err = client.New(configInfra, client.Options{Scheme: subroutines.GetClientScheme()})
 	if operatorCfg.RemoteInfra.Enabled {
-		fluxClient, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
+		clientInfra, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
 		if err != nil {
 			setupLog.Error(err, "unable to create FluxCD client")
 			os.Exit(1)
 		}
 	}
-	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, fluxClient)
+	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra)
 	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "PlatformMesh")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, fluxClient)
+	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, clientInfra)
 	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
