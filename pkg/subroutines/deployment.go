@@ -1152,19 +1152,3 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 	}
 	return nil
 }
-
-func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.Client, values apiextensionsv1.JSON) error {
-	log := logger.LoadLoggerFromContext(ctx)
-
-	obj, err := unstructuredFromFile(path, map[string]string{}, log)
-	if err != nil {
-		return errors.Wrap(err, "Failed to get unstructuredFromFile")
-	}
-	obj.Object["spec"].(map[string]interface{})["values"] = values
-
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
-	if err != nil {
-		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-	}
-	return nil
-}

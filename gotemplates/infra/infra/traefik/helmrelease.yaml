@@ -4,6 +4,8 @@ kind: HelmRelease
 metadata:
   name: {{ .traefik.name }}
   namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
 spec:
 {{- if .kubeConfigEnabled }}
   kubeConfig:

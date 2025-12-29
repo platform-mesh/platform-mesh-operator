@@ -4,6 +4,8 @@ kind: Kustomization
 metadata:
   name: {{ .gatewayApi.name }}
   namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
 spec:
 {{- if .kubeConfigEnabled }}
   kubeConfig:

@@ -6,6 +6,8 @@ kind: HelmRelease
 metadata:
   name: {{ $service}}
   namespace: {{ $.releaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
 spec:
 {{- if $.kubeConfigEnabled }}
   kubeConfig:
