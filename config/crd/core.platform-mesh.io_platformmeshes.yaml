@@ -236,6 +236,22 @@ spec:
                         type: string
                     type: object
                 type: object
+              profileConfigMap:
+                description: |-
+                  ProfileConfigMap references a ConfigMap containing the deployment profile.
+                  The ConfigMap should have a key "profile.yaml" containing the unified profile with "components" and "infra" sections.
+                  If not specified, the operator will create and use a default ConfigMap named "<resource-name>-profile" in the same namespace.
+                properties:
+                  name:
+                    description: Name is the name of the ConfigMap.
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the ConfigMap. If not
+                      specified, defaults to the PlatformMesh resource's namespace.
+                    type: string
+                required:
+                - name
+                type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true
               wait:
