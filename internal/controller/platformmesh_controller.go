@@ -25,9 +25,13 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -42,11 +46,13 @@ var (
 // PlatformMeshReconciler reconciles a PlatformMesh object
 type PlatformMeshReconciler struct {
 	lifecycle *controllerruntime.LifecycleManager
+	client    client.Client
 }
 
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -69,7 +75,55 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 	if err != nil {
 		return err
 	}
+
+	// Watch ConfigMaps and enqueue PlatformMesh resources that reference them via profileConfigMap
+	builder.Watches(
+		&corev1.ConfigMap{},
+		handler.EnqueueRequestsFromMapFunc(r.mapConfigMapToPlatformMesh),
+	)
+
 	return builder.Complete(r)
+}
+
+// mapConfigMapToPlatformMesh finds all PlatformMesh resources that reference the given ConfigMap
+// via spec.profileConfigMap and returns reconcile requests for them.
+func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context, obj client.Object) []reconcile.Request {
+	configMap := obj.(*corev1.ConfigMap)
+	var requests []reconcile.Request
+
+	// List all PlatformMesh resources
+	platformMeshList := &corev1alpha1.PlatformMeshList{}
+	// We use the context from the handler since it's provided by controller-runtime
+	if err := r.client.List(ctx, platformMeshList); err != nil {
+		return requests
+	}
+
+	for _, pm := range platformMeshList.Items {
+		configMapName := ""
+		configMapNamespace := pm.Namespace // Default to PlatformMesh namespace
+
+		if pm.Spec.ProfileConfigMap != nil {
+			configMapName = pm.Spec.ProfileConfigMap.Name
+			if pm.Spec.ProfileConfigMap.Namespace != "" {
+				configMapNamespace = pm.Spec.ProfileConfigMap.Namespace
+			}
+		} else {
+			// Use default ConfigMap name if not specified (matches deployment.go defaultProfileConfigMapSuffix)
+			configMapName = pm.Name + "-profile"
+		}
+
+		// Check if this ConfigMap matches the PlatformMesh's profileConfigMap reference
+		if configMap.Name == configMapName && configMap.Namespace == configMapNamespace {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      pm.Name,
+					Namespace: pm.Namespace,
+				},
+			})
+		}
+	}
+
+	return requests
 }
 
 func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client) *PlatformMeshReconciler {
@@ -99,5 +153,6 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 			ratelimiter.WithExponentialInitialBackoff(10*time.Second),
 			ratelimiter.WithExponentialMaxBackoff(120*time.Second),
 		),
+		client: mgr.GetClient(),
 	}
 }

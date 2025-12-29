@@ -73,8 +73,8 @@ func mergeHelmReleaseField(existing *unstructured.Unstructured, existingSpec, de
 
 	switch {
 	case existingHasField && desiredHasField:
-		// Both exist, merge them (existing takes precedence)
-		merged, mergeErr := merge.MergeMaps(desiredField, existingField, log)
+		// Both exist, merge them (desired takes precedence)
+		merged, mergeErr := merge.MergeMaps(existingField, desiredField, log)
 		if mergeErr != nil {
 			log.Debug().Err(mergeErr).Str("field", fieldName).Msg("Failed to merge HelmRelease field, using desired")
 			merged = desiredField
@@ -122,8 +122,8 @@ func mergeResourceSpec(existing, desired *unstructured.Unstructured, log *logger
 		}
 	}
 
-	// Merge entire spec (existing takes precedence, preserving interval from OCM controller)
-	mergedSpec, mergeErr := merge.MergeMaps(desiredSpecCopy, existingSpec, log)
+	// Merge entire spec (desired takes precedence, preserving interval from OCM controller)
+	mergedSpec, mergeErr := merge.MergeMaps(existingSpec, desiredSpecCopy, log)
 	if mergeErr != nil {
 		log.Debug().Err(mergeErr).Msg("Failed to merge Resource spec, using desired spec")
 		mergedSpec = desiredSpecCopy
@@ -145,8 +145,8 @@ func mergeGenericSpec(existing, desired *unstructured.Unstructured, log *logger.
 		return unstructured.SetNestedField(existing.Object, desiredSpec, "spec")
 	}
 
-	// Merge entire spec (existing takes precedence)
-	mergedSpec, mergeErr := merge.MergeMaps(desiredSpec, existingSpec, log)
+	// Merge entire spec (desired takes precedence)
+	mergedSpec, mergeErr := merge.MergeMaps(existingSpec, desiredSpec, log)
 	if mergeErr != nil {
 		log.Debug().Err(mergeErr).Msg("Failed to merge spec, using desired spec")
 		mergedSpec = desiredSpec

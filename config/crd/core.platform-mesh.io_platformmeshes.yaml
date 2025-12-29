@@ -238,9 +238,8 @@ spec:
                 type: object
               profileConfigMap:
                 description: |-
-                  ProfileConfigMap references a ConfigMap containing the deployment profile.
-                  The ConfigMap should have a key "profile.yaml" containing the unified profile with "components" and "infra" sections.
-                  If not specified, the operator will create and use a default ConfigMap named "<resource-name>-profile" in the same namespace.
+                  ConfigMapReference references a ConfigMap by name and optional namespace.
+                  If namespace is not specified, it defaults to the PlatformMesh resource's namespace.
                 properties:
                   name:
                     description: Name is the name of the ConfigMap.
