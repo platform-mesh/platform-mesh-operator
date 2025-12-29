@@ -4,6 +4,9 @@ metadata:
   name: platform-mesh
   namespace: platform-mesh-system
 spec:
+  profileConfigMap:
+    name: platform-mesh-profile
+    namespace: platform-mesh-system
   exposure:
     port: 8443
     baseDomain: portal.dev.local
