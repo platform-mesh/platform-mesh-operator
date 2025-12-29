@@ -70,7 +70,7 @@ data:
           values:
             istio:
               hosts:
-              - '*.{{ .Values.baseDomain }}'
+              - '*.{{ .baseDomain }}'
         infra:
           dependsOn:
           - name: kcp-operator
@@ -89,8 +89,7 @@ data:
               rootShard:
                 extraArgs:
                 - --feature-gates=WorkspaceAuthentication=true
-                - --shard-virtual-workspace-url=https://kcp.api.{{ .Values.baseDomainPort
-                  }}
+                - --shard-virtual-workspace-url=https://kcp.api.{{ .baseDomainPort }}
               webhook:
                 enabled: true
             keycloak:
@@ -98,11 +97,11 @@ data:
                 clients:
                   welcome:
                     validRedirectUris:
-                    - https://{{ .Values.baseDomainPort }}/callback*
+                    - https://{{ .baseDomainPort }}/callback*
               istio:
                 virtualservice:
                   hosts:
-                  - '{{ .Values.baseDomain }}'
+                  - '{{ .baseDomain }}'
         kcp-operator:
           enabled: true
           helmRepo: true
@@ -188,7 +187,7 @@ data:
               default:
                 audience: default
                 jwksUrl: http://keycloak-headless.platform-mesh-system:8080/keycloak/realms/default/protocol/openid-connect/certs
-                trustedIssuer: https://{{ .Values.baseDomainPort }}/keycloak/realms/default
+                trustedIssuer: https://{{ .baseDomainPort }}/keycloak/realms/default
         observability:
           enabled: false
           targetNamespace: observability
@@ -197,7 +196,7 @@ data:
               grafana:
                 virtualService:
                   hosts:
-                  - grafana.{{ .Values.baseDomain }}
+                  - grafana.{{ .baseDomain }}
               tracing:
                 enabled: false
             opentelemetry-collector:
@@ -267,28 +266,28 @@ data:
           values:
             auth:
               default:
-                baseDomain: '{{ .Values.baseDomain }}'
+                baseDomain: '{{ .baseDomain }}'
                 clientId: welcome
                 clientSecretKey: attribute.client_secret
                 clientSecretName: portal-client-secret-welcome
-                discoveryUrl: https://{{ .Values.baseDomainPort }}/keycloak/realms/${org-name}/.well-known/openid-configuration
-            cookieDomain: '{{ .Values.baseDomain }}'
-            crdGatewayApiUrl: https://${org-subdomain}{{ .Values.baseDomain }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
+                discoveryUrl: https://{{ .baseDomainPort }}/keycloak/realms/${org-name}/.well-known/openid-configuration
+            cookieDomain: '{{ .baseDomain }}'
+            crdGatewayApiUrl: https://${org-subdomain}{{ .baseDomain }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
             environment: kind
             extraEnvVars:
             - name: DEFAULT_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-              value: https://${org-subdomain}{{ .Values.baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
+              value: https://${org-subdomain}{{ .baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
             - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-              value: https://${org-subdomain}{{ .Values.baseDomainPort }}/iam/graphql
-            frontendPort: '{{ .Values.port }}'
+              value: https://${org-subdomain}{{ .baseDomainPort }}/iam/graphql
+            frontendPort: '{{ .port }}'
             http:
               protocol: https
             kcp:
               kubeconfigSecret: portal-kubeconfig
             virtualService:
               hosts:
-              - '{{ .Values.baseDomain }}'
-              - '*.{{ .Values.baseDomain }}'
+              - '{{ .baseDomain }}'
+              - '*.{{ .baseDomain }}'
         rebac-authz-webhook:
           enabled: true
           values:
@@ -306,11 +305,11 @@ data:
         security-operator:
           enabled: true
           values:
-            baseDomain: '{{ .Values.baseDomainPort }}'
+            baseDomain: '{{ .baseDomainPort }}'
             crds:
               enabled: false
             fga:
-              inviteKeycloakBaseUrl: https://{{ .Values.baseDomainPort }}/keycloak
+              inviteKeycloakBaseUrl: https://{{ .baseDomainPort }}/keycloak
               target: openfga.platform-mesh-system.svc.cluster.local:8081
             initializer:
               kubeconfigSecret: security-initializer-kubeconfig

@@ -94,13 +94,13 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 				Group: "helm.toolkit.fluxcd.io",
 				Kind:  "HelmRelease",
 			},
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
 					{
 						Key:      "helm.toolkit.fluxcd.io/name",
 						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-components"},
+						Values:   []string{"account-operator"},
 					},
 				},
 			},
@@ -115,13 +115,244 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 				Group: "helm.toolkit.fluxcd.io",
 				Kind:  "HelmRelease",
 			},
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
 					{
 						Key:      "helm.toolkit.fluxcd.io/name",
 						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-infra-components"},
+						Values:   []string{"crossplane"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"etcd-druid"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"extension-manager-operator"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"infra"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"kcp-operator"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"keycloak"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"kubernetes-graphql-gateway"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"openfga"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"portal"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"rebac-authz-webhook"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"security-operator"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			APIVersions: v1.APIVersions{
+				Versions: []string{"v2"},
+			},
+			GroupKind: v1.GroupKind{
+				Group: "helm.toolkit.fluxcd.io",
+				Kind:  "HelmRelease",
+			},
+			Namespace: "platform-mesh-system",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"virtual-workspaces"},
 					},
 				},
 			},

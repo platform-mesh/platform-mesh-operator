@@ -459,8 +459,9 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	}
 
 	var buf bytes.Buffer
-	// Use templateVars as Values for rendering profile-components.yaml
-	if err := tmpl.Execute(&buf, map[string]interface{}{"Values": baseVars}); err != nil {
+	// Render profile-components.yaml template with baseVars directly (not wrapped in Values)
+	// This allows templates to use {{ .baseDomain }} instead of {{ .Values.baseDomain }}
+	if err := tmpl.Execute(&buf, baseVars); err != nil {
 		return nil, errors.Wrap(err, "Failed to execute profile-components.yaml template")
 	}
 
@@ -534,14 +535,17 @@ func (r *DeploymentSubroutine) buildComponentsTemplateData(ctx context.Context, 
 		return nil, errors.Wrap(err, "Failed to merge profile-components.yaml with templateVars")
 	}
 
-	// Render profile-components.yaml as a Go template with .Values = tv (merged values)
+	// Render profile-components.yaml as a Go template with tv directly (merged values)
+	// Templates can use {{ .baseDomain }} instead of {{ .Values.baseDomain }}
 	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(componentsProfile)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-components.yaml template")
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, map[string]interface{}{"Values": tv}); err != nil {
+	// Render profile-components.yaml template with tv directly (not wrapped in Values)
+	// This allows templates to use {{ .baseDomain }} instead of {{ .Values.baseDomain }}
+	if err := tmpl.Execute(&buf, tv); err != nil {
 		return nil, errors.Wrap(err, "Failed to execute profile-components.yaml template")
 	}
 
