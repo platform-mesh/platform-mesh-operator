@@ -138,16 +138,14 @@ The platform-mesh-operator can be configured using environment variables or comm
 | `REMOTE_FLUXCD_HEALTH_PROBE_BIND_ADDRESS` | Bind address for health probe | `:8091` |
 | `REMOTE_FLUXCD_LEADER_ELECT` | Enable leader election | `false` |
 
-### Remote PlatformMesh Configuration
+### Remote Runtime Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `REMOTE_PLATFORM_MESH_ENABLED` | Enable reconciliation of PlatformMesh resource on a remote cluster | `false` |
-| `REMOTE_PLATFORM_MESH_KUBECONFIG` | Path to the kubeconfig for remote PlatformMesh cluster | `/operator/platform-mesh-kubeconfig` |
-| `REMOTE_PLATFORM_MESH_METRICS_BIND_ADDRESS` | Bind address for metrics | `:9090` |
-| `REMOTE_PLATFORM_MESH_METRICS_SECURE` | Enable secure metrics | `false` |
-| `REMOTE_PLATFORM_MESH_HEALTH_PROBE_BIND_ADDRESS` | Bind address for health probe | `:8090` |
-| `REMOTE_PLATFORM_MESH_LEADER_ELECT` | Enable leader election | `false` |
+| `REMOTE_RUNTIME_ENABLED` | Enable reconciliation of PlatformMesh resource on a remote runtime cluster | `false` |
+| `REMOTE_RUNTIME_KUBECONFIG` | Path to the kubeconfig for remote runtime cluster | `/operator/runtime-kubeconfig` |
+| `REMOTE_RUNTIME_INFRA_SECRET_NAME` | Name of the secret containing infra kubeconfig in the remote runtime cluster | `infra-kubeconfig` |
+| `REMOTE_RUNTIME_INFRA_SECRET_KEY` | Key in the secret containing infra kubeconfig in the remote runtime cluster | `kubeconfig` |
 
 ### Configuration Notes
 

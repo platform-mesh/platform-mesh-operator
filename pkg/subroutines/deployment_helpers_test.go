@@ -35,60 +35,6 @@ func (s *DeploymentHelpersTestSuite) SetupTest() {
 	s.Require().NoError(err)
 }
 
-func (s *DeploymentHelpersTestSuite) Test_isSSAError_SchemaValidationError() {
-	tests := []struct {
-		name            string
-		err             error
-		wantSchemaError bool
-		wantConflict    bool
-	}{
-		{
-			name:            "schema validation error",
-			err:             errors.New("field not declared in schema"),
-			wantSchemaError: true,
-			wantConflict:    false,
-		},
-		{
-			name:            "typed patch error",
-			err:             errors.New("failed to create typed patch object"),
-			wantSchemaError: true,
-			wantConflict:    false,
-		},
-		{
-			name:            "conflict error",
-			err:             errors.New("conflict with manager"),
-			wantSchemaError: false,
-			wantConflict:    true,
-		},
-		{
-			name:            "apply failed with conflict",
-			err:             errors.New("Apply failed with 1 conflict: conflict with manager"),
-			wantSchemaError: false,
-			wantConflict:    true,
-		},
-		{
-			name:            "other error",
-			err:             errors.New("some other error"),
-			wantSchemaError: false,
-			wantConflict:    false,
-		},
-		{
-			name:            "nil error",
-			err:             nil,
-			wantSchemaError: false,
-			wantConflict:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			gotSchema, gotConflict := isSSAError(tt.err)
-			s.Equal(tt.wantSchemaError, gotSchema, "isSchemaError should match")
-			s.Equal(tt.wantConflict, gotConflict, "isConflictError should match")
-		})
-	}
-}
-
 func (s *DeploymentHelpersTestSuite) Test_mergeHelmReleaseField() {
 	tests := []struct {
 		name          string

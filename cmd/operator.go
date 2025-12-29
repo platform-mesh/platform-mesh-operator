@@ -84,20 +84,20 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}()
 
-	config := ctrl.GetConfigOrDie()
+	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg.RemoteRuntime.Enabled {
 		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
-		_, config, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
+		_, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
 	}
 	if err != nil {
 		setupLog.Error(err, "unable to create PlatformMesh client")
 		os.Exit(1)
 	}
-	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", config.Host))
-	config.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", restCfg.Host))
+	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
-	mgr, err := ctrl.NewManager(config, ctrl.Options{
+	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -116,8 +116,11 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 
 	var clientInfra client.Client
-	configInfra := ctrl.GetConfigOrDie()
-	clientInfra, err = client.New(configInfra, client.Options{Scheme: subroutines.GetClientScheme()})
+	restCfgInfra := ctrl.GetConfigOrDie()
+	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
+	clientInfra, err = client.New(restCfgInfra, client.Options{Scheme: subroutines.GetClientScheme()})
 	if err != nil {
 		setupLog.Error(err, "unable to create Infra client")
 		os.Exit(1)
@@ -125,7 +128,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if operatorCfg.RemoteInfra.Enabled {
 		clientInfra, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
 		if err != nil {
-			setupLog.Error(err, "unable to create FluxCD client")
+			setupLog.Error(err, "unable to create Infra client")
 			os.Exit(1)
 		}
 	}

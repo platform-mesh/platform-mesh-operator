@@ -27,12 +27,12 @@ type RealmReconciler struct {
 
 func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) *RealmReconciler {
 
-	clientFluxCD := mgr.GetClient()
+	clientInfra := mgr.GetClient()
 	if cfg.RemoteInfra.Enabled {
 		var err error
-		clientFluxCD, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteInfra.Kubeconfig)
+		clientInfra, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteInfra.Kubeconfig)
 		if err != nil {
-			log.Fatal().Err(err).Msg("unable to get remote fluxcd kubeconfig")
+			log.Fatal().Err(err).Msg("unable to get remote Infra kubeconfig")
 			return nil
 		}
 	}
@@ -50,7 +50,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 			},
 			"platform-mesh-operator",
 			"RealmReconciler",
-			clientFluxCD,
+			clientInfra,
 			log,
 		).WithConditionManagement().
 			WithStaticThenExponentialRateLimiter(

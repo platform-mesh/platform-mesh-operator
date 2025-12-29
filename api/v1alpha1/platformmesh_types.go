@@ -23,18 +23,14 @@ import (
 
 // PlatformMeshSpec defines the desired state of PlatformMesh
 type PlatformMeshSpec struct {
-	Exposure       *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp            Kcp                  `json:"kcp,omitempty"`
-	Values         apiextensionsv1.JSON `json:"values,omitempty"`
-	OCM            *OCMConfig           `json:"ocm,omitempty"`
-	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
-	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
-	Wait           *WaitConfig          `json:"wait,omitempty"`
-	// ProfileConfigMap references a ConfigMap containing the deployment profile.
-	// The ConfigMap should have a key "profile.yaml" containing the unified profile with "components" and "infra" sections.
-	// If not specified, the operator will create and use a default ConfigMap named "<resource-name>-profile" in the same namespace.
-	// +optional
-	ProfileConfigMap *ConfigMapReference `json:"profileConfigMap,omitempty"`
+	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp              Kcp                  `json:"kcp,omitempty"`
+	Values           apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM              *OCMConfig           `json:"ocm,omitempty"`
+	FeatureToggles   []FeatureToggle      `json:"featureToggles,omitempty"`
+	InfraValues      apiextensionsv1.JSON `json:"infraValues,omitempty"`
+	Wait             *WaitConfig          `json:"wait,omitempty"`
+	ProfileConfigMap *ConfigMapReference  `json:"profileConfigMap,omitempty"`
 }
 
 // ConfigMapReference references a ConfigMap by name and optional namespace.

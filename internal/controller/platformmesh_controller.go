@@ -76,11 +76,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg)
-		// Set the REST config from the manager to ensure dynamic client uses the correct config
-		if err := deploymentSub.SetRestConfig(mgr.GetConfig()); err != nil {
-			log.Error().Err(err).Msg("Failed to set REST config for DeploymentSubroutine")
-		}
+		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg, mgr.GetConfig())
 		subs = append(subs, deploymentSub)
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {

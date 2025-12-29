@@ -3,25 +3,16 @@ package subroutines
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"text/template"
 
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/discovery/cached/memory"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -30,17 +21,6 @@ import (
 )
 
 const (
-	// Field manager names for Server-Side Apply
-	fieldManagerDeployment = "platform-mesh-deployment"
-	fieldManagerResource   = "platform-mesh-resource"
-	fieldManagerOperator   = "platform-mesh-operator"
-
-	// Error patterns for detecting SSA failures
-	errorPatternSchemaValidation = "field not declared in schema"
-	errorPatternTypedPatch       = "failed to create typed patch object"
-	errorPatternConflict         = "conflict with"
-	errorPatternApplyFailed      = "Apply failed with"
-
 	// Kubernetes resource kind names
 	kindHelmRelease = "HelmRelease"
 	kindResource    = "Resource"
@@ -50,95 +30,6 @@ const (
 	specFieldChart    = "chart"
 	specFieldInterval = "interval"
 )
-
-// dynamicClientProvider provides dynamic client infrastructure for Server-Side Apply.
-type dynamicClientProvider struct {
-	dynamicClient   dynamic.Interface
-	discoveryClient discovery.DiscoveryInterface
-	mapper          meta.RESTMapper
-}
-
-// newDynamicClientProvider creates a new dynamic client provider from REST config.
-// restConfig must not be nil - it should be set via SetRestConfig() from the manager.
-func newDynamicClientProvider(restConfig *rest.Config) (*dynamicClientProvider, error) {
-	if restConfig == nil {
-		return nil, errors.New("REST config is nil - SetRestConfig() must be called before using dynamic client")
-	}
-
-	dynamicClient, err := dynamic.NewForConfig(restConfig)
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create dynamic client")
-	}
-
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restConfig)
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create discovery client")
-	}
-
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient))
-
-	return &dynamicClientProvider{
-		dynamicClient:   dynamicClient,
-		discoveryClient: discoveryClient,
-		mapper:          mapper,
-	}, nil
-}
-
-// getResourceInterface returns the appropriate ResourceInterface for the given object.
-func (p *dynamicClientProvider) getResourceInterface(obj *unstructured.Unstructured) (dynamic.ResourceInterface, error) {
-	gvk := obj.GroupVersionKind()
-	mapping, err := p.mapper.RESTMapping(schema.GroupKind{Group: gvk.Group, Kind: gvk.Kind}, gvk.Version)
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to get REST mapping for %s", gvk.String())
-	}
-
-	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-		ns := obj.GetNamespace()
-		if ns == "" {
-			ns = "default"
-		}
-		return p.dynamicClient.Resource(mapping.Resource).Namespace(ns), nil
-	}
-
-	return p.dynamicClient.Resource(mapping.Resource), nil
-}
-
-// isSSAError indicates if an error is a schema validation or conflict error that should trigger fallback.
-func isSSAError(err error) (isSchemaError, isConflictError bool) {
-	if err == nil {
-		return false, false
-	}
-
-	errStr := err.Error()
-	isSchemaError = strings.Contains(errStr, errorPatternSchemaValidation) ||
-		strings.Contains(errStr, errorPatternTypedPatch)
-	isConflictError = strings.Contains(errStr, errorPatternConflict) ||
-		(strings.Contains(errStr, errorPatternApplyFailed) && strings.Contains(errStr, "conflict"))
-
-	return isSchemaError, isConflictError
-}
-
-// applyWithSSA attempts to apply an object using Server-Side Apply.
-func applyWithSSA(ctx context.Context, provider *dynamicClientProvider, obj *unstructured.Unstructured, fieldManager string) error {
-	ri, err := provider.getResourceInterface(obj)
-	if err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(obj.Object)
-	if err != nil {
-		return errors.Wrap(err, "Failed to marshal object to JSON")
-	}
-
-	force := false
-	po := metav1.PatchOptions{
-		FieldManager: fieldManager,
-		Force:        &force,
-	}
-
-	_, err = ri.Patch(ctx, obj.GetName(), types.ApplyPatchType, data, po)
-	return err
-}
 
 // mergeHelmReleaseSpec merges HelmRelease spec fields, preserving existing values and chart managed by Resource subroutine.
 func mergeHelmReleaseSpec(existing, desired *unstructured.Unstructured, log *logger.Logger) error {
@@ -329,7 +220,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 		}
 
 		// Apply the rendered manifest
-		if err := r.applyWithDynamicClient(ctx, obj, k8sClient, fieldManagerDeployment, log); err != nil {
+		if err := r.applyWithUpdate(ctx, obj, k8sClient, log); err != nil {
 			return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}
 
@@ -375,4 +266,77 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 	}
 
 	return &unstructured.Unstructured{Object: objMap}, nil
+}
+
+// helper: functions for Helm-like templates in components gotemplates
+func isZeroValue(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.String:
+		return rv.Len() == 0
+	case reflect.Slice, reflect.Map:
+		return rv.Len() == 0
+	}
+	return rv.IsZero()
+}
+
+func templateFuncMap() template.FuncMap {
+	return template.FuncMap{
+		"default": func(d, v interface{}) interface{} {
+			if isZeroValue(v) {
+				return d
+			}
+			return v
+		},
+		"toYaml": func(v interface{}) (string, error) {
+			b, err := yaml.Marshal(v)
+			return string(b), err
+		},
+		"nindent": func(spaces int, s string) string {
+			if s == "" {
+				return ""
+			}
+			pad := strings.Repeat(" ", spaces)
+			lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+			// Filter out empty lines at the start
+			startIdx := 0
+			for startIdx < len(lines) && strings.TrimSpace(lines[startIdx]) == "" {
+				startIdx++
+			}
+			if startIdx >= len(lines) {
+				return ""
+			}
+			// Filter out empty lines at the end
+			endIdx := len(lines)
+			for endIdx > startIdx && strings.TrimSpace(lines[endIdx-1]) == "" {
+				endIdx--
+			}
+			// Indent non-empty lines
+			for i := startIdx; i < endIdx; i++ {
+				if strings.TrimSpace(lines[i]) != "" {
+					lines[i] = pad + lines[i]
+				}
+			}
+			result := strings.Join(lines[startIdx:endIdx], "\n")
+			if result != "" {
+				result += "\n"
+			}
+			return result
+		},
+		"or": func(a, b interface{}) interface{} {
+			if !isZeroValue(a) {
+				return a
+			}
+			return b
+		},
+		"and": func(a, b interface{}) bool {
+			return !isZeroValue(a) && !isZeroValue(b)
+		},
+		"not": func(v interface{}) bool {
+			return isZeroValue(v)
+		},
+	}
 }

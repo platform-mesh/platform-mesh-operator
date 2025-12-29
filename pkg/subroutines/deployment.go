@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"text/template"
 
@@ -29,7 +28,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
 
 	_ "embed"
@@ -52,25 +50,17 @@ type DeploymentSubroutine struct {
 	restConfig               *rest.Config
 }
 
-//go:embed profile-infra.yaml
-var profileInfraEmbedded []byte
-
-//go:embed profile-components.yaml
-var profileComponentsEmbedded []byte
-
 const (
 	profileConfigMapKey           = "profile.yaml"
 	defaultProfileConfigMapSuffix = "-profile"
 )
 
-func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
+func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig, restConfig *rest.Config) *DeploymentSubroutine {
 	workspaceDir := filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/")
 	// gotemplates is at the root level, relative to WorkspaceDir
 	gotemplatesInfraDir := filepath.Join(operatorCfg.WorkspaceDir, "gotemplates/infra")
 	gotemplatesComponentsDir := filepath.Join(operatorCfg.WorkspaceDir, "gotemplates/components")
 
-	// REST config will be set via SetRestConfig() from the manager
-	// Initialize with nil - it will be set by the controller
 	sub := &DeploymentSubroutine{
 		cfg:                      cfg,
 		clientInfra:              clientInfra,
@@ -79,24 +69,14 @@ func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Cli
 		gotemplatesInfraDir:      gotemplatesInfraDir,
 		gotemplatesComponentsDir: gotemplatesComponentsDir,
 		cfgOperator:              operatorCfg,
-		restConfig:               nil, // Will be set via SetRestConfig()
+		restConfig:               restConfig,
 	}
 
 	return sub
 }
 
-// SetRestConfig sets the REST config for the dynamic client provider.
-// This should be called after creation to ensure the correct REST config is used.
-func (r *DeploymentSubroutine) SetRestConfig(restConfig *rest.Config) error {
-	if restConfig == nil {
-		return fmt.Errorf("rest config cannot be nil")
-	}
-	r.restConfig = restConfig
-	return nil
-}
-
-// getOrCreateProfileConfigMap ensures the profile ConfigMap exists, creating a default one if needed.
-func (r *DeploymentSubroutine) getOrCreateProfileConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (*corev1.ConfigMap, error) {
+// getProfileConfigMap ensures the profile ConfigMap exists, creating a default one if needed.
+func (r *DeploymentSubroutine) getProfileConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (*corev1.ConfigMap, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	var configMapName, configMapNamespace string
@@ -130,70 +110,14 @@ func (r *DeploymentSubroutine) getOrCreateProfileConfigMap(ctx context.Context, 
 		return configMap, nil
 	}
 
-	if !kerrors.IsNotFound(err) {
-		return nil, errors.Wrap(err, "failed to get profile ConfigMap")
-	}
-
-	// ConfigMap doesn't exist, create default one
-	log.Info().Str("configmap", configMapName).Str("namespace", configMapNamespace).Msg("Creating default profile ConfigMap")
-
-	// Create unified profile from embedded files
-	unifiedProfile, err := r.createUnifiedProfile()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create unified profile")
-	}
-
-	configMap.Data = map[string]string{
-		profileConfigMapKey: unifiedProfile,
-	}
-
-	// Set owner reference to the PlatformMesh instance
-	if err := controllerutil.SetControllerReference(inst, configMap, r.clientRuntime.Scheme()); err != nil {
-		return nil, errors.Wrap(err, "failed to set controller reference")
-	}
-
-	if err := r.clientRuntime.Create(ctx, configMap); err != nil {
-		return nil, errors.Wrap(err, "failed to create default profile ConfigMap")
-	}
-
-	log.Info().Str("configmap", configMapName).Str("namespace", configMapNamespace).Msg("Created default profile ConfigMap")
-	return configMap, nil
-}
-
-// createUnifiedProfile creates a unified profile YAML combining infra and components sections.
-func (r *DeploymentSubroutine) createUnifiedProfile() (string, error) {
-	// Parse infra profile
-	var infraData map[string]interface{}
-	if err := yaml.Unmarshal(profileInfraEmbedded, &infraData); err != nil {
-		return "", errors.Wrap(err, "Failed to parse embedded profile-infra.yaml")
-	}
-
-	// Parse components profile
-	var componentsData map[string]interface{}
-	if err := yaml.Unmarshal(profileComponentsEmbedded, &componentsData); err != nil {
-		return "", errors.Wrap(err, "Failed to parse embedded profile-components.yaml")
-	}
-
-	// Create unified structure
-	unified := map[string]interface{}{
-		"infra":      infraData,
-		"components": componentsData,
-	}
-
-	// Marshal to YAML
-	unifiedYAML, err := yaml.Marshal(unified)
-	if err != nil {
-		return "", errors.Wrap(err, "Failed to marshal unified profile")
-	}
-
-	return string(unifiedYAML), nil
+	return nil, err
 }
 
 // loadProfileFromConfigMap loads the profile from the ConfigMap and returns infra and components sections.
 func (r *DeploymentSubroutine) loadProfileFromConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (infraProfile string, componentsProfile string, err error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	configMap, err := r.getOrCreateProfileConfigMap(ctx, inst)
+	configMap, err := r.getProfileConfigMap(ctx, inst)
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to get or create profile ConfigMap")
 	}
@@ -256,7 +180,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// Render and apply infra templates directly from gotemplates/infra/infra using profile-infra.yaml
+	// Render and apply infra templates directly from gotemplates/infra/infra using profile
 	oErr := r.renderAndApplyInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
 		log.Error().Err(oErr.Err()).Msg("Failed to render and apply infra templates")
@@ -360,21 +284,21 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	return ctrl.Result{}, nil
 }
 
-// templateVarsFromProfileInfra parses profile-infra.yaml and merges it with templateVars for rendering gotemplates/infra
+// templateVarsFromProfileInfra parses the infra profile and merges it with templateVars for rendering gotemplates/infra
 func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config *config.OperatorConfig) (map[string]interface{}, error) {
 	// Load profile from ConfigMap
-	infraProfile, _, err := r.loadProfileFromConfigMap(ctx, inst)
+	infraProfileYaml, _, err := r.loadProfileFromConfigMap(ctx, inst)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
 
-	// Parse profile-infra.yaml
-	var profileData map[string]interface{}
-	if err := yaml.Unmarshal([]byte(infraProfile), &profileData); err != nil {
-		return nil, errors.Wrap(err, "Failed to parse profile-infra.yaml")
+	// Parse profile YAML to map
+	var infraProfileMap map[string]interface{}
+	if err := yaml.Unmarshal([]byte(infraProfileYaml), &infraProfileMap); err != nil {
+		return nil, errors.Wrap(err, "Failed to parse profile yaml")
 	}
 
-	// Parse templateVars JSON
+	// Parse templateVars JSON to map
 	var templateVarsMap map[string]interface{}
 	if len(templateVars.Raw) > 0 {
 		if err := json.Unmarshal(templateVars.Raw, &templateVarsMap); err != nil {
@@ -385,22 +309,22 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 	}
 
 	// Add instance-specific fields
-	profileData["releaseNamespace"] = inst.Namespace
-	profileData["kubeConfigEnabled"] = config.RemoteRuntime.Enabled
+	infraProfileMap["releaseNamespace"] = inst.Namespace
+	infraProfileMap["kubeConfigEnabled"] = config.RemoteRuntime.Enabled
 	if config.RemoteRuntime.Enabled {
-		profileData["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
-		profileData["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
+		infraProfileMap["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
+		infraProfileMap["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}
 
-	// Merge profile-infra.yaml (base) with templateVars (overrides)
+	// Merge infra profile (base) with templateVars (overrides)
 	// templateVars take precedence over profile values
 	log, err := logger.New(logger.DefaultConfig())
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create logger")
 	}
-	tmplVars, err := merge.MergeMaps(profileData, templateVarsMap, log)
+	tmplVars, err := merge.MergeMaps(infraProfileMap, templateVarsMap, log)
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to merge profile-infra.yaml with templateVars")
+		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
 	}
 
 	// Convert certManager.values from map to indented YAML string for template insertion
@@ -448,7 +372,7 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 	return tmplVars, nil
 }
 
-// buildRuntimeTemplateVars merges profile-infra.yaml, templateVars, PlatformMesh.spec, and profile-components.yaml services
+// buildRuntimeTemplateVars merges infra profile, templateVars, PlatformMesh.spec, and profile-components.yaml services
 // for rendering gotemplates/infra/runtime templates
 func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
 	log := logger.LoadLoggerFromContext(ctx)
@@ -459,10 +383,10 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
 
-	// Start with profile-infra.yaml as base (runtime templates need infra profile data)
+	// Start with infra profile as base (runtime templates need infra profile data)
 	var profileData map[string]interface{}
 	if err := yaml.Unmarshal([]byte(infraProfile), &profileData); err != nil {
-		return nil, errors.Wrap(err, "Failed to parse profile-infra.yaml for runtime templates")
+		return nil, errors.Wrap(err, "Failed to parse infra profile for runtime templates")
 	}
 
 	// Parse templateVars JSON
@@ -475,10 +399,10 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 		templateVarsMap = make(map[string]interface{})
 	}
 
-	// Merge profile-infra.yaml (base) with templateVars (overrides)
+	// Merge infra profile (base) with templateVars (overrides)
 	baseVars, err := merge.MergeMaps(profileData, templateVarsMap, log)
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to merge profile-infra.yaml with templateVars")
+		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
 	}
 
 	// Merge PlatformMesh.spec.Values
@@ -571,79 +495,6 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	}
 
 	return baseVars, nil
-}
-
-// helper: functions for Helm-like templates in components gotemplates
-func isZeroValue(v interface{}) bool {
-	if v == nil {
-		return true
-	}
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.String:
-		return rv.Len() == 0
-	case reflect.Slice, reflect.Map:
-		return rv.Len() == 0
-	}
-	return rv.IsZero()
-}
-
-func templateFuncMap() template.FuncMap {
-	return template.FuncMap{
-		"default": func(d, v interface{}) interface{} {
-			if isZeroValue(v) {
-				return d
-			}
-			return v
-		},
-		"toYaml": func(v interface{}) (string, error) {
-			b, err := yaml.Marshal(v)
-			return string(b), err
-		},
-		"nindent": func(spaces int, s string) string {
-			if s == "" {
-				return ""
-			}
-			pad := strings.Repeat(" ", spaces)
-			lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-			// Filter out empty lines at the start
-			startIdx := 0
-			for startIdx < len(lines) && strings.TrimSpace(lines[startIdx]) == "" {
-				startIdx++
-			}
-			if startIdx >= len(lines) {
-				return ""
-			}
-			// Filter out empty lines at the end
-			endIdx := len(lines)
-			for endIdx > startIdx && strings.TrimSpace(lines[endIdx-1]) == "" {
-				endIdx--
-			}
-			// Indent non-empty lines
-			for i := startIdx; i < endIdx; i++ {
-				if strings.TrimSpace(lines[i]) != "" {
-					lines[i] = pad + lines[i]
-				}
-			}
-			result := strings.Join(lines[startIdx:endIdx], "\n")
-			if result != "" {
-				result += "\n"
-			}
-			return result
-		},
-		"or": func(a, b interface{}) interface{} {
-			if !isZeroValue(a) {
-				return a
-			}
-			return b
-		},
-		"and": func(a, b interface{}) bool {
-			return !isZeroValue(a) && !isZeroValue(b)
-		},
-		"not": func(v interface{}) bool {
-			return isZeroValue(v)
-		},
-	}
 }
 
 // buildComponentsTemplateData parses profile-components.yaml using TemplateVars and produces the data
@@ -926,7 +777,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
 			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.applyWithDynamicClient(ctx, &obj, r.clientInfra, fieldManagerDeployment, log); err != nil {
+			if err := r.applyWithUpdate(ctx, &obj, r.clientInfra, log); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components infra manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components infra template")
@@ -1001,7 +852,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
 			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.applyWithDynamicClient(ctx, &obj, r.clientRuntime, fieldManagerDeployment, log); err != nil {
+			if err := r.applyWithUpdate(ctx, &obj, r.clientRuntime, log); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components runtime manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components runtime template")
@@ -1018,68 +869,9 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 	return nil
 }
 
-// applyWithDynamicClient applies an object using Server-Side Apply via the dynamic client.
-// This bypasses client-side schema validation, allowing fields that exist in the server's CRD
-// but may not be in the client's cached schema (e.g., kubeConfig in HelmRelease).
-// If SSA fails due to schema validation errors or conflicts, it falls back to Update with merge logic.
-func (r *DeploymentSubroutine) applyWithDynamicClient(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, fieldManager string, log *logger.Logger) error {
-	// For Resource objects, check if it already exists before removing interval
-	// interval is required for creation, but managed by OCM controller after creation
-	if obj.GetKind() == kindResource {
-		existingResource := &unstructured.Unstructured{}
-		existingResource.SetGroupVersionKind(obj.GroupVersionKind())
-		existingResource.SetName(obj.GetName())
-		existingResource.SetNamespace(obj.GetNamespace())
-
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), existingResource)
-		if err == nil {
-			// Resource exists - remove interval to avoid conflict with OCM controller
-			if spec, found, _ := unstructured.NestedMap(obj.Object, "spec"); found && spec != nil {
-				if _, hasInterval := spec[specFieldInterval]; hasInterval {
-					delete(spec, specFieldInterval)
-					if setErr := unstructured.SetNestedField(obj.Object, spec, "spec"); setErr != nil {
-						log.Debug().Err(setErr).Msg("Failed to remove interval from Resource spec")
-					}
-				}
-			}
-		} else if !kerrors.IsNotFound(err) {
-			// If there's an error other than "not found", return it
-			return errors.Wrap(err, "Failed to check if Resource exists")
-		}
-		// If resource doesn't exist (IsNotFound), keep interval (it's required for creation)
-	}
-
-	provider, err := newDynamicClientProvider(r.restConfig)
-	if err != nil {
-		return err
-	}
-
-	// Attempt Server-Side Apply
-	err = applyWithSSA(ctx, provider, obj, fieldManager)
-	if err == nil {
-		return nil
-	}
-
-	// Check if error requires fallback
-	isSchemaError, isConflictError := isSSAError(err)
-	if isSchemaError || isConflictError {
-		log.Debug().
-			Str("kind", obj.GetKind()).
-			Str("name", obj.GetName()).
-			Bool("schema_error", isSchemaError).
-			Bool("conflict_error", isConflictError).
-			Err(err).
-			Msg("SSA failed, falling back to Update with merge")
-
-		return r.applyWithUpdateFallback(ctx, obj, k8sClient, log)
-	}
-
-	return errors.Wrap(err, "Failed to apply object using dynamic client")
-}
-
-// applyWithUpdateFallback applies an object using Update with merge logic to preserve
+// applyWithUpdate applies an object using Update with merge logic to preserve
 // fields managed by other subroutines (e.g., Resource subroutine).
-func (r *DeploymentSubroutine) applyWithUpdateFallback(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, log *logger.Logger) error {
+func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, log *logger.Logger) error {
 	existing, err := getOrCreateObject(ctx, k8sClient, obj)
 	if err != nil {
 		return err

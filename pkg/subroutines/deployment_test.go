@@ -58,7 +58,7 @@ func (s *DeployTestSuite) SetupTest() {
 
 	s.operatorConfig = &operatorCfg
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg)
+	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg, nil)
 }
 
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {
