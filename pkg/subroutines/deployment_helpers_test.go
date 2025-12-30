@@ -174,11 +174,12 @@ func (s *DeploymentHelpersTestSuite) Test_mergeHelmReleaseSpec() {
 			expectError: false,
 			validate: func(obj *unstructured.Unstructured) {
 				// Values should be merged (desired takes precedence for shared keys)
+				// Keys not in desired should be removed
 				values, found, err := unstructured.NestedMap(obj.Object, "spec", "values")
 				s.NoError(err)
 				s.True(found)
 				s.Equal("desired", values["shared"]) // Desired takes precedence
-				s.Equal("value", values["existing"])
+				s.NotContains(values, "existing", "Key 'existing' should be removed as it's not in desired")
 				s.Equal("value", values["desired"])
 
 				// Interval should be updated (desired takes precedence for non-merged fields)
