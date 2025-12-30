@@ -29,6 +29,9 @@ const (
 	specFieldValues   = "values"
 	specFieldChart    = "chart"
 	specFieldInterval = "interval"
+
+	// Field manager names for Server-Side Apply
+	fieldManagerDeployment = "platform-mesh-deployment"
 )
 
 // mergeHelmReleaseSpec merges HelmRelease spec fields, preserving existing values and chart managed by Resource subroutine.
@@ -67,14 +70,26 @@ func mergeHelmReleaseSpec(existing, desired *unstructured.Unstructured, log *log
 }
 
 // mergeHelmReleaseField merges a specific field in HelmRelease spec.
+// For values field, we use MergeMaps (not MergeMapsWithDeletion) to preserve
+// fields managed by Resource subroutine (e.g., spec.values.image.tag).
 func mergeHelmReleaseField(existing *unstructured.Unstructured, existingSpec, desiredSpec map[string]interface{}, fieldName string, log *logger.Logger) error {
 	existingField, existingHasField := existingSpec[fieldName].(map[string]interface{})
 	desiredField, desiredHasField := desiredSpec[fieldName].(map[string]interface{})
 
 	switch {
 	case existingHasField && desiredHasField:
-		// Both exist, merge them (desired takes precedence and removes keys not in desired)
-		merged, mergeErr := merge.MergeMapsWithDeletion(desiredField, existingField, log)
+		// Both exist, merge them
+		// For values field, preserve existing fields not in desired (to keep Resource-managed fields)
+		// For other fields, desired takes precedence
+		var merged map[string]interface{}
+		var mergeErr error
+		if fieldName == specFieldValues {
+			// Use MergeMaps to preserve existing fields (like image.tag managed by Resource subroutine)
+			merged, mergeErr = merge.MergeMaps(desiredField, existingField, log)
+		} else {
+			// For chart and other fields, use MergeMapsWithDeletion (desired is source of truth)
+			merged, mergeErr = merge.MergeMapsWithDeletion(desiredField, existingField, log)
+		}
 		if mergeErr != nil {
 			log.Debug().Err(mergeErr).Str("field", fieldName).Msg("Failed to merge HelmRelease field, using desired")
 			merged = desiredField

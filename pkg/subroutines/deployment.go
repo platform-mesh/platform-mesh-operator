@@ -875,14 +875,19 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 
 // applyWithUpdate applies an object using Update with merge logic to preserve
 // fields managed by other subroutines (e.g., Resource subroutine).
+// For HelmReleases, it uses Server-Side Apply to properly merge fields managed
+// by different field managers (Resource subroutine uses "platform-mesh-resource").
 func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, log *logger.Logger) error {
 	existing, err := getOrCreateObject(ctx, k8sClient, obj)
 	if err != nil {
 		return err
 	}
 
-	// If object was just created, no merge needed
+	// If object was just created, use Server-Side Apply for HelmReleases, Update for others
 	if existing == obj {
+		if obj.GetKind() == kindHelmRelease {
+			return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+		}
 		return nil
 	}
 
@@ -891,20 +896,25 @@ func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstruc
 		if err := mergeHelmReleaseSpec(existing, obj, log); err != nil {
 			return errors.Wrap(err, "Failed to merge HelmRelease spec")
 		}
+		// Update metadata from desired
+		updateObjectMetadata(existing, obj)
+		// Use Server-Side Apply for HelmReleases to properly merge with fields managed by Resource subroutine
+		return k8sClient.Patch(ctx, existing, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
 	} else if obj.GetKind() == kindResource {
 		if err := mergeResourceSpec(existing, obj, log); err != nil {
 			return errors.Wrap(err, "Failed to merge Resource spec")
 		}
+		// Update metadata from desired
+		updateObjectMetadata(existing, obj)
+		return k8sClient.Update(ctx, existing)
 	} else {
 		if err := mergeGenericSpec(existing, obj, log); err != nil {
 			return errors.Wrap(err, "Failed to merge spec")
 		}
+		// Update metadata from desired
+		updateObjectMetadata(existing, obj)
+		return k8sClient.Update(ctx, existing)
 	}
-
-	// Update metadata from desired
-	updateObjectMetadata(existing, obj)
-
-	return k8sClient.Update(ctx, existing)
 }
 
 func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMesh) {
