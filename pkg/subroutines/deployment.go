@@ -498,7 +498,7 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	return baseVars, nil
 }
 
-// buildComponentsTemplateData parses profile-components.yaml using TemplateVars and produces the data
+// buildComponentsTemplateData parses components profile using TemplateVars and produces the data
 // structure expected by gotemplates/components (root keys: values, releaseNamespace).
 func (r *DeploymentSubroutine) buildComponentsTemplateData(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
 	log, err := logger.New(logger.DefaultConfig())
@@ -506,38 +506,38 @@ func (r *DeploymentSubroutine) buildComponentsTemplateData(ctx context.Context, 
 		return nil, errors.Wrap(err, "Failed to create logger")
 	}
 
-	// Load profile from ConfigMap
-	_, componentsProfile, err := r.loadProfileFromConfigMap(ctx, inst)
+	// Load components profile from ConfigMap
+	_, componentsProfileYaml, err := r.loadProfileFromConfigMap(ctx, inst)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
 
-	// Parse profile-components.yaml as YAML to get the base structure
-	var profileData map[string]interface{}
-	if err := yaml.Unmarshal([]byte(componentsProfile), &profileData); err != nil {
-		return nil, errors.Wrap(err, "Failed to parse profile-components.yaml")
+	// Parse components profile as YAML to get the base structure
+	var componentsProfileMap map[string]interface{}
+	if err := yaml.Unmarshal([]byte(componentsProfileYaml), &componentsProfileMap); err != nil {
+		return nil, errors.Wrap(err, "Failed to parse components profile as YAML")
 	}
 
-	// Unmarshal templateVars JSON
-	var tv map[string]interface{}
+	// Parse templateVars JSON into a map
+	var templateVarsMap map[string]interface{}
 	if len(templateVars.Raw) > 0 {
-		if err := json.Unmarshal(templateVars.Raw, &tv); err != nil {
+		if err := json.Unmarshal(templateVars.Raw, &templateVarsMap); err != nil {
 			return nil, errors.Wrap(err, "Failed to unmarshal templateVars for components profile")
 		}
 	} else {
-		tv = make(map[string]interface{})
+		templateVarsMap = make(map[string]interface{})
 	}
 
-	// Merge profileData (base) with templateVars (overrides)
+	// Merge components profile (base) with templateVars (overrides)
 	// templateVars take precedence over profile values
-	tv, err = merge.MergeMaps(profileData, tv, log)
+	templateVarsMap, err = merge.MergeMaps(componentsProfileMap, templateVarsMap, log)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to merge profile-components.yaml with templateVars")
 	}
 
 	// Render profile-components.yaml as a Go template with tv directly (merged values)
 	// Templates can use {{ .baseDomain }} instead of {{ .Values.baseDomain }}
-	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(componentsProfile)
+	tmpl, err := template.New("profile-components").Funcs(templateFuncMap()).Parse(componentsProfileYaml)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to parse profile-components.yaml template")
 	}
@@ -545,7 +545,7 @@ func (r *DeploymentSubroutine) buildComponentsTemplateData(ctx context.Context, 
 	var buf bytes.Buffer
 	// Render profile-components.yaml template with tv directly (not wrapped in Values)
 	// This allows templates to use {{ .baseDomain }} instead of {{ .Values.baseDomain }}
-	if err := tmpl.Execute(&buf, tv); err != nil {
+	if err := tmpl.Execute(&buf, templateVarsMap); err != nil {
 		return nil, errors.Wrap(err, "Failed to execute profile-components.yaml template")
 	}
 

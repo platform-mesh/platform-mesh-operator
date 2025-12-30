@@ -332,7 +332,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 }
 
 func (s *KindTestSuite) createReleases(ctx context.Context) error {
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/flux2-v2.6.4/flux2-install.yaml", s.client, make(map[string]string)); err != nil {
+	if err := ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/flux2-v2.6.4/flux2-install.yaml", s.client, make(map[string]string)); err != nil {
 		return err
 	}
 	avail := s.Eventually(func() bool {
@@ -367,7 +367,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 
 	s.logger.Info().Msg("helm resources ready")
 
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
+	if err := ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
 		return err
 	}
 
@@ -397,7 +397,7 @@ func (s *KindTestSuite) SetupSuite() {
 		s.logger.Error().Err(err).Msg("Failed to create certificates")
 		s.T().FailNow()
 	}
-	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/namespaces.yaml", s.client, make(map[string]string)); err != nil {
+	if err = ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/namespaces.yaml", s.client, make(map[string]string)); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply namespaces.yaml manifest")
 		s.T().FailNow()
 	}
@@ -417,11 +417,11 @@ func (s *KindTestSuite) SetupSuite() {
 	}
 
 	// add default profile
-	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/default-profile.yaml", s.client, make(map[string]string)); err != nil {
+	if err = ApplyFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/default-profile.yaml", s.client); err != nil {
 		s.FailNow("Failed to apply PlatformMesh resource manifest", err)
 	}
 	// add Platform Mesh resource
-	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client, make(map[string]string)); err != nil {
+	if err = ApplyFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client); err != nil {
 		s.FailNow("Failed to apply PlatformMesh resource manifest", err)
 	}
 
@@ -488,7 +488,7 @@ func (s *KindTestSuite) TearDownSuite() {
 }
 
 func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
-	err := ApplyManifestFromFile(ctx, "../../../config/crd/core.platform-mesh.io_platformmeshes.yaml", s.client, make(map[string]string))
+	err := ApplyTemplateFromFile(ctx, "../../../config/crd/core.platform-mesh.io_platformmeshes.yaml", s.client, make(map[string]string))
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply PlatformMesh CRD manifest")
 		return err

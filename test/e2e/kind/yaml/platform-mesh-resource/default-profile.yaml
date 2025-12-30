@@ -279,7 +279,7 @@ data:
               value: https://${org-subdomain}{{ .baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
             - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
               value: https://${org-subdomain}{{ .baseDomainPort }}/iam/graphql
-            frontendPort: '{{ .port }}'
+            frontendPort: '{{ .baseDomainPort }}'
             http:
               protocol: https
             kcp:
