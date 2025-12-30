@@ -253,7 +253,7 @@ spec:
       key2: value2
 ```
 
-Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
+Those values are passed 1-1 to the chart deployed by the "Deployment" subroutine.
 
 ### Profile Configuration
 
@@ -350,8 +350,8 @@ The Deployment subroutine manages the deployment of platform-mesh components acr
 
 - Loads deployment profiles from ConfigMap (or creates a default one if not specified).
 - Merges custom values from the `PlatformMesh` resource with profile configurations.
-- Applies templated manifests for `platform-mesh-operator-infra-components` and waits for the HelmRelease to become ready and also for `cert-manager` to become ready.
-- Applies templated Kubernetes manifests for `platform-mesh-operator-components`, including `Resource` and `HelmRelease` objects.
+- Applies templated manifests and waits for the HelmRelease to become ready and also for `cert-manager` to become ready.
+- Applies templated Kubernetes manifests, including `Resource` and `HelmRelease` objects.
 - Manages OCM (Open Component Model) integration by configuring resources based on repository, component, and reference path settings.
 - Manages authorization webhook secrets by creating an issuer, a certificate, and a KCP webhook secret, and keeps the secret updated with the correct CA bundle.
 - Waits for the `istio-istiod` Helm release to become ready.
@@ -360,13 +360,10 @@ The Deployment subroutine manages the deployment of platform-mesh components acr
 
 #### Merging of custom values in `DeploymentSubroutine`
 
-When creating the `platform-mesh-operator-infra-components` and `platform-mesh-operator-components` helmreleases, their configuration is derived the from **PlatformMesh** resource as follows:
+When creating helmreleases, their configuration is derived from the **PlatformMesh** resource as follows:
 
-- HelmRelease `platform-mesh-operator-infra-components` has `spec.values` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
-- Resource `platform-mesh-operator-infra-components` `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
-
-- HelmRelease `platform-mesh-operator-components` has `spec.values.services` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
-- Resource `platform-mesh-operator-components` `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
+- HelmRelease has `spec.values` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
+- Resource `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
 
 For both HelmReleases the spec.values are populated with these templated fields:
 - baseDomain
@@ -415,7 +412,7 @@ The Wait subroutine ensures that specified resources are ready before proceeding
 - Waits for resources to match specific conditions (e.g., HelmRelease resources with Ready condition)
 - Uses configurable wait criteria defined in the `spec.wait` section of the PlatformMesh resource
 - Falls back to default wait configurations when no custom wait configuration is specified
-- By default, waits for `platform-mesh-operator-components` and `platform-mesh-operator-infra-components` HelmRelease resources to be ready
+- By default, waits for HelmRelease resources to be ready
 - Supports filtering resources by namespace, labels, and API versions
 - Requeues the reconciliation if any monitored resource is not yet ready
 
