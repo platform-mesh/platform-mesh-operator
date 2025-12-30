@@ -81,3 +81,59 @@ func isObject(v interface{}) bool {
 	_, ok := v.(map[string]interface{})
 	return ok
 }
+
+// MergeMapsWithDeletion merges maps where desired is the source of truth.
+// Keys that exist in existing but not in desired will be removed.
+// Nested objects are recursively merged, but keys not in desired are still removed.
+func MergeMapsWithDeletion(desired, existing map[string]interface{}, log *logger.Logger) (map[string]interface{}, error) {
+	if desired == nil {
+		return nil, nil
+	}
+	if existing == nil {
+		// If no existing map, return a deep copy of desired
+		desiredCopy, err := copystructure.Copy(desired)
+		if err != nil {
+			return nil, err
+		}
+		result, ok := desiredCopy.(map[string]interface{})
+		if !ok {
+			return nil, errors.New("failed to copy desired map")
+		}
+		return result, nil
+	}
+
+	// Start with a deep copy of desired
+	desiredCopy, err := copystructure.Copy(desired)
+	if err != nil {
+		return nil, err
+	}
+	result, ok := desiredCopy.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("failed to copy desired map")
+	}
+
+	// Recursively merge nested objects from existing into desired
+	// This allows preserving nested values that exist in both, but
+	// keys not in desired will be removed
+	for key, desiredVal := range result {
+		if existingVal, exists := existing[key]; exists {
+			if desiredMap, ok := desiredVal.(map[string]interface{}); ok {
+				if existingMap, ok := existingVal.(map[string]interface{}); ok {
+					// Both are maps, recursively merge (desired takes precedence)
+					merged, mergeErr := MergeMapsWithDeletion(desiredMap, existingMap, log)
+					if mergeErr != nil {
+						log.Debug().Err(mergeErr).Str("key", key).Msg("Failed to merge nested map, using desired")
+					} else {
+						result[key] = merged
+					}
+				}
+				// If existing is not a map, keep desired value (desired takes precedence)
+			}
+			// If desired is not a map, keep desired value (desired takes precedence)
+		}
+		// If key doesn't exist in existing, keep desired value (already in result)
+	}
+
+	// Keys in existing but not in desired are implicitly removed by not being added to result
+	return result, nil
+}

@@ -73,8 +73,8 @@ func mergeHelmReleaseField(existing *unstructured.Unstructured, existingSpec, de
 
 	switch {
 	case existingHasField && desiredHasField:
-		// Both exist, merge them (desired takes precedence)
-		merged, mergeErr := merge.MergeMaps(existingField, desiredField, log)
+		// Both exist, merge them (desired takes precedence and removes keys not in desired)
+		merged, mergeErr := merge.MergeMapsWithDeletion(desiredField, existingField, log)
 		if mergeErr != nil {
 			log.Debug().Err(mergeErr).Str("field", fieldName).Msg("Failed to merge HelmRelease field, using desired")
 			merged = desiredField

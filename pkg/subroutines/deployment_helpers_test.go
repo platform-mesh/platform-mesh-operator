@@ -53,6 +53,14 @@ func (s *DeploymentHelpersTestSuite) Test_mergeHelmReleaseField() {
 			expectError:   false,
 		},
 		{
+			name:          "removes keys not in desired",
+			existingField: map[string]interface{}{"a": "value1", "b": "value2", "c": "value3"},
+			desiredField:  map[string]interface{}{"a": "value1", "b": "value2"},
+			fieldName:     specFieldValues,
+			expectMerged:  true,
+			expectError:   false,
+		},
+		{
 			name:          "only desired exists - should use desired",
 			existingField: nil,
 			desiredField:  map[string]interface{}{"desired": "value"},
@@ -113,6 +121,13 @@ func (s *DeploymentHelpersTestSuite) Test_mergeHelmReleaseField() {
 				s.NoError(err)
 				s.True(found, "Field should exist after merge")
 				s.NotNil(result)
+
+				// Verify deletion behavior: keys not in desired should be removed
+				if tt.name == "removes keys not in desired" {
+					s.Contains(result, "a")
+					s.Contains(result, "b")
+					s.NotContains(result, "c", "Key 'c' should be removed as it's not in desired")
+				}
 			}
 		})
 	}
