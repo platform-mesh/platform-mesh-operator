@@ -14,8 +14,6 @@ spec:
       key: {{ .kubeConfigSecretKey }}
 {{- end }}
   force: false
-  install:
-    crds: {{ .gatewayApi.kustomization.install.crds }}
   interval: {{ .gatewayApi.kustomization.interval }}
   path: {{ .gatewayApi.kustomization.path }}
   prune: true
