@@ -43,6 +43,7 @@ type KcpsetupSubroutine struct {
 const (
 	KcpsetupSubroutineName      = "KcpsetupSubroutine"
 	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
+	fieldManagerKcpSetup        = "platform-mesh-kcp-setup"
 )
 
 func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string) *KcpsetupSubroutine {
@@ -324,7 +325,7 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerKcpSetup))
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}

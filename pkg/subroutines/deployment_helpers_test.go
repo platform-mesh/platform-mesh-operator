@@ -61,6 +61,25 @@ func (s *DeploymentHelpersTestSuite) Test_mergeHelmReleaseField() {
 			expectError:   false,
 		},
 		{
+			name: "removes nested keys not in desired",
+			existingField: map[string]interface{}{
+				"log": map[string]interface{}{
+					"level": "debug",
+				},
+				"kcp": map[string]interface{}{
+					"enabled": true,
+				},
+			},
+			desiredField: map[string]interface{}{
+				"kcp": map[string]interface{}{
+					"enabled": true,
+				},
+			},
+			fieldName:    specFieldValues,
+			expectMerged: true,
+			expectError:  false,
+		},
+		{
 			name:          "only desired exists - should use desired",
 			existingField: nil,
 			desiredField:  map[string]interface{}{"desired": "value"},
@@ -127,6 +146,14 @@ func (s *DeploymentHelpersTestSuite) Test_mergeHelmReleaseField() {
 					s.Contains(result, "a")
 					s.Contains(result, "b")
 					s.NotContains(result, "c", "Key 'c' should be removed as it's not in desired")
+				}
+				// Verify nested field deletion
+				if tt.name == "removes nested keys not in desired" {
+					s.Contains(result, "kcp")
+					s.NotContains(result, "log", "Key 'log' should be removed as it's not in desired")
+					kcp, ok := result["kcp"].(map[string]interface{})
+					s.True(ok)
+					s.Equal(true, kcp["enabled"])
 				}
 			}
 		})
@@ -465,7 +492,7 @@ func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_NotFound() {
 		mock.Anything,
 	).Return(notFoundErr)
 
-	clientMock.EXPECT().Create(ctx, obj).Return(nil)
+	clientMock.EXPECT().Create(ctx, obj, client.FieldOwner(fieldManagerDeployment)).Return(nil)
 
 	result, err := getOrCreateObject(ctx, clientMock, obj)
 	s.NoError(err)

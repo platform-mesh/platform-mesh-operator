@@ -9,7 +9,6 @@ metadata:
 spec:
 {{- if .kubeConfigEnabled }}
   kubeConfig:
-    enabled: true
     secretRef:
       name: {{ .kubeConfigSecretName }}
       key: {{ .kubeConfigSecretKey }}

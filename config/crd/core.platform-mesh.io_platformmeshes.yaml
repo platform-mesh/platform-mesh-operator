@@ -15,32 +15,25 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: Deployment status (shows reason if Unknown)
+      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status
+      name: DEPLOYMENT
+      type: string
     - description: KCP status (shows reason if Unknown)
       jsonPath: .status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status
       name: KCP
-      type: string
-    - description: KCP reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].reason
-      name: KCP_REASON
-      priority: 1
       type: string
     - description: Provider Secret status (shows reason if Unknown)
       jsonPath: .status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status
       name: SECRET
       type: string
-    - description: Provider Secret reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].reason
-      name: SECRET_REASON
-      priority: 1
+    - description: Feature toggles' status (shows reason if Unknown)
+      jsonPath: .status.conditions[?(@.type=='FeatureToggleSubroutine_Ready')].status
+      name: FEATURES
       type: string
-    - description: Deployment status (shows reason if Unknown)
-      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status
-      name: DEPLOYMENT
-      type: string
-    - description: Deployment reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason
-      name: DEPLOYMENT_REASON
-      priority: 1
+    - description: Wait status (shows reason if Unknown)
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].status
+      name: WAIT
       type: string
     - description: Shows if resource is ready
       jsonPath: .status.conditions[?(@.type=='Ready')].status

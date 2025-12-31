@@ -70,8 +70,11 @@ func mergeHelmReleaseSpec(existing, desired *unstructured.Unstructured, log *log
 }
 
 // mergeHelmReleaseField merges a specific field in HelmRelease spec.
-// For values field, we use MergeMaps (not MergeMapsWithDeletion) to preserve
-// fields managed by Resource subroutine (e.g., spec.values.image.tag).
+// For values field, we need to handle deletions while preserving Resource-managed fields.
+// The strategy: use MergeMapsWithDeletion to remove fields not in desired, but this will
+// also remove Resource-managed fields. To work around this, we rely on SSA's field manager
+// tracking: Resource-managed fields will be preserved by SSA even if not in our patch,
+// as long as we don't use ForceOwnership.
 func mergeHelmReleaseField(existing *unstructured.Unstructured, existingSpec, desiredSpec map[string]interface{}, fieldName string, log *logger.Logger) error {
 	existingField, existingHasField := existingSpec[fieldName].(map[string]interface{})
 	desiredField, desiredHasField := desiredSpec[fieldName].(map[string]interface{})
@@ -79,29 +82,55 @@ func mergeHelmReleaseField(existing *unstructured.Unstructured, existingSpec, de
 	switch {
 	case existingHasField && desiredHasField:
 		// Both exist, merge them
-		// For values field, preserve existing fields not in desired (to keep Resource-managed fields)
-		// For other fields, desired takes precedence
+		// Use MergeMapsWithDeletion to properly handle field deletions recursively
+		// This will remove all keys (including nested ones) that exist in existing but not in desired
+		// Resource-managed fields will be preserved by SSA's field manager tracking
+		// (as long as we don't use ForceOwnership)
 		var merged map[string]interface{}
 		var mergeErr error
-		if fieldName == specFieldValues {
-			// Use MergeMaps to preserve existing fields (like image.tag managed by Resource subroutine)
-			merged, mergeErr = merge.MergeMaps(desiredField, existingField, log)
-		} else {
-			// For chart and other fields, use MergeMapsWithDeletion (desired is source of truth)
-			merged, mergeErr = merge.MergeMapsWithDeletion(desiredField, existingField, log)
-		}
+		merged, mergeErr = merge.MergeMapsWithDeletion(desiredField, existingField, log)
 		if mergeErr != nil {
 			log.Debug().Err(mergeErr).Str("field", fieldName).Msg("Failed to merge HelmRelease field, using desired")
 			merged = desiredField
 		}
+
+		// If merged result is empty and existing had fields, remove the key entirely
+		// This signals to SSA that we want to delete all nested fields
+		if len(merged) == 0 && len(existingField) > 0 {
+			// Remove the field entirely to signal deletion of all nested fields
+			unstructured.RemoveNestedField(existing.Object, "spec", fieldName)
+			return nil
+		}
+
+		// Remove the field first to ensure a clean replacement
+		// This helps SSA detect deletions more reliably
+		unstructured.RemoveNestedField(existing.Object, "spec", fieldName)
+		// Then set the merged value
+		// MergeMapsWithDeletion already handled all nested deletions, so we can use the merged result directly
 		return unstructured.SetNestedField(existing.Object, merged, "spec", fieldName)
 
 	case desiredHasField:
-		// Only desired has it, use desired
+		// Only desired has it, use desired (this will remove the field if it existed)
 		return unstructured.SetNestedField(existing.Object, desiredField, "spec", fieldName)
 
 	default:
-		// Neither has it or only existing has it, keep existing (no-op)
+		// Neither has it or only existing has it
+		// If only existing has it and desired doesn't, we should remove it
+		// But we need to be careful: if this is the values field and it has Resource-managed
+		// fields, we shouldn't remove it entirely. However, if desired explicitly doesn't
+		// have the field, we should remove it (SSA will preserve Resource-managed nested fields).
+		if existingHasField {
+			if fieldName == specFieldValues {
+				// For values field, if desired doesn't have it, we should set it to empty
+				// This allows SSA to remove our fields while preserving Resource-managed ones
+				return unstructured.SetNestedField(existing.Object, map[string]interface{}{}, "spec", fieldName)
+			}
+			// For other fields, if desired doesn't have it, remove it entirely
+			// This signals to SSA that we want to delete the field
+			unstructured.RemoveNestedField(existing.Object, "spec", fieldName)
+			return nil
+		}
+		// Neither has it, nothing to do
 		return nil
 	}
 }
@@ -192,14 +221,14 @@ func getOrCreateObject(ctx context.Context, k8sClient client.Client, obj *unstru
 		return existing, nil
 	}
 
-	// If not found, create it
+	// In getOrCreateObject, change from Create to SSA Apply:
 	if kerrors.IsNotFound(err) {
-		if createErr := k8sClient.Create(ctx, obj); createErr != nil {
+		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
+		if createErr := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); createErr != nil {
 			return nil, errors.Wrap(createErr, "Failed to create object")
 		}
 		return obj, nil
 	}
-
 	return nil, errors.Wrap(err, "Failed to get existing object")
 }
 

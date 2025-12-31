@@ -883,29 +883,82 @@ func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstruc
 		return err
 	}
 
-	// If object was just created, use Server-Side Apply for HelmReleases, Update for others
-	if existing == obj {
-		if obj.GetKind() == kindHelmRelease {
-			return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
-		}
-		return nil
-	}
-
 	// Merge spec based on resource type
 	if obj.GetKind() == kindHelmRelease {
-		if err := mergeHelmReleaseSpec(existing, obj, log); err != nil {
-			return errors.Wrap(err, "Failed to merge HelmRelease spec")
+		// Check if object was just created (same object reference means it was created in getOrCreateObject)
+		// For newly created objects, we can apply directly without merging
+		if existing == obj {
+			// Object was just created with SSA in getOrCreateObject, no need to apply again
+			return nil
 		}
-		// Update metadata from desired
-		updateObjectMetadata(existing, obj)
-		// Use Server-Side Apply for HelmReleases to properly merge with fields managed by Resource subroutine
-		return k8sClient.Patch(ctx, existing, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+		// Object exists, merge with existing to preserve fields managed by Resource subroutine
+		// Retry logic to handle race conditions where the object is modified between Get and Patch
+		maxRetries := 3
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			// Fetch fresh object to avoid race conditions
+			freshExisting := &unstructured.Unstructured{}
+			freshExisting.SetGroupVersionKind(obj.GroupVersionKind())
+			freshExisting.SetName(obj.GetName())
+			freshExisting.SetNamespace(obj.GetNamespace())
+
+			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), freshExisting); err != nil {
+				if kerrors.IsNotFound(err) {
+					// Object was deleted, create it with ForceOwnership
+					// This ensures all fields are managed by platform-mesh-deployment from the start
+					obj.SetManagedFields(nil)
+					return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+				}
+				return errors.Wrap(err, "Failed to get existing object for merge")
+			}
+
+			// Create a copy of the desired object to work with
+			// We'll merge into a copy of existing to preserve Resource-managed fields
+			mergedObj := freshExisting.DeepCopy()
+
+			// Merge with desired to get the final state
+			// This merge will remove fields not in desired, but Resource-managed fields
+			// will be preserved by SSA's field manager tracking
+			if err := mergeHelmReleaseSpec(mergedObj, obj, log); err != nil {
+				return errors.Wrap(err, "Failed to merge HelmRelease spec")
+			}
+			// Update metadata from desired
+			updateObjectMetadata(mergedObj, obj)
+
+			// Use Server-Side Apply for HelmReleases to properly merge with fields managed by Resource subroutine
+			// Clear managedFields (required by Kubernetes for SSA)
+			// Use ForceOwnership to take ownership of all fields, ensuring fields previously managed by
+			// other field managers (like "debug") are now managed by us. This allows proper deletion.
+			// Resource subroutine uses ForceOwnership for specific fields (e.g., spec.values.image.tag),
+			// and SSA will correctly merge - the last writer wins for those specific fields.
+			mergedObj.SetManagedFields(nil)
+
+			// Apply the merged object with ForceOwnership
+			// SSA will:
+			// 1. Take ownership of all fields in our patch (including those previously managed by others)
+			// 2. Remove fields that were previously managed by us but are no longer in the patch
+			// 3. Resource subroutine can still update its specific fields using ForceOwnership
+			err := k8sClient.Patch(ctx, mergedObj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+			if err == nil {
+				return nil
+			}
+
+			// If we get a conflict error, retry with fresh object
+			if kerrors.IsConflict(err) && attempt < maxRetries-1 {
+				log.Debug().Int("attempt", attempt+1).Str("name", obj.GetName()).Msg("Object was modified, retrying with fresh object")
+				continue
+			}
+
+			return errors.Wrap(err, "Failed to apply HelmRelease")
+		}
+
+		return errors.New("Failed to apply HelmRelease after max retries")
 	} else if obj.GetKind() == kindResource {
 		if err := mergeResourceSpec(existing, obj, log); err != nil {
 			return errors.Wrap(err, "Failed to merge Resource spec")
 		}
 		// Update metadata from desired
 		updateObjectMetadata(existing, obj)
+		existing.SetManagedFields(nil) // Clear managed fields to avoid conflicts
 		return k8sClient.Update(ctx, existing)
 	} else {
 		if err := mergeGenericSpec(existing, obj, log); err != nil {
@@ -913,6 +966,7 @@ func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstruc
 		}
 		// Update metadata from desired
 		updateObjectMetadata(existing, obj)
+		existing.SetManagedFields(nil) // Clear managed fields to avoid conflicts
 		return k8sClient.Update(ctx, existing)
 	}
 }
@@ -967,7 +1021,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	obj.SetNamespace(inst.Namespace)
 
 	// create system masters secret (idempotent)
-	if err := r.clientRuntime.Create(ctx, &obj); err != nil {
+	if err := r.clientRuntime.Create(ctx, &obj, client.FieldOwner(fieldManagerDeployment)); err != nil {
 		if kerrors.IsAlreadyExists(err) {
 			log.Info().Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("KCP webhook secret already exists, skipping create")
 			return nil
@@ -1156,7 +1210,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
