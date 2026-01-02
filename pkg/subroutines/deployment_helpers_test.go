@@ -492,7 +492,13 @@ func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_NotFound() {
 		mock.Anything,
 	).Return(notFoundErr)
 
-	clientMock.EXPECT().Create(ctx, obj, client.FieldOwner(fieldManagerDeployment)).Return(nil)
+	clientMock.EXPECT().Patch(
+		ctx,
+		obj,
+		client.Apply,
+		client.FieldOwner(fieldManagerDeployment),
+		client.ForceOwnership,
+	).Return(nil)
 
 	result, err := getOrCreateObject(ctx, clientMock, obj)
 	s.NoError(err)
