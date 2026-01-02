@@ -28,5 +28,5 @@ spec:
   targetNamespace: {{ .traefik.targetNamespace }}
   timeout: 15m
   values:
-{{ .traefikValues }}
+{{ toYaml .traefik.values | nindent 4 }}
 {{- end }}

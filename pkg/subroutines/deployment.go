@@ -24,13 +24,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
-
-	_ "embed"
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -47,7 +44,6 @@ type DeploymentSubroutine struct {
 	gotemplatesInfraDir      string
 	gotemplatesComponentsDir string
 	cfgOperator              *config.OperatorConfig
-	restConfig               *rest.Config
 }
 
 const (
@@ -55,7 +51,7 @@ const (
 	defaultProfileConfigMapSuffix = "-profile"
 )
 
-func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig, restConfig *rest.Config) *DeploymentSubroutine {
+func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
 	workspaceDir := filepath.Join(operatorCfg.WorkspaceDir, "/manifests/k8s/")
 	// gotemplates is at the root level, relative to WorkspaceDir
 	gotemplatesInfraDir := filepath.Join(operatorCfg.WorkspaceDir, "gotemplates/infra")
@@ -69,7 +65,6 @@ func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Cli
 		gotemplatesInfraDir:      gotemplatesInfraDir,
 		gotemplatesComponentsDir: gotemplatesComponentsDir,
 		cfgOperator:              operatorCfg,
-		restConfig:               restConfig,
 	}
 
 	return sub
@@ -113,8 +108,8 @@ func (r *DeploymentSubroutine) getProfileConfigMap(ctx context.Context, inst *v1
 	return nil, err
 }
 
-// loadProfileFromConfigMap loads the profile from the ConfigMap and returns infra and components sections.
-func (r *DeploymentSubroutine) loadProfileFromConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (infraProfile string, componentsProfile string, err error) {
+// loadProfileSections  returns infra and components profile sections as separate YAML strings
+func (r *DeploymentSubroutine) loadProfileSections(ctx context.Context, inst *v1alpha1.PlatformMesh) (infraProfile string, componentsProfile string, err error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	configMap, err := r.getProfileConfigMap(ctx, inst)
@@ -206,7 +201,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
 	}
 
-	// Render and apply components templates (HelmReleases + OCM Resources) using profile-components.yaml
+	// Render and apply components templates (HelmReleases + OCM Resources) using profile
 	oErr = r.renderAndApplyComponentsInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
 		log.Error().Err(oErr.Err()).Msg("Failed to render and apply components infra templates")
@@ -287,7 +282,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 // templateVarsFromProfileInfra parses the infra profile and merges it with templateVars for rendering gotemplates/infra
 func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config *config.OperatorConfig) (map[string]interface{}, error) {
 	// Load profile from ConfigMap
-	infraProfileYaml, _, err := r.loadProfileFromConfigMap(ctx, inst)
+	infraProfileYaml, _, err := r.loadProfileSections(ctx, inst)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
@@ -327,43 +322,6 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
 	}
 
-	// Convert certManager.values from map to indented YAML string for template insertion
-	if certManager, ok := tmplVars["certManager"].(map[string]interface{}); ok {
-		if values, ok := certManager["values"].(map[string]interface{}); ok {
-			valuesBytes, err := yaml.Marshal(values)
-			if err != nil {
-				return nil, errors.Wrap(err, "Failed to marshal cert-manager values")
-			}
-			// Indent the values YAML for embedding in HelmRelease (4 spaces)
-			indented := strings.TrimSpace(string(valuesBytes))
-			lines := strings.Split(indented, "\n")
-			indentedLines := make([]string, len(lines))
-			for i, line := range lines {
-				indentedLines[i] = "    " + line
-			}
-			certManager["values"] = strings.Join(indentedLines, "\n")
-			tmplVars["certManager"] = certManager
-		}
-	}
-
-	// Convert traefik.values from map to indented YAML string for template insertion
-	if traefik, ok := tmplVars["traefik"].(map[string]interface{}); ok {
-		if values, ok := traefik["values"].(map[string]interface{}); ok {
-			valuesBytes, err := yaml.Marshal(values)
-			if err != nil {
-				return nil, errors.Wrap(err, "Failed to marshal traefik values")
-			}
-			// Indent the values YAML for embedding in HelmRelease (4 spaces)
-			indented := strings.TrimSpace(string(valuesBytes))
-			lines := strings.Split(indented, "\n")
-			indentedLines := make([]string, len(lines))
-			for i, line := range lines {
-				indentedLines[i] = "    " + line
-			}
-			tmplVars["traefikValues"] = strings.Join(indentedLines, "\n")
-		}
-	}
-
 	// Ensure helmReleaseNamespace is set (from templateVars or use releaseNamespace)
 	if _, ok := tmplVars["helmReleaseNamespace"]; !ok {
 		tmplVars["helmReleaseNamespace"] = inst.Namespace
@@ -378,7 +336,7 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Load profile from ConfigMap
-	infraProfile, componentsProfile, err := r.loadProfileFromConfigMap(ctx, inst)
+	infraProfile, componentsProfile, err := r.loadProfileSections(ctx, inst)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
@@ -498,16 +456,16 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	return baseVars, nil
 }
 
-// buildComponentsTemplateData parses components profile using TemplateVars and produces the data
+// buildComponentsTemplateVars parses components profile using TemplateVars and produces the data
 // structure expected by gotemplates/components (root keys: values, releaseNamespace).
-func (r *DeploymentSubroutine) buildComponentsTemplateData(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
+func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
 	log, err := logger.New(logger.DefaultConfig())
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create logger")
 	}
 
 	// Load components profile from ConfigMap
-	_, componentsProfileYaml, err := r.loadProfileFromConfigMap(ctx, inst)
+	_, componentsProfileYaml, err := r.loadProfileSections(ctx, inst)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
@@ -728,7 +686,7 @@ func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Contex
 func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	data, err := r.buildComponentsTemplateData(ctx, inst, templateVars)
+	tmplVars, err := r.buildComponentsTemplateVars(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build components template data for infra")
 		return errors.NewOperatorError(err, true, true)
@@ -755,7 +713,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 		}
 
 		var rendered bytes.Buffer
-		if err := tpl.Execute(&rendered, data); err != nil {
+		if err := tpl.Execute(&rendered, tmplVars); err != nil {
 			return errors.Wrap(err, "Failed to execute components infra template: %s", path)
 		}
 
@@ -781,7 +739,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
 			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.applyWithUpdate(ctx, &obj, r.clientInfra, log); err != nil {
+			if err := r.applyManifest(ctx, &obj, r.clientInfra, log); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components infra manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components infra template")
@@ -803,7 +761,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	data, err := r.buildComponentsTemplateData(ctx, inst, templateVars)
+	tmplVars, err := r.buildComponentsTemplateVars(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build components template data for runtime")
 		return errors.NewOperatorError(err, true, true)
@@ -830,7 +788,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 		}
 
 		var rendered bytes.Buffer
-		if err := tpl.Execute(&rendered, data); err != nil {
+		if err := tpl.Execute(&rendered, tmplVars); err != nil {
 			return errors.Wrap(err, "Failed to execute components runtime template: %s", path)
 		}
 
@@ -856,7 +814,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
 			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.applyWithUpdate(ctx, &obj, r.clientRuntime, log); err != nil {
+			if err := r.applyManifest(ctx, &obj, r.clientRuntime, log); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components runtime manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components runtime template")
@@ -873,11 +831,12 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 	return nil
 }
 
-// applyWithUpdate applies an object using Update with merge logic to preserve
-// fields managed by other subroutines (e.g., Resource subroutine).
-// For HelmReleases, it uses Server-Side Apply to properly merge fields managed
-// by different field managers (Resource subroutine uses "platform-mesh-resource").
-func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, log *logger.Logger) error {
+// applyManifest applies an object using Server-Side Apply.
+// For HelmReleases, SSA automatically merges with fields managed by other field managers
+// (e.g., Resource subroutine uses "platform-mesh-resource").
+// Fields not in the desired spec that we own will be removed, while fields owned by
+// other managers (like Resource subroutine) will be preserved automatically by SSA.
+func (r *DeploymentSubroutine) applyManifest(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, log *logger.Logger) error {
 	existing, err := getOrCreateObject(ctx, k8sClient, obj)
 	if err != nil {
 		return err
@@ -886,65 +845,37 @@ func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstruc
 	// Merge spec based on resource type
 	if obj.GetKind() == kindHelmRelease {
 		// Check if object was just created (same object reference means it was created in getOrCreateObject)
-		// For newly created objects, we can apply directly without merging
 		if existing == obj {
 			// Object was just created with SSA in getOrCreateObject, no need to apply again
 			return nil
 		}
-		// Object exists, merge with existing to preserve fields managed by Resource subroutine
-		// Retry logic to handle race conditions where the object is modified between Get and Patch
+
+		// Use Server-Side Apply for HelmReleases
+		// SSA will automatically:
+		// 1. Take ownership of fields in our patch (if we own them or they're unowned)
+		// 2. Preserve fields owned by other managers (e.g., Resource subroutine)
+		// 3. Remove fields that we own but are no longer in the patch
+		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
+
+		// Retry logic to handle race conditions where the object is modified between operations
 		maxRetries := 3
 		for attempt := 0; attempt < maxRetries; attempt++ {
-			// Fetch fresh object to avoid race conditions
-			freshExisting := &unstructured.Unstructured{}
-			freshExisting.SetGroupVersionKind(obj.GroupVersionKind())
-			freshExisting.SetName(obj.GetName())
-			freshExisting.SetNamespace(obj.GetNamespace())
-
-			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), freshExisting); err != nil {
-				if kerrors.IsNotFound(err) {
-					// Object was deleted, create it with ForceOwnership
-					// This ensures all fields are managed by platform-mesh-deployment from the start
-					obj.SetManagedFields(nil)
-					return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
-				}
-				return errors.Wrap(err, "Failed to get existing object for merge")
-			}
-
-			// Create a copy of the desired object to work with
-			// We'll merge into a copy of existing to preserve Resource-managed fields
-			mergedObj := freshExisting.DeepCopy()
-
-			// Merge with desired to get the final state
-			// This merge will remove fields not in desired, but Resource-managed fields
-			// will be preserved by SSA's field manager tracking
-			if err := mergeHelmReleaseSpec(mergedObj, obj, log); err != nil {
-				return errors.Wrap(err, "Failed to merge HelmRelease spec")
-			}
-			// Update metadata from desired
-			updateObjectMetadata(mergedObj, obj)
-
-			// Use Server-Side Apply for HelmReleases to properly merge with fields managed by Resource subroutine
-			// Clear managedFields (required by Kubernetes for SSA)
-			// Use ForceOwnership to take ownership of all fields, ensuring fields previously managed by
-			// other field managers (like "debug") are now managed by us. This allows proper deletion.
-			// Resource subroutine uses ForceOwnership for specific fields (e.g., spec.values.image.tag),
-			// and SSA will correctly merge - the last writer wins for those specific fields.
-			mergedObj.SetManagedFields(nil)
-
-			// Apply the merged object with ForceOwnership
-			// SSA will:
-			// 1. Take ownership of all fields in our patch (including those previously managed by others)
-			// 2. Remove fields that were previously managed by us but are no longer in the patch
-			// 3. Resource subroutine can still update its specific fields using ForceOwnership
-			err := k8sClient.Patch(ctx, mergedObj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+			err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
 			if err == nil {
 				return nil
 			}
 
-			// If we get a conflict error, retry with fresh object
+			// If we get a conflict error, retry
 			if kerrors.IsConflict(err) && attempt < maxRetries-1 {
-				log.Debug().Int("attempt", attempt+1).Str("name", obj.GetName()).Msg("Object was modified, retrying with fresh object")
+				log.Debug().Int("attempt", attempt+1).Str("name", obj.GetName()).Msg("Object was modified, retrying")
+				// Fetch fresh object for next attempt
+				freshExisting := &unstructured.Unstructured{}
+				freshExisting.SetGroupVersionKind(obj.GroupVersionKind())
+				freshExisting.SetName(obj.GetName())
+				freshExisting.SetNamespace(obj.GetNamespace())
+				if getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), freshExisting); getErr != nil {
+					return errors.Wrap(getErr, "Failed to get fresh object for retry")
+				}
 				continue
 			}
 
@@ -953,21 +884,35 @@ func (r *DeploymentSubroutine) applyWithUpdate(ctx context.Context, obj *unstruc
 
 		return errors.New("Failed to apply HelmRelease after max retries")
 	} else if obj.GetKind() == kindResource {
-		if err := mergeResourceSpec(existing, obj, log); err != nil {
-			return errors.Wrap(err, "Failed to merge Resource spec")
+		// Check if object was just created
+		if existing == obj {
+			// Object was just created with SSA in getOrCreateObject, no need to apply again
+			return nil
 		}
-		// Update metadata from desired
-		updateObjectMetadata(existing, obj)
-		existing.SetManagedFields(nil) // Clear managed fields to avoid conflicts
-		return k8sClient.Update(ctx, existing)
+
+		// Remove interval from desired spec (OCM controller manages it)
+		// SSA will preserve interval if it's owned by the OCM controller
+		if desiredSpec, _, _ := unstructured.NestedMap(obj.Object, "spec"); desiredSpec != nil {
+			if _, hasInterval := desiredSpec[specFieldInterval]; hasInterval {
+				unstructured.RemoveNestedField(obj.Object, "spec", specFieldInterval)
+			}
+		}
+
+		// Use Server-Side Apply for Resource objects
+		// SSA will automatically preserve fields owned by other managers (e.g., interval by OCM controller)
+		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
+		return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
 	} else {
-		if err := mergeGenericSpec(existing, obj, log); err != nil {
-			return errors.Wrap(err, "Failed to merge spec")
+		// Check if object was just created
+		if existing == obj {
+			// Object was just created with SSA in getOrCreateObject, no need to apply again
+			return nil
 		}
-		// Update metadata from desired
-		updateObjectMetadata(existing, obj)
-		existing.SetManagedFields(nil) // Clear managed fields to avoid conflicts
-		return k8sClient.Update(ctx, existing)
+
+		// Use Server-Side Apply for generic resources
+		// SSA will automatically preserve fields owned by other managers
+		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
+		return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
 	}
 }
 

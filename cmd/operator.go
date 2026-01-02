@@ -84,6 +84,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}()
 
+	log.Info().Msg("Starting manager")
+
 	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg.RemoteRuntime.Enabled {
 		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)

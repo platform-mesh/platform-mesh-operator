@@ -50,5 +50,5 @@ func (s *DeployTestSuite) SetupTest() {
 
 	s.operatorConfig = &operatorCfg
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg, nil)
+	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, nil, &cfg, &operatorCfg)
 }

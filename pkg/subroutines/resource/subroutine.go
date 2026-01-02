@@ -41,6 +41,8 @@ var helmReleaseGvk = schema.GroupVersionKind{
 	Kind:    "HelmRelease",
 }
 
+var resourceFieldManager = "platform-mesh-resource"
+
 type ResourceSubroutine struct {
 	client client.Client
 }
@@ -185,7 +187,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	// Use Server-Side Apply with field manager to update only the specific field
 	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
 	err = r.client.Patch(ctx, patchObj, client.Apply,
-		client.FieldOwner("platform-mesh-resource"),
+		client.FieldOwner(resourceFieldManager),
 		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
@@ -221,7 +223,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	// Use Server-Side Apply with field manager to update only the specific field
 	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
 	err = r.client.Patch(ctx, patchObj, client.Apply,
-		client.FieldOwner("platform-mesh-resource"),
+		client.FieldOwner(resourceFieldManager),
 		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
@@ -355,6 +357,11 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 		}
 
 		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
+		if err != nil {
+			return err
+		}
+
+		err = unstructured.SetNestedField(obj.Object, "5m", "spec", "timeout")
 		if err != nil {
 			return err
 		}

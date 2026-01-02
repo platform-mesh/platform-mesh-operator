@@ -22,5 +22,5 @@ spec:
   targetNamespace: {{ .certManager.targetNamespace }}
   timeout: 15m
   values:
-{{ .certManager.values }}
+{{ toYaml .certManager.values | nindent 4 }}
 {{- end }}

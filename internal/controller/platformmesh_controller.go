@@ -130,7 +130,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg, mgr.GetConfig())
+		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg)
 		subs = append(subs, deploymentSub)
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
