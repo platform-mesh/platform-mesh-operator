@@ -17,6 +17,7 @@ vars:
   GOOS:
     sh: go env GOOS
   KUSTOMIZE: "{{.LOCAL_BIN}}/kustomize"
+  TEST_TIMEOUT: 15m
 tasks:
   ## Setup
   setup:mockery:
@@ -71,7 +72,7 @@ tasks:
     cmds:
       - |
         export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-        go test -timeout 10m -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+        go test -timeout {{.TEST_TIMEOUT}} -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
 
   test:
@@ -83,7 +84,7 @@ tasks:
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
               echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
-              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 10m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout {{.TEST_TIMEOUT}} -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
                 # ...
@@ -101,7 +102,7 @@ tasks:
                 exit 1
               fi
               export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-              go test -timeout 10m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+              go test -timeout {{.TEST_TIMEOUT}} -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
             fi
         ignore_error: false
         

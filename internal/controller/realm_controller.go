@@ -26,6 +26,17 @@ type RealmReconciler struct {
 }
 
 func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) *RealmReconciler {
+
+	clientInfra := mgr.GetClient()
+	if cfg.RemoteInfra.Enabled {
+		var err error
+		clientInfra, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteInfra.Kubeconfig)
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get remote Infra kubeconfig")
+			return nil
+		}
+	}
+
 	return &RealmReconciler{
 		lifecycle: pmctrl.NewLifecycleManager(
 			[]subroutine.Subroutine{
@@ -39,7 +50,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 			},
 			"platform-mesh-operator",
 			"RealmReconciler",
-			mgr.GetClient(),
+			clientInfra,
 			log,
 		).WithConditionManagement().
 			WithStaticThenExponentialRateLimiter(

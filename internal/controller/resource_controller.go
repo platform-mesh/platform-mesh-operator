@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -74,10 +75,15 @@ func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.Co
 	return builder.Complete(r)
 }
 
-func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig) *ResourceReconciler {
+func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, clientInfra client.Client) *ResourceReconciler {
 	var subs []subroutine.Subroutine
 
-	subs = append(subs, resource.NewResourceSubroutine(mgr))
+	// If no dedicated infra client is provided, default to the manager client.
+	if clientInfra == nil {
+		clientInfra = mgr.GetClient()
+	}
+
+	subs = append(subs, resource.NewResourceSubroutine(clientInfra))
 
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

@@ -10,11 +10,9 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 )
@@ -43,12 +41,14 @@ var helmReleaseGvk = schema.GroupVersionKind{
 	Kind:    "HelmRelease",
 }
 
+var resourceFieldManager = "platform-mesh-resource"
+
 type ResourceSubroutine struct {
-	mgr manager.Manager
+	client client.Client
 }
 
-func NewResourceSubroutine(mgr manager.Manager) *ResourceSubroutine {
-	return &ResourceSubroutine{mgr: mgr}
+func NewResourceSubroutine(client client.Client) *ResourceSubroutine {
+	return &ResourceSubroutine{client: client}
 }
 
 func (r *ResourceSubroutine) GetName() string {
@@ -169,19 +169,26 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.mgr.GetClient().Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, obj)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
+	// Create a minimal patch object with only the field we're updating
+	// This ensures Server-Side Apply only tracks ownership of this specific field
+	// We don't need to Get the existing object since we already have name/namespace
+	// from the 'for' annotation or the Resource instance itself
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(helmReleaseGvk)
+	patchObj.SetName(obj.GetName())
+	patchObj.SetNamespace(obj.GetNamespace())
 
-	err = unstructured.SetNestedField(obj.Object, version, updatePath...)
-	if err != nil {
+	// Set only the field we're managing (the version at the specified path)
+	if err = unstructured.SetNestedField(patchObj.Object, version, updatePath...); err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.mgr.GetClient().Update(ctx, obj)
+	// Use Server-Side Apply with field manager to update only the specific field
+	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
+	err = r.client.Patch(ctx, patchObj, client.Apply,
+		client.FieldOwner(resourceFieldManager),
+		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -200,19 +207,24 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(inst), obj)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
+	// Create a minimal patch object with only the field we're updating
+	// This ensures Server-Side Apply only tracks ownership of this specific field
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(helmReleaseGvk)
+	patchObj.SetName(obj.GetName())
+	patchObj.SetNamespace(obj.GetNamespace())
 
-	err = unstructured.SetNestedField(obj.Object, version, "spec", "chart", "spec", "version")
-	if err != nil {
+	// Set only the field we're managing (spec.chart.spec.version)
+	if err = unstructured.SetNestedField(patchObj.Object, version, "spec", "chart", "spec", "version"); err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.mgr.GetClient().Update(ctx, obj)
+	// Use Server-Side Apply with field manager to update only the specific field
+	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
+	err = r.client.Patch(ctx, patchObj, client.Apply,
+		client.FieldOwner(resourceFieldManager),
+		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -232,7 +244,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	obj.SetGroupVersionKind(helmRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, url, "spec", "url")
 		if err != nil {
 			return err
@@ -283,7 +295,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	obj.SetGroupVersionKind(ociRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag")
 		if err != nil {
 			return err
@@ -332,7 +344,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 
 		err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit")
 		if err != nil {
@@ -345,6 +357,11 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 		}
 
 		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
+		if err != nil {
+			return err
+		}
+
+		err = unstructured.SetNestedField(obj.Object, "5m", "spec", "timeout")
 		if err != nil {
 			return err
 		}
