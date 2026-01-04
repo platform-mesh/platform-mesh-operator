@@ -278,6 +278,11 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 
 	result := apiextensionsv1.JSON{}
 	result.Raw, _ = json.Marshal(values)
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to marshal template vars")
+	}
+	result.Raw = raw
 
 	return result, nil
 }
@@ -517,12 +522,12 @@ func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, err
 	if kubeconfig == "" {
 		config, err := rest.InClusterConfig()
 		if err != nil {
-			log.Fatal().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
+			log.Error().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
 			return nil, nil, err
 		}
 		deployClient, err := client.New(config, client.Options{Scheme: GetClientScheme()})
 		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create in-cluster deployment client")
+			log.Error().Err(err).Msg("unable to create in-cluster deployment client")
 			return nil, nil, err
 		}
 		return deployClient, config, nil
@@ -530,22 +535,22 @@ func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, err
 
 	config, err := clientcmd.LoadFromFile(kubeconfig)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to build Config")
+		log.Error().Err(err).Msg("unable to build Config")
 		return nil, nil, err
 	}
 	cfgBytes, err := clientcmd.Write(*config)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to serialize config to bytes")
+		log.Error().Err(err).Msg("unable to serialize config to bytes")
 		return nil, nil, err
 	}
 	restCfg, err := clientcmd.RESTConfigFromKubeConfig(cfgBytes)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to build rest config from kubeconfig")
+		log.Error().Err(err).Msg("unable to build rest config from kubeconfig")
 		return nil, nil, err
 	}
 	deployClient, err := client.New(restCfg, client.Options{Scheme: GetClientScheme()})
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to create client")
+		log.Error().Err(err).Msg("unable to create client")
 		return nil, nil, err
 	}
 	return deployClient, restCfg, nil

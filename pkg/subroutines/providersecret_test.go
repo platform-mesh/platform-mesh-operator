@@ -84,7 +84,7 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 	suite.cfg.KCP.FrontProxyPort = "6443"
 	suite.cfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
 
-	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, &subroutines.Helper{}, fakeHelm{ready: true}, suite.cfg)
+	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, &subroutines.Helper{}, fakeHelm{ready: true})
 }
 
 func (suite *ProvidersecretTestSuite) TearDownTest() {
@@ -256,7 +256,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -352,7 +352,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	).Once()
 
 	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = subroutines.NewProviderSecretSubroutine(mockK8sClient, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(mockK8sClient, mockedKcpHelper, fakeHelm{ready: true})
 
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -463,7 +463,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"cluster-admin-secret":
@@ -515,7 +515,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	).Once()
 
 	// Run
-	s.testObj = subroutines.NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -625,7 +625,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	).Once()
 
 	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -743,7 +743,7 @@ func (s *ProvidersecretTestSuite) TestGetName() {
 
 func (suite *ProvidersecretTestSuite) TestConstructor() {
 	helper := &subroutines.Helper{}
-	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, helper, fakeHelm{ready: true}, suite.cfg)
+	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, helper, fakeHelm{ready: true})
 }
 
 func (s *ProvidersecretTestSuite) TestFinalize() {
@@ -827,7 +827,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -872,7 +872,7 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -961,7 +961,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1015,7 +1015,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1074,7 +1074,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1112,7 +1112,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1171,7 +1171,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1218,7 +1218,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1276,7 +1276,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1325,7 +1325,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1405,7 +1405,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig",
@@ -1457,7 +1457,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 		},
 	)
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1556,7 +1556,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig",
@@ -1608,7 +1608,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 		},
 	)
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1712,7 +1712,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"iam-service-kubeconfig",
 						"portal-kubeconfig":
@@ -1879,7 +1879,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	}
 
 	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1989,7 +1989,7 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
 	s.Require().NoError(err)
 
 	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -2066,7 +2066,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorGettingWorkspace
 	s.Require().NoError(err)
 
 	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
 
@@ -2155,7 +2155,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionNoVirtualWorkspaces()
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -2197,7 +2197,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionNoVirtualWorkspaces()
 	).Once()
 
 	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -2316,7 +2316,7 @@ func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret()
 
 	// Run
 	// Use the main client mock (not the KCP client) for the subroutine
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, s.cfg)
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)

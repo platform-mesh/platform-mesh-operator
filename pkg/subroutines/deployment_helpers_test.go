@@ -85,9 +85,8 @@ func (s *DeploymentHelpersTestSuite) Test_updateObjectMetadata() {
 			validate: func(obj *unstructured.Unstructured) {
 				// Existing labels should remain if desired has none
 				labels := obj.GetLabels()
-				if labels != nil {
-					s.Equal("label", labels["existing"])
-				}
+				s.NotNil(labels, "labels should be preserved")
+				s.Equal("label", labels["existing"], "existing label should be preserved")
 			},
 		},
 	}
@@ -130,7 +129,9 @@ func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_Existing() {
 	result, err := getOrCreateObject(ctx, clientMock, obj)
 	s.NoError(err)
 	s.NotNil(result)
-	s.Equal("value", result.Object["spec"].(map[string]interface{})["key"])
+	spec, ok := result.Object["spec"].(map[string]interface{})
+	s.Require().True(ok, "spec should be a map")
+	s.Equal("value", spec["key"])
 }
 
 func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_NotFound() {
@@ -154,23 +155,41 @@ func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_NotFound() {
 		Resource: "testresources",
 	}, "test-resource")
 
+	// First Get call returns NotFound
 	clientMock.EXPECT().Get(
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
-	).Return(notFoundErr)
+	).Return(notFoundErr).Once()
 
+	// Patch call creates the object
 	clientMock.EXPECT().Patch(
 		ctx,
 		obj,
 		client.Apply,
 		client.FieldOwner(fieldManagerDeployment),
-	).Return(nil)
+	).Return(nil).Once()
+
+	// Second Get call returns the created object
+	clientMock.EXPECT().Get(
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(nil).Run(func(ctx context.Context, key client.ObjectKey, target client.Object, opts ...client.GetOption) {
+		// Simulate setting the created object
+		u := target.(*unstructured.Unstructured)
+		u.Object = map[string]interface{}{
+			"spec": map[string]interface{}{"key": "value"},
+		}
+	}).Once()
 
 	result, err := getOrCreateObject(ctx, clientMock, obj)
 	s.NoError(err)
 	s.NotNil(result)
-	s.Equal(obj, result) // Should return the same object that was created
+	// The function returns the re-fetched object, not the original
+	spec, ok := result.Object["spec"].(map[string]interface{})
+	s.Require().True(ok, "spec should be a map")
+	s.Equal("value", spec["key"])
 }
 
 func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_GetError() {

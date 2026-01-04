@@ -11,7 +11,7 @@ kind: PlatformMesh
 metadata:
   name: platform-mesh-sample
   namespace: platform-mesh-system
-spec:iam-service
+spec:
   exposure:
     baseDomain: example.com
     port: 443
@@ -125,18 +125,12 @@ The platform-mesh-operator can be configured using environment variables or comm
 |----------|-------------|---------|
 | `SUBROUTINES_WAIT_ENABLED` | Enable the wait subroutine | `true` |
 
-### Remote FluxCD Configuration
+### Remote Infrastructure Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `REMOTE_FLUXCD_ENABLED` | Enables deployment of FluxCD resources to a remote cluster | `false` |
-| `REMOTE_FLUXCD_KUBECONFIG` | Path to the kubeconfig for remote FluxCD | `/operator/fluxcd-kubeconfig` |
-| `REMOTE_FLUXCD_PLATFORM_MESH_KUBECONFIG_SECRET_NAME` | Name of the secret containing PlatformMesh kubeconfig in the remote cluster | `platform-mesh-kubeconfig` |
-| `REMOTE_FLUXCD_PLATFORM_MESH_KUBECONFIG_SECRET_KEY` | Key in the secret containing PlatformMesh kubeconfig in the remote cluster| `kubeconfig` |
-| `REMOTE_FLUXCD_METRICS_BIND_ADDRESS` | Bind address for metrics | `:9091` |
-| `REMOTE_FLUXCD_METRICS_SECURE` | Enable secure metrics | `false` |
-| `REMOTE_FLUXCD_HEALTH_PROBE_BIND_ADDRESS` | Bind address for health probe | `:8091` |
-| `REMOTE_FLUXCD_LEADER_ELECT` | Enable leader election | `false` |
+| `REMOTE_INFRA_ENABLED` | Enable reconciliation of infrastructure resources on a remote cluster | `false` |
+| `REMOTE_INFRA_KUBECONFIG` | Path to the kubeconfig for remote infrastructure cluster | `/operator/infra-kubeconfig` |
 
 ### Remote Runtime Configuration
 

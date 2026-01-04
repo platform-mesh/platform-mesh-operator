@@ -146,7 +146,11 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 	if operatorCfg.PatchOIDCControllerEnabled {
-		realmReconciler := controller.NewRealmReconciler(mgr, log, &operatorCfg)
+		realmReconciler, err := controller.NewRealmReconciler(mgr, log, &operatorCfg)
+		if err != nil {
+			setupLog.Error(err, "unable to create RealmReconciler")
+			os.Exit(1)
+		}
 		if err := realmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Realm")); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "Realm")
 			os.Exit(1)

@@ -88,8 +88,11 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfi
 // mapConfigMapToPlatformMesh finds all PlatformMesh resources that reference the given ConfigMap
 // via spec.profileConfigMap and returns reconcile requests for them.
 func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context, obj client.Object) []reconcile.Request {
-	configMap := obj.(*corev1.ConfigMap)
 	var requests []reconcile.Request
+	configMap, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		return requests
+	}
 
 	// List all PlatformMesh resources
 	platformMeshList := &corev1alpha1.PlatformMeshList{}
@@ -137,7 +140,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp"))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
-		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, cfg))
+		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}))
 	}
 	if cfg.Subroutines.FeatureToggles.Enabled {
 		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg))

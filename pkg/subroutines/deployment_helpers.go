@@ -59,7 +59,15 @@ func getOrCreateObject(ctx context.Context, k8sClient client.Client, obj *unstru
 		if createErr := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment)); createErr != nil {
 			return nil, errors.Wrap(createErr, "Failed to create object")
 		}
-		return obj, nil
+		// Re-fetch the object to get server-populated fields
+		freshObj := &unstructured.Unstructured{}
+		freshObj.SetGroupVersionKind(obj.GroupVersionKind())
+		freshObj.SetName(obj.GetName())
+		freshObj.SetNamespace(obj.GetNamespace())
+		if getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), freshObj); getErr != nil {
+			return nil, errors.Wrap(getErr, "Failed to get object after creation")
+		}
+		return freshObj, nil
 	}
 	return nil, errors.Wrap(err, "Failed to get existing object")
 }
@@ -138,7 +146,7 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 
 	var objMap map[string]interface{}
 	if err := yaml.Unmarshal(rendered.Bytes(), &objMap); err != nil {
-		return nil, errors.Wrap(err, "Failed to unmarshal rendered YAML. Output:\n%s", renderedStr)
+		return nil, errors.Wrap(err, "Failed to unmarshal rendered YAML (size: %d bytes)", len(rendered.Bytes()))
 	}
 
 	return &unstructured.Unstructured{Object: objMap}, nil

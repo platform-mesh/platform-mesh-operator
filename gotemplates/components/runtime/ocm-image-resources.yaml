@@ -21,12 +21,13 @@ metadata:
 {{ toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  skipVerify: {{ $values.ocm.skipVerify }}
   componentRef:
     name: {{ $values.ocm.component.name }}
   resource:
     byReference:
       resource:
-        name: {{ .resource | default "image"}}
+        name: {{ .resource | default "image" }}
       referencePath:
         {{- if .referencePath }}
         {{- toYaml .referencePath | nindent 8 }}

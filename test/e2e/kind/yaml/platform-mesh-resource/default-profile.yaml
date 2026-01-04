@@ -169,7 +169,7 @@ data:
               enabled: false
             kubeConfig:
               enabled: true
-              secretName: kubernetes-grapqhl-gateway-kubeconfig
+              secretName: kubernetes-graphql-gateway-kubeconfig
             listener:
               virtualWorkspacesConfig:
                 content:

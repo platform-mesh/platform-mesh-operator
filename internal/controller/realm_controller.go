@@ -25,15 +25,15 @@ type RealmReconciler struct {
 	lifecycle *pmctrl.LifecycleManager
 }
 
-func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) *RealmReconciler {
+func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.OperatorConfig) (*RealmReconciler, error) {
 
-	clientInfra := mgr.GetClient()
+	clientRuntime := mgr.GetClient()
 	if cfg.RemoteInfra.Enabled {
 		var err error
-		clientInfra, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteInfra.Kubeconfig)
+		clientRuntime, _, err = subroutines.GetClientAndRestConfig(cfg.RemoteInfra.Kubeconfig)
 		if err != nil {
-			log.Fatal().Err(err).Msg("unable to get remote Infra kubeconfig")
-			return nil
+			log.Error().Err(err).Msg("unable to get remote Infra kubeconfig")
+			return nil, err
 		}
 	}
 
@@ -50,7 +50,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 			},
 			"platform-mesh-operator",
 			"RealmReconciler",
-			clientInfra,
+			clientRuntime,
 			log,
 		).WithConditionManagement().
 			WithStaticThenExponentialRateLimiter(
@@ -59,7 +59,7 @@ func NewRealmReconciler(mgr ctrl.Manager, log *logger.Logger, cfg *config.Operat
 				ratelimiter.WithExponentialInitialBackoff(10*time.Second),
 				ratelimiter.WithExponentialMaxBackoff(120*time.Second),
 			),
-	}
+	}, nil
 }
 
 func (r *RealmReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

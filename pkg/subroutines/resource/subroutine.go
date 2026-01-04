@@ -272,8 +272,9 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "imageReference")
-	if err != nil || !found {
+	if err != nil || !found || url == "" {
 		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	url = strings.TrimPrefix(url, "oci://")

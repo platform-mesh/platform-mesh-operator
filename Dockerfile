@@ -21,7 +21,6 @@ COPY api/ api/
 COPY internal/ internal/
 COPY pkg/ pkg/
 COPY manifests/ manifests/
-COPY gotemplates/ gotemplates/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags '-w -s' -o manager main.go
@@ -34,7 +33,6 @@ ENV USER_UID=1001
 ENV GROUP_UID=1001
 COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/manager /operator/manager
 COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/manifests /operator/manifests
-COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/gotemplates /operator/gotemplates
-
+COPY --chown=${USER_UID}:${GROUP_UID} gotemplates/ /operator/gotemplates
 USER ${USER_UID}:${GROUP_UID}
 ENTRYPOINT ["/operator/manager"]

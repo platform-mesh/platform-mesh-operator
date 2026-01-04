@@ -154,7 +154,7 @@ spec:
             audience: default
         kubeConfig:
           enabled: true
-          secretName: kubernetes-grapqhl-gateway-kubeconfig
+          secretName: kubernetes-graphql-gateway-kubeconfig
         listener:
           virtualWorkspacesConfig:
             enabled: true

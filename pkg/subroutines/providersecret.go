@@ -47,22 +47,19 @@ func NewProviderSecretSubroutine(
 	client client.Client,
 	helper KcpHelper,
 	helm HelmGetter,
-	cfgOperator *config.OperatorConfig,
 ) *ProvidersecretSubroutine {
 	sub := &ProvidersecretSubroutine{
-		client:      client,
-		kcpHelper:   helper,
-		helm:        helm,
-		cfgOperator: cfgOperator,
+		client:    client,
+		kcpHelper: helper,
+		helm:      helm,
 	}
 	return sub
 }
 
 type ProvidersecretSubroutine struct {
-	client      client.Client
-	kcpHelper   KcpHelper
-	helm        HelmGetter
-	cfgOperator *config.OperatorConfig
+	client    client.Client
+	kcpHelper KcpHelper
+	helm      HelmGetter
 }
 
 const (
@@ -130,7 +127,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(instance, r.cfgOperator))
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(instance, &operatorCfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -184,6 +181,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	var address *url.URL
 
@@ -227,9 +225,9 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 
 	newConfig := rest.CopyConfig(cfg)
 	if pc.External {
-		newConfig.Host = getExternalKcpHost(instance, r.cfgOperator) + address.Path
+		newConfig.Host = getExternalKcpHost(instance, &operatorCfg) + address.Path
 	} else {
-		newConfig.Host = getInternalKcpHost(r.cfgOperator) + address.Path
+		newConfig.Host = getInternalKcpHost(&operatorCfg) + address.Path
 	}
 
 	apiConfig := restConfigToAPIConfig(newConfig)

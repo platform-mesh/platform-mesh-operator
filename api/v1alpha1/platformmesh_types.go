@@ -37,6 +37,7 @@ type PlatformMeshSpec struct {
 // If namespace is not specified, it defaults to the PlatformMesh resource's namespace.
 type ConfigMapReference struct {
 	// Name is the name of the ConfigMap.
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 	// Namespace is the namespace of the ConfigMap. If not specified, defaults to the PlatformMesh resource's namespace.
 	// +optional

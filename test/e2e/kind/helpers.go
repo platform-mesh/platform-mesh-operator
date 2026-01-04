@@ -15,6 +15,28 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// applyUnstructureds applies a slice of unstructured objects to the cluster.
+// It skips nil objects, applies each object using SSA, and accumulates errors.
+func applyUnstructureds(
+	ctx context.Context,
+	k8sClient client.Client,
+	objs []unstructured.Unstructured,
+	path string,
+	log *logger.Logger,
+) error {
+	var errRet error = nil
+	for _, obj := range objs {
+		if obj.Object == nil {
+			continue
+		}
+		err := k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+		if err != nil {
+			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+		}
+	}
+	return errRet
+}
+
 // ApplyTemplateFromFile applies a template file to the cluster.
 // Before applying the template, it replaces the template variables with the values in the templateData map.
 func ApplyTemplateFromFile(
@@ -28,17 +50,7 @@ func ApplyTemplateFromFile(
 		return err
 	}
 
-	var errRet error = nil
-	for _, obj := range objs {
-		if obj.Object == nil {
-			continue
-		}
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
-		if err != nil {
-			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-		}
-	}
-	return errRet
+	return applyUnstructureds(ctx, k8sClient, objs, path, log)
 }
 
 // ApplyFile applies a manifest file to the cluster without any template variable replacement.
@@ -53,17 +65,7 @@ func ApplyFile(
 		return err
 	}
 
-	var errRet error = nil
-	for _, obj := range objs {
-		if obj.Object == nil {
-			continue
-		}
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
-		if err != nil {
-			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-		}
-	}
-	return errRet
+	return applyUnstructureds(ctx, k8sClient, objs, path, log)
 }
 
 func unstructuredsFromFile(path string, templateData map[string]string, log *logger.Logger) ([]unstructured.Unstructured, error) {
