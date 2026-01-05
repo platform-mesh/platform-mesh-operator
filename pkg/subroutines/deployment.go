@@ -739,10 +739,9 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
 			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.applyManifest(ctx, &obj, r.clientInfra, log); err != nil {
+			if err := r.clientInfra.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components infra manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
-			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components infra template")
 		}
 
 		return nil
@@ -814,7 +813,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
 			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.applyManifest(ctx, &obj, r.clientRuntime, log); err != nil {
+			if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components runtime manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components runtime template")
@@ -829,91 +828,6 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 	}
 
 	return nil
-}
-
-// applyManifest applies an object using Server-Side Apply.
-// For HelmReleases, SSA automatically merges with fields managed by other field managers
-// (e.g., Resource subroutine uses "platform-mesh-resource").
-// Fields not in the desired spec that we own will be removed, while fields owned by
-// other managers (like Resource subroutine) will be preserved automatically by SSA.
-func (r *DeploymentSubroutine) applyManifest(ctx context.Context, obj *unstructured.Unstructured, k8sClient client.Client, log *logger.Logger) error {
-	existing, err := getOrCreateObject(ctx, k8sClient, obj)
-	if err != nil {
-		return err
-	}
-
-	// Merge spec based on resource type
-	if obj.GetKind() == kindHelmRelease {
-		// Check if object was just created (same object reference means it was created in getOrCreateObject)
-		if existing == obj {
-			// Object was just created with SSA in getOrCreateObject, no need to apply again
-			return nil
-		}
-
-		// Use Server-Side Apply for HelmReleases
-		// SSA will automatically:
-		// 1. Take ownership of fields in our patch (if we own them or they're unowned)
-		// 2. Preserve fields owned by other managers (e.g., Resource subroutine)
-		// 3. Remove fields that we own but are no longer in the patch
-		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
-
-		// Retry logic to handle race conditions where the object is modified between operations
-		maxRetries := 3
-		for attempt := 0; attempt < maxRetries; attempt++ {
-			err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
-			if err == nil {
-				return nil
-			}
-
-			// If we get a conflict error, retry
-			if kerrors.IsConflict(err) && attempt < maxRetries-1 {
-				log.Debug().Int("attempt", attempt+1).Str("name", obj.GetName()).Msg("Object was modified, retrying")
-				// Fetch fresh object for next attempt
-				freshExisting := &unstructured.Unstructured{}
-				freshExisting.SetGroupVersionKind(obj.GroupVersionKind())
-				freshExisting.SetName(obj.GetName())
-				freshExisting.SetNamespace(obj.GetNamespace())
-				if getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), freshExisting); getErr != nil {
-					return errors.Wrap(getErr, "Failed to get fresh object for retry")
-				}
-				continue
-			}
-
-			return errors.Wrap(err, "Failed to apply HelmRelease")
-		}
-
-		return errors.New("Failed to apply HelmRelease after max retries")
-	} else if obj.GetKind() == kindResource {
-		// Check if object was just created
-		if existing == obj {
-			// Object was just created with SSA in getOrCreateObject, no need to apply again
-			return nil
-		}
-
-		// Remove interval from desired spec (OCM controller manages it)
-		// SSA will preserve interval if it's owned by the OCM controller
-		if desiredSpec, _, _ := unstructured.NestedMap(obj.Object, "spec"); desiredSpec != nil {
-			if _, hasInterval := desiredSpec[specFieldInterval]; hasInterval {
-				unstructured.RemoveNestedField(obj.Object, "spec", specFieldInterval)
-			}
-		}
-
-		// Use Server-Side Apply for Resource objects
-		// SSA will automatically preserve fields owned by other managers (e.g., interval by OCM controller)
-		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
-		return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
-	} else {
-		// Check if object was just created
-		if existing == obj {
-			// Object was just created with SSA in getOrCreateObject, no need to apply again
-			return nil
-		}
-
-		// Use Server-Side Apply for generic resources
-		// SSA will automatically preserve fields owned by other managers
-		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
-		return k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
-	}
 }
 
 func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMesh) {

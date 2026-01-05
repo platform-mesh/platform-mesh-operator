@@ -89,8 +89,6 @@ func unstructuredsFromFile(path string, templateData map[string]string, log *log
 			return []unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
 		}
 
-		log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
-
 		obj := unstructured.Unstructured{Object: objMap}
 
 		log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
@@ -114,8 +112,6 @@ func unstructuredsFromFileNoTemplate(path string, log *logger.Logger) ([]unstruc
 		if err := yaml.Unmarshal([]byte(obj), &objMap); err != nil {
 			return []unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from file %s. Output:\n%s", path, string(manifestBytes))
 		}
-
-		log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
 
 		obj := unstructured.Unstructured{Object: objMap}
 

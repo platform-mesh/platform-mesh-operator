@@ -1,19 +1,11 @@
 package subroutines
 
 import (
-	"context"
-	"errors"
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 type DeploymentHelpersTestSuite struct {
@@ -99,120 +91,4 @@ func (s *DeploymentHelpersTestSuite) Test_updateObjectMetadata() {
 			}
 		})
 	}
-}
-
-func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_Existing() {
-	ctx := context.Background()
-	clientMock := new(mocks.Client)
-
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "test.group",
-		Version: "v1",
-		Kind:    "TestResource",
-	})
-	obj.SetName("test-resource")
-	obj.SetNamespace("test-namespace")
-
-	clientMock.EXPECT().Get(
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-	).Return(nil).Run(func(ctx context.Context, key client.ObjectKey, target client.Object, opts ...client.GetOption) {
-		// Simulate setting the existing object
-		u := target.(*unstructured.Unstructured)
-		u.Object = map[string]interface{}{
-			"spec": map[string]interface{}{"key": "value"},
-		}
-	})
-
-	result, err := getOrCreateObject(ctx, clientMock, obj)
-	s.NoError(err)
-	s.NotNil(result)
-	spec, ok := result.Object["spec"].(map[string]interface{})
-	s.Require().True(ok, "spec should be a map")
-	s.Equal("value", spec["key"])
-}
-
-func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_NotFound() {
-	ctx := context.Background()
-	clientMock := new(mocks.Client)
-
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "test.group",
-		Version: "v1",
-		Kind:    "TestResource",
-	})
-	obj.SetName("test-resource")
-	obj.SetNamespace("test-namespace")
-	obj.Object = map[string]interface{}{
-		"spec": map[string]interface{}{"key": "value"},
-	}
-
-	notFoundErr := kerrors.NewNotFound(schema.GroupResource{
-		Group:    "test.group",
-		Resource: "testresources",
-	}, "test-resource")
-
-	// First Get call returns NotFound
-	clientMock.EXPECT().Get(
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-	).Return(notFoundErr).Once()
-
-	// Patch call creates the object
-	clientMock.EXPECT().Patch(
-		ctx,
-		obj,
-		client.Apply,
-		client.FieldOwner(fieldManagerDeployment),
-	).Return(nil).Once()
-
-	// Second Get call returns the created object
-	clientMock.EXPECT().Get(
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-	).Return(nil).Run(func(ctx context.Context, key client.ObjectKey, target client.Object, opts ...client.GetOption) {
-		// Simulate setting the created object
-		u := target.(*unstructured.Unstructured)
-		u.Object = map[string]interface{}{
-			"spec": map[string]interface{}{"key": "value"},
-		}
-	}).Once()
-
-	result, err := getOrCreateObject(ctx, clientMock, obj)
-	s.NoError(err)
-	s.NotNil(result)
-	// The function returns the re-fetched object, not the original
-	spec, ok := result.Object["spec"].(map[string]interface{})
-	s.Require().True(ok, "spec should be a map")
-	s.Equal("value", spec["key"])
-}
-
-func (s *DeploymentHelpersTestSuite) Test_getOrCreateObject_GetError() {
-	ctx := context.Background()
-	clientMock := new(mocks.Client)
-
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "test.group",
-		Version: "v1",
-		Kind:    "TestResource",
-	})
-	obj.SetName("test-resource")
-	obj.SetNamespace("test-namespace")
-
-	clientMock.EXPECT().Get(
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-	).Return(errors.New("some error"))
-
-	result, err := getOrCreateObject(ctx, clientMock, obj)
-	s.Error(err)
-	s.Nil(result)
-	s.Contains(err.Error(), "Failed to get existing object")
 }

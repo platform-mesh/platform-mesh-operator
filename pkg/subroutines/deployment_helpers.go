@@ -15,18 +15,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
-
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
-	// Kubernetes resource kind names
-	kindHelmRelease = "HelmRelease"
-	kindResource    = "Resource"
-
-	// Spec field names
-	specFieldInterval = "interval"
-
 	// Field manager names for Server-Side Apply
 	fieldManagerDeployment = "platform-mesh-deployment"
 )
@@ -39,37 +30,6 @@ func updateObjectMetadata(existing, desired *unstructured.Unstructured) {
 	if annotations := desired.GetAnnotations(); annotations != nil {
 		existing.SetAnnotations(annotations)
 	}
-}
-
-// getOrCreateObject retrieves an existing object or creates it if not found.
-func getOrCreateObject(ctx context.Context, k8sClient client.Client, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	existing := &unstructured.Unstructured{}
-	existing.SetGroupVersionKind(obj.GroupVersionKind())
-	existing.SetName(obj.GetName())
-	existing.SetNamespace(obj.GetNamespace())
-
-	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), existing)
-	if err == nil {
-		return existing, nil
-	}
-
-	// Create object using SSA Apply if not found
-	if kerrors.IsNotFound(err) {
-		obj.SetManagedFields(nil) // Clear managed fields (required by Kubernetes for SSA)
-		if createErr := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment)); createErr != nil {
-			return nil, errors.Wrap(createErr, "Failed to create object")
-		}
-		// Re-fetch the object to get server-populated fields
-		freshObj := &unstructured.Unstructured{}
-		freshObj.SetGroupVersionKind(obj.GroupVersionKind())
-		freshObj.SetName(obj.GetName())
-		freshObj.SetNamespace(obj.GetNamespace())
-		if getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), freshObj); getErr != nil {
-			return nil, errors.Wrap(getErr, "Failed to get object after creation")
-		}
-		return freshObj, nil
-	}
-	return nil, errors.Wrap(err, "Failed to get existing object")
 }
 
 // renderAndApplyTemplates is a generic function to render and apply templates from a directory.
@@ -104,7 +64,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 		}
 
 		// Apply the rendered manifest
-		if err := r.applyManifest(ctx, obj, k8sClient, log); err != nil {
+		if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
 			return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}
 
