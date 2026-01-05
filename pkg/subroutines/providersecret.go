@@ -24,7 +24,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -246,16 +245,15 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			Name:      pc.Secret,
 			Namespace: namespace,
 		},
-	}
-
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
-		providerSecret.Data = map[string][]byte{
+		Data: map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
-		}
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update secret")
+		},
+	}
+	providerSecret.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"})
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, providerSecret, client.Apply, client.FieldOwner("platform-mesh-provider-secret"), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
@@ -318,12 +316,12 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 			Name:      ic.Secret,
 			Namespace: namespace,
 		},
+		Data: map[string][]byte{"kubeconfig": data},
 	}
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
-		initializerSecret.Data = map[string][]byte{"kubeconfig": data}
-		return err
-	})
-	if err != nil {
+	initializerSecret.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"})
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, initializerSecret, client.Apply, client.FieldOwner("platform-mesh-provider-secret"), client.ForceOwnership); err != nil {
 		log.Error().Err(err).Msg("creating/updating initializer Secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}

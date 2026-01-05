@@ -274,9 +274,9 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	// updateGitRepo uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			gitRepo := obj.(*unstructured.Unstructured)
 
 			commit, found, err := unstructured.NestedString(gitRepo.Object, "spec", "ref", "commit")
@@ -336,7 +336,8 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
+	// updateGitRepo uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
 	sub := subroutines.NewResourceSubroutine(clientMock)
 	result, err := sub.Process(ctx, inst)
@@ -376,18 +377,11 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
 
-	getCallCount := 0
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-			getCallCount++
-			return nil
-		},
-	)
-
-	updateCallCount := 0
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
-			updateCallCount++
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	patchCallCount := 0
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			patchCallCount++
 			unstr := obj.(*unstructured.Unstructured)
 
 			if unstr.GetKind() == "HelmRepository" {
@@ -430,10 +424,9 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	result, err := sub.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
-	// updateHelmRepository: 1 Get + 1 Update
-	// updateHelmRelease: 1 Patch (no Get, no Update)
-	s.Equal(1, getCallCount)
-	s.Equal(1, updateCallCount)
+	// updateHelmRepository: 1 Patch (Server-Side Apply, no Get needed)
+	// updateHelmRelease: 1 Patch (Server-Side Apply, no Get needed)
+	s.Equal(2, patchCallCount) // One for HelmRepository, one for HelmRelease
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
@@ -502,10 +495,9 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
-	// updateHelmRepository uses Update via controllerutil.CreateOrUpdate
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			unstr := obj.(*unstructured.Unstructured)
 			if unstr.GetKind() == "HelmRepository" {
 				return nil
@@ -565,11 +557,10 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
-	// updateHelmRepository uses Get+Update via controllerutil.CreateOrUpdate
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
 	// updateHelmRelease uses Patch directly, so test Patch error
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // HelmRepository
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error")).Once() // HelmRelease
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -609,11 +600,10 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
-	// updateHelmRepository uses Update via controllerutil.CreateOrUpdate
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // HelmRepository
 	// updateHelmRelease uses Patch (Server-Side Apply) directly
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error")).Once() // HelmRelease
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -686,7 +676,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	subroutine := subroutines.NewResourceSubroutine(clientMock)
 	managerMock.On("GetClient").Return(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
 	result, err := subroutine.Process(ctx, inst)
@@ -759,7 +749,8 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	}
 
 	clientMock := new(mocks.Client)
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
+	// updateOciRepo uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 	s.managerMock.On("GetClient").Return(clientMock)
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock)

@@ -816,7 +816,6 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 			if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered components runtime manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
-			log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered components runtime template")
 		}
 
 		return nil
@@ -879,12 +878,8 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	}
 	obj.SetNamespace(inst.Namespace)
 
-	// create system masters secret (idempotent)
-	if err := r.clientRuntime.Create(ctx, &obj, client.FieldOwner(fieldManagerDeployment)); err != nil {
-		if kerrors.IsAlreadyExists(err) {
-			log.Info().Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("KCP webhook secret already exists, skipping create")
-			return nil
-		}
+	// Apply the secret using SSA (idempotent - creates if not exists, updates if exists)
+	if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
 		return errors.NewOperatorError(err, true, true)
 	}
 	return nil
@@ -963,7 +958,11 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	// Update the secret with the new kubeconfig
 	kcpWebhookSecret.Data["kubeconfig"] = updatedKubeconfigData
 
-	err = r.clientRuntime.Update(ctx, kcpWebhookSecret)
+	// Clear managedFields before applying with SSA (required for SSA)
+	kcpWebhookSecret.SetManagedFields(nil)
+
+	// Apply the updated secret using SSA
+	err = r.clientRuntime.Patch(ctx, kcpWebhookSecret, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -1069,7 +1068,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}

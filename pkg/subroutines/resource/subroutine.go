@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 )
@@ -244,23 +243,21 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	obj.SetGroupVersionKind(helmRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
-		err := unstructured.SetNestedField(obj.Object, url, "spec", "url")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+
+	// Set desired fields
+	if err := unstructured.SetNestedField(obj.Object, url, "spec", "url"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "generic", "spec", "provider"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "5m", "spec", "interval"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply HelmRepository")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
@@ -296,31 +293,30 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	obj.SetGroupVersionKind(ociRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
-		err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, url, "spec", "url")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedMap(obj.Object, map[string]interface{}{
-			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
-			"operation": "copy",
-		}, "spec", "layerSelector")
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+
+	// Set desired fields
+	if err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, url, "spec", "url"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "generic", "spec", "provider"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedMap(obj.Object, map[string]interface{}{
+		"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+		"operation": "copy",
+	}, "spec", "layerSelector"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply OCIRepository")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
@@ -333,44 +329,36 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	}
 
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "repoUrl")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+	if err != nil || !found || url == "" {
+		log.Info().Err(err).Msg("Failed to get repoUrl from Resource status")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("repoUrl not available in Resource status"), true, false)
 	}
 
-	// Update or create oci repo
-	log.Info().Msg("Processing OCI Chart Resource")
+	// Update or create git repo
+	log.Info().Msg("Processing Git Repository Resource")
 	obj := &unstructured.Unstructured{}
 
 	obj.SetGroupVersionKind(gitRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
+	// Set desired fields
+	if err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, url, "spec", "url"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "5m", "spec", "timeout"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
 
-		err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit")
-		if err != nil {
-			return err
-		}
-
-		err = unstructured.SetNestedField(obj.Object, url, "spec", "url")
-		if err != nil {
-			return err
-		}
-
-		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
-		if err != nil {
-			return err
-		}
-
-		err = unstructured.SetNestedField(obj.Object, "5m", "spec", "timeout")
-		if err != nil {
-			return err
-		}
-
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply GitRepository")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
