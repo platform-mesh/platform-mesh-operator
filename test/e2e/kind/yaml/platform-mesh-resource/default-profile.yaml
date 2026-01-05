@@ -264,6 +264,8 @@ data:
         portal:
           enabled: false
           values:
+            gatewayApi:
+              enabled: true
             auth:
               default:
                 baseDomain: '{{ .baseDomain }}'
