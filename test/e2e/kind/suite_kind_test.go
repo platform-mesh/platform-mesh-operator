@@ -413,6 +413,7 @@ func (s *KindTestSuite) SetupSuite() {
 		s.FailNow("Failed to apply kustomize manifests")
 	}
 	if err = s.applyOCM(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("applyOCM failed")
 		s.FailNow("Failed to apply OCM manifests")
 	}
 
