@@ -72,8 +72,6 @@ func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Cli
 
 // getProfileConfigMap ensures the profile ConfigMap exists, creating a default one if needed.
 func (r *DeploymentSubroutine) getProfileConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (*corev1.ConfigMap, error) {
-	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-
 	var configMapName, configMapNamespace string
 	if inst.Spec.ProfileConfigMap != nil {
 		configMapName = inst.Spec.ProfileConfigMap.Name
@@ -101,7 +99,6 @@ func (r *DeploymentSubroutine) getProfileConfigMap(ctx context.Context, inst *v1
 		if _, ok := configMap.Data[profileConfigMapKey]; !ok {
 			return nil, fmt.Errorf("configMap %s/%s exists but does not contain key %s", configMapNamespace, configMapName, profileConfigMapKey)
 		}
-		log.Debug().Str("configmap", configMapName).Str("namespace", configMapNamespace).Msg("Using existing profile ConfigMap")
 		return configMap, nil
 	}
 

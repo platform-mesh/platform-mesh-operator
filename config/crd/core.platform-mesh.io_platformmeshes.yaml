@@ -236,6 +236,7 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the ConfigMap.
+                    minLength: 1
                     type: string
                   namespace:
                     description: Namespace is the namespace of the ConfigMap. If not

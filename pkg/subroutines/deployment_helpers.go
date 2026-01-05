@@ -50,8 +50,6 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 			return nil
 		}
 
-		log.Debug().Str("path", path).Str("type", templateType).Msg("Rendering template")
-
 		// Read and render template
 		obj, err := r.renderTemplateFile(path, tmplVars, log)
 		if err != nil {
@@ -68,7 +66,6 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 			return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}
 
-		log.Debug().Str("path", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied rendered template")
 		return nil
 	})
 
