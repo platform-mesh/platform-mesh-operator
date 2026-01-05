@@ -15,6 +15,7 @@ import (
 	"github.com/platform-mesh/golang-commons/context/keys"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -169,6 +170,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(s.scheme))
 
 	gvk := fluxcdv2.GroupVersion.WithKind("HelmRelease")
 	s.logger.Info().Msgf("Registering GVK: %s", gvk.String())
@@ -475,11 +477,30 @@ func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 		return err
 	}
 
-	// err = kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/base/kro", clients)
-	// if err != nil {
-	// 	s.logger.Error().Err(err).Msg("Failed to apply kro kustomize manifests")
-	// 	return err
-	// }
+	// wait for Repository CRD to be available
+	time.Sleep(15 * time.Second)
+	avail := s.Eventually(func() bool {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name: "repositories.delivery.ocm.software",
+		}, crd)
+		if err != nil {
+			s.logger.Warn().Err(err).Msg("Repository CRD not found")
+			return false
+		}
+		// Check if the CRD is established (ready to use)
+		for _, condition := range crd.Status.Conditions {
+			if condition.Type == apiextensionsv1.Established && condition.Status == apiextensionsv1.ConditionTrue {
+				return true
+			}
+		}
+		s.logger.Warn().Msg("Repository CRD not yet established")
+		return false
+	}, 120*time.Second, 5*time.Second, "Repository CRD did not become available")
+
+	if !avail {
+		return fmt.Errorf("Repository CRD is not available")
+	}
 
 	s.logger.Info().Msg("kapply finished successfully")
 	return nil
