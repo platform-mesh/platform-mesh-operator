@@ -4,4 +4,3 @@ kind: Kustomization
 resources:
   - druid.gardener.cloud_etcdcopybackupstasks.yaml
   - druid.gardener.cloud_etcds.yaml
-  - delivery.ocm.software_replications.yaml

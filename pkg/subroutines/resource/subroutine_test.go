@@ -559,7 +559,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
 	// updateHelmRelease uses Patch directly, so test Patch error
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // HelmRepository
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()                       // HelmRepository
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error")).Once() // HelmRelease
 
 	result, err := subroutine.Process(ctx, inst)

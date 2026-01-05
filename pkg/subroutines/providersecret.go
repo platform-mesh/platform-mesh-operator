@@ -217,7 +217,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		if ptr.Deref(pc.RawPath, "") != "" {
 			kcpUrl.Path = *pc.RawPath
 		} else {
-			kcpUrl.Path = path.Join("/clusters", pc.Path)
+			kcpUrl.Path = path.Join("clusters", pc.Path)
 		}
 		address = kcpUrl
 	}
