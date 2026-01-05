@@ -1709,7 +1709,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					} else {
 						for _, c := range cfg.Clusters {
 							if c != nil {
-								if c.Server == "https://kcp.api.example.com:8443//clusters/root:platform-mesh-system" {
+								if c.Server == "https://kcp.api.example.com:8443/clusters/root:platform-mesh-system" {
 									return nil
 								}
 								return fmt.Errorf("unexpected server URL: %s", c.Server)
