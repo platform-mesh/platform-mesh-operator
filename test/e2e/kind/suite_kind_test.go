@@ -19,6 +19,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -414,6 +415,15 @@ func (s *KindTestSuite) SetupSuite() {
 	if err = s.applyKustomize(ctx); err != nil {
 		s.FailNow("Failed to apply kustomize manifests")
 	}
+	if err = s.waitForCRDEstablished(ctx, "repositories.delivery.ocm.software", 2*time.Minute); err != nil {
+		s.FailNow("OCM Repository CRD not established in time")
+	}
+	s.logger.Info().Msg("repositories.delivery.ocm.software CRD established")
+	if err = s.waitForCRDEstablished(ctx, "components.delivery.ocm.software", 2*time.Minute); err != nil {
+		s.FailNow("OCM Component CRD not established in time")
+	}
+	s.logger.Info().Msg("components.delivery.ocm.software CRD established")
+
 	if err = s.applyOCM(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("applyOCM failed")
 		s.FailNow("Failed to apply OCM manifests")
@@ -450,6 +460,27 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("starting operator...")
 	s.runOperator(ctx)
 
+}
+
+func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {
+	return wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err := s.client.Get(ctx, client.ObjectKey{Name: crdName}, crd)
+		if err != nil {
+			return false, nil
+		}
+
+		for _, condition := range crd.Status.Conditions {
+			if condition.Type == apiextensionsv1.Established {
+				if condition.Status == apiextensionsv1.ConditionTrue {
+					s.logger.Info().Msgf("CRD %s is established", crdName)
+					return true, nil
+				}
+			}
+		}
+		s.logger.Debug().Msgf("CRD %s not established yet", crdName)
+		return false, nil
+	})
 }
 
 // applyOCM applies the OCM component and repository to the cluster.

@@ -7,7 +7,7 @@ spec:
   interval: 1m
   url: https://github.com/open-component-model/open-component-model
   ref:
-    commit: 0c8ad3c6f96172bd0b7c3e5385c4f859ad4e7043
+    commit: 2969cec3c4931b6aba04aa5bab05f49ac6553337
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
