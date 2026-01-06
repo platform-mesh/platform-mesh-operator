@@ -59,13 +59,13 @@ func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
 	}
 
 	// Mock List calls for each resource type in DEFAULT_WAIT_CONFIG
-	// For HelmRelease v2 - platform-mesh-operator-components
+	// For HelmRelease v2 with label selector core.platform-mesh.io/operator-created=true
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			// Return empty list
 			return nil
-		}).Twice() // Called twice for the two default resource types
+		}).Once() // Called once for the default resource type
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -97,9 +97,9 @@ func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
 					"kind":       "HelmRelease",
 					"metadata": map[string]interface{}{
 						"name":      "test-helmrelease",
-						"namespace": "default",
+						"namespace": "platform-mesh-system",
 						"labels": map[string]interface{}{
-							"helm.toolkit.fluxcd.io/name": "platform-mesh-operator-components",
+							"core.platform-mesh.io/operator-created": "true",
 						},
 					},
 					"status": map[string]interface{}{
@@ -114,7 +114,7 @@ func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
 			}
 			unstructuredList.Items = []unstructured.Unstructured{readyResource}
 			return nil
-		}).Twice()
+		}).Once()
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -146,9 +146,9 @@ func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
 					"kind":       "HelmRelease",
 					"metadata": map[string]interface{}{
 						"name":      "test-helmrelease",
-						"namespace": "default",
+						"namespace": "platform-mesh-system",
 						"labels": map[string]interface{}{
-							"helm.toolkit.fluxcd.io/name": "platform-mesh-operator-components",
+							"core.platform-mesh.io/operator-created": "true",
 						},
 					},
 					"status": map[string]interface{}{
@@ -211,30 +211,21 @@ func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 		},
 	}
 
-	callCount := 0
-	// Mock List calls for multiple resource types
+	// Mock List calls for default resource type with label selector
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
-			callCount++
-
-			var helmReleaseName string
-			if callCount == 1 {
-				helmReleaseName = "platform-mesh-operator-components"
-			} else {
-				helmReleaseName = "platform-mesh-operator-infra-components"
-			}
 
 			readyResource := unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "helm.toolkit.fluxcd.io/v2",
 					"kind":       "HelmRelease",
 					"metadata": map[string]interface{}{
-						"name":      helmReleaseName,
-						"namespace": "default",
+						"name":      "test-helmrelease",
+						"namespace": "platform-mesh-system",
 						"labels": map[string]interface{}{
-							"helm.toolkit.fluxcd.io/name": helmReleaseName,
+							"core.platform-mesh.io/operator-created": "true",
 						},
 					},
 					"status": map[string]interface{}{
@@ -249,7 +240,7 @@ func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 			}
 			unstructuredList.Items = []unstructured.Unstructured{readyResource}
 			return nil
-		}).Twice()
+		}).Once()
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -367,7 +358,7 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 							Kind:  "HelmRelease",
 						},
 						Namespace:        "default",
-						Name:             "platform-mesh-operator-components",
+						Name:             "test-helmrelease",
 						ConditionStatus:  metav1.ConditionTrue,
 						RowConditionType: "Ready",
 					},
@@ -378,7 +369,7 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 
 	// Mock Get call returning a ready resource
 	s.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "platform-mesh-operator-components"}, mock.Anything).
+		Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "test-helmrelease"}, mock.Anything).
 		// List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)

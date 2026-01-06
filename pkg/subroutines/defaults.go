@@ -33,7 +33,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
-		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+		Secret:            "kubernetes-graphql-gateway-kubeconfig",
 	},
 	{
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
@@ -94,34 +94,13 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 				Group: "helm.toolkit.fluxcd.io",
 				Kind:  "HelmRelease",
 			},
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
 					{
-						Key:      "helm.toolkit.fluxcd.io/name",
+						Key:      "core.platform-mesh.io/operator-created",
 						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-components"},
-					},
-				},
-			},
-			ConditionStatus:  v1.ConditionTrue,
-			RowConditionType: "Ready",
-		},
-		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
-				Group: "helm.toolkit.fluxcd.io",
-				Kind:  "HelmRelease",
-			},
-			Namespace: "default",
-			LabelSelector: v1.LabelSelector{
-				MatchExpressions: []v1.LabelSelectorRequirement{
-					{
-						Key:      "helm.toolkit.fluxcd.io/name",
-						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-infra-components"},
+						Values:   []string{"true"},
 					},
 				},
 			},
