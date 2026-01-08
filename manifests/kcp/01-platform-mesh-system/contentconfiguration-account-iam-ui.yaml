@@ -18,7 +18,7 @@ spec:
                 "icon": "company-view",
                 "order": 800,
                 "entityType": "main.core_platform-mesh_io_account",
-                "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
                 "viewGroup": "members",
                 "context": {
                   "entityType": "core_platform-mesh_io_account",
@@ -34,7 +34,7 @@ spec:
                 "entityType": "main.core_platform-mesh_io_account",
                 "label": "members",
                 "hideFromNav": true,
-                "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
                 "viewGroup": "members",
                 "context": {
                   "entityType": "core_platform-mesh_io_account"
