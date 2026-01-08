@@ -77,7 +77,7 @@ spec:
                                     "graphqlEntity": {
                                         "group": "core",
                                         "kind": "Namespace",
-                                        "query": "{ metadata { name } }",
+                                        "query": "{ metadata { name deletionTimestamp} }",
                                         "version": "v1"
                                     }
                                 },
