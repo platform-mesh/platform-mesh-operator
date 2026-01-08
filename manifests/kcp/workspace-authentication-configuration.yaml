@@ -11,7 +11,7 @@ spec:
         audienceMatchPolicy: MatchAny
         {{- with .domainCADec }}
         certificateAuthority: |
-          {{ . }}
+{{ . | indent 10 }}
         {{- end }}
       claimMappings:
         groups:

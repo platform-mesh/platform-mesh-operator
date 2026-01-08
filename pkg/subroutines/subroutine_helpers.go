@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 	"time"
 
@@ -86,7 +87,20 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 }
 
 func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
-	tmpl, err := template.New("manifest").Parse(string(templateBytes))
+	funcMap := template.FuncMap{
+		"indent": func(spaces int, s string) string {
+			pad := strings.Repeat(" ", spaces)
+			lines := strings.Split(s, "\n")
+			for i, line := range lines {
+				if line != "" {
+					lines[i] = pad + line
+				}
+			}
+			return strings.Join(lines, "\n")
+		},
+	}
+
+	tmpl, err := template.New("manifest").Funcs(funcMap).Parse(string(templateBytes))
 	if err != nil {
 		return []byte{}, errors.Wrap(err, "Failed to parse template")
 	}
