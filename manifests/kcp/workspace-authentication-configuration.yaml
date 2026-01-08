@@ -9,8 +9,9 @@ spec:
         audiences:
           - welcome
         audienceMatchPolicy: MatchAny
-        {{- with .domainCA }}
-        certificateAuthority: {{ . }}
+        {{- with .domainCADec }}
+        certificateAuthority: |
+{{ . | indent 10 }}
         {{- end }}
       claimMappings:
         groups:
