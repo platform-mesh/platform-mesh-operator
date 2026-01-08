@@ -34,6 +34,7 @@ spec:
                                   "plural": "namespaces",
                                   "singular": "namespace",
                                   "kind": "Namespace",
+                                  "version": "v1",
                                   "scope": "Cluster",
                                   "namespace": null,
                                   "ui": {
@@ -76,7 +77,8 @@ spec:
                                     "graphqlEntity": {
                                         "group": "core",
                                         "kind": "Namespace",
-                                        "query": "{ metadata { name } }"
+                                        "query": "{ metadata { name } }",
+                                        "version": "v1"
                                     }
                                 },
                                 "context": {

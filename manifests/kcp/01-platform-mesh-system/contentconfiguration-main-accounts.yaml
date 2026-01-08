@@ -34,6 +34,7 @@ spec:
                                   "singular": "account",
                                   "kind": "Account",
                                   "scope": "Cluster",
+                                  "version": "v1alpha1",
                                   "readyCondition": {
                                     "jsonPathExpression": "status.conditions[?(@.type=='Ready' && @.status=='True')]",
                                     "property": ["status.conditions.status", "status.conditions.type"]
@@ -110,6 +111,7 @@ spec:
                                           "group": "core.platform-mesh.io",
                                           "kind": "Account",
                                           "query": "{ metadata { name annotations deletionTimestamp } }"
+                                          "version": "v1alpha1"
                                       }
                                   },
                                   "context": {
