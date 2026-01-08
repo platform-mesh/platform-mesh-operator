@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/google/go-cmp/cmp"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -22,8 +23,6 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-
-	"strings"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -221,6 +220,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	}
 
 	caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
+	caBundles["domainCADec"] = string(domainCA)
 
 	// Cache the results
 	r.caBundleCache = caBundles
