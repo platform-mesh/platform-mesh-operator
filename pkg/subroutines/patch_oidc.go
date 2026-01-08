@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"slices"
 
@@ -101,7 +102,11 @@ func (p *PatchOIDCSubroutine) Process(ctx context.Context, instance runtimeobjec
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
-		domainCA = string(domainCASecret.Data["tls.crt"])
+		domainCABytes, err := base64.StdEncoding.DecodeString(string(domainCASecret.Data["tls.crt"]))
+		if err != nil {
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+		domainCA = string(domainCABytes)
 	}
 
 	_, err := controllerutil.CreateOrPatch(ctx, p.cl, &oidcCM, func() error {
