@@ -7,12 +7,13 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 func NewWaitSubroutine(
@@ -55,7 +56,7 @@ func (r *WaitSubroutine) Process(
 	for _, resourceType := range waitConfig.ResourceTypes {
 		log.Info().Msgf("Waiting for resource type: %s", resourceType)
 
-		for _, version := range resourceType.APIVersions.Versions {
+		for _, version := range resourceType.Versions {
 			waitList := &unstructured.UnstructuredList{}
 
 			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
