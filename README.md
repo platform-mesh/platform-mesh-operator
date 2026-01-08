@@ -168,6 +168,7 @@ spec:
 | `feature-enable-getting-started` | Applies the ContentConfiguration resources required for the Getting Started UI page |
 | `feature-enable-marketplace-account` | Applies the ContentConfiguration resources for the Marketplace feature at the account level |
 | `feature-enable-marketplace-org` | Applies the ContentConfiguration resources for the Marketplace feature at the organization level |
+| `feature-disable-email-verification` | Disables email verification requirement in WorkspaceAuthenticationConfiguration |
 
 #### Example Usage
 
@@ -181,6 +182,7 @@ spec:
   featureToggles:
   - name: "feature-enable-getting-started"
   - name: "feature-enable-marketplace-account"
+  - name: "feature-disable-email-verification"
   # ... other configuration
 ```
 
