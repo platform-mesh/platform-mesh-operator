@@ -17,6 +17,7 @@ spec:
                 "entityType": "main.core_platform-mesh_io_account",
                 "pathSegment": "dashboard",
                 "label": "Dashboard",
+                "icon": "bbyd-dashboard",
                 "order": 100,
                 "url": "/assets/platform-mesh-portal-ui-wc.js#generic-detail-view",
                 "webcomponent": {

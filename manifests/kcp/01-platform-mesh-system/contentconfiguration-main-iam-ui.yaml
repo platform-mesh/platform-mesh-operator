@@ -20,6 +20,12 @@ spec:
                 "entityType": "main",
                 "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
                 "viewGroup": "members",
+                "category": {
+                    "id": "settings",
+                    "isGroup": true,
+                    "label": "Settings & Access",
+                    "order": 1000
+                },
                 "context": {
                   "entityType": "core_platform-mesh_io_account",
                   "entityContext": {

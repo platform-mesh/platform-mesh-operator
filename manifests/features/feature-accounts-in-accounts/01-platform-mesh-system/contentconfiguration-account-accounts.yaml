@@ -17,6 +17,7 @@ spec:
                           "pathSegment": "accounts",
                           "navigationContext": "accounts",
                           "label": "Accounts",
+                          "icon": "product",
                           "order": 300,
                           "entityType": "main.core_platform-mesh_io_account",
                           "loadingIndicator": {

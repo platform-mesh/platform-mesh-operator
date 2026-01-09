@@ -20,6 +20,12 @@ spec:
                           "entityType": "main.core_platform-mesh_io_account",
                           "icon": "group-2",
                           "order": 110,
+                          "category": {
+                              "id": "workspace",
+                              "isGroup": true,
+                              "label": "Workspace Resources",
+                              "order": 500
+                          },
                           "loadingIndicator": {
                               "enabled": false
                           },
