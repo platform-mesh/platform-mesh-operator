@@ -168,6 +168,7 @@ spec:
 | `feature-enable-getting-started` | Applies the ContentConfiguration resources required for the Getting Started UI page |
 | `feature-enable-marketplace-account` | Applies the ContentConfiguration resources for the Marketplace feature at the account level |
 | `feature-enable-marketplace-org` | Applies the ContentConfiguration resources for the Marketplace feature at the organization level |
+| `feature-accounts-in-accounts` | Applies the ContentConfiguration resources for displaying accounts within the account context |
 
 #### Example Usage
 
