@@ -1,0 +1,36 @@
+{{- if .certManager.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .certManager.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  source:
+    {{- if .certManager.repoURL }}
+    repoURL: {{ .certManager.repoURL }}
+    {{- else }}
+    repoURL: https://charts.jetstack.io
+    {{- end }}
+    chart: cert-manager
+    targetRevision: "*"
+    {{- if .certManager.values }}
+    helm:
+      values: |
+{{ toYaml .certManager.values | nindent 8 }}
+    {{- end }}
+  destination:
+    server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ .releaseNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+{{- end }}
+

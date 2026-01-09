@@ -1,0 +1,39 @@
+{{- if and .gatewayApi.enabled (eq .deploymentTechnology "argocd") }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .gatewayApi.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  source:
+    {{- if and .gatewayApi.repoURL (ne .gatewayApi.repoURL "") }}
+    repoURL: {{ .gatewayApi.repoURL }}
+    {{- else }}
+    repoURL: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
+    {{- end }}
+    path: {{ .gatewayApi.kustomization.path }}
+    {{- if and .gatewayApi.targetRevision (ne .gatewayApi.targetRevision "") }}
+    targetRevision: {{ .gatewayApi.targetRevision }}
+    {{- else }}
+    targetRevision: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
+    {{- end }}
+  destination:
+    server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ .releaseNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+    {{- if and .gatewayApi.kustomization.install.crds (eq .gatewayApi.kustomization.install.crds "Skip") }}
+    - SkipDryRunOnMissingResource=true
+    {{- end }}
+{{- end }}
+

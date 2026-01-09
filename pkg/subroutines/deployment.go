@@ -187,15 +187,47 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 	log.Debug().Msg("Successfully rendered and applied runtime templates")
 
-	// Wait for cert-manager to be ready
-	rel, err := getHelmRelease(ctx, r.clientInfra, "cert-manager", inst.Namespace)
+	// Get deploymentTechnology from template vars or config (needed for checking resource readiness)
+	tmplVars, err := r.templateVarsFromProfileInfra(ctx, inst, templateVars, r.cfgOperator)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get cert-manager Release")
+		log.Error().Err(err).Msg("Failed to get template vars for deploymentTechnology check")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	deploymentTech, _ := tmplVars["deploymentTechnology"].(string)
+	if deploymentTech == "" {
+		deploymentTech = "fluxcd" // default to fluxcd if not in profile
+	}
+	deploymentTech = strings.ToLower(deploymentTech)
+
+	// Wait for cert-manager to be ready
+
+	rel, err := getDeploymentResource(ctx, r.clientInfra, "cert-manager", inst.Namespace, deploymentTech)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get cert-manager resource")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	if !matchesConditionWithStatus(rel, "Ready", "True") {
-		log.Info().Msg("cert-manager Release is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
+	if deploymentTech == "argocd" {
+		// For ArgoCD Applications, check status.sync.status and status.health.status directly
+		// ArgoCD Applications may not have conditions initially, so check status fields directly
+		syncStatus, found, _ := unstructured.NestedString(rel.Object, "status", "sync", "status")
+		healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
+
+		if !found || syncStatus != "Synced" {
+			log.Info().Str("deploymentTechnology", deploymentTech).
+				Str("syncStatus", syncStatus).Msg("cert-manager Application is not synced..")
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not synced"), true, false)
+		}
+		if !healthFound || healthStatus != "Healthy" {
+			log.Info().Str("deploymentTechnology", deploymentTech).
+				Str("healthStatus", healthStatus).Msg("cert-manager Application is not healthy..")
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not healthy"), true, false)
+		}
+	} else {
+		// For FluxCD HelmReleases, check Ready condition
+		if !matchesConditionWithStatus(rel, "Ready", "True") {
+			log.Info().Str("deploymentTechnology", deploymentTech).Msg("cert-manager Release is not ready..")
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
+		}
 	}
 
 	// Render and apply components templates (HelmReleases + OCM Resources) using profile
@@ -226,15 +258,32 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	if r.cfgOperator.Subroutines.Deployment.EnableIstio {
 
 		// Wait for istiod release to be ready before continuing
-		rel, err := getHelmRelease(ctx, r.clientInfra, "istio-istiod", inst.Namespace)
+		rel, err := getDeploymentResource(ctx, r.clientInfra, "istio-istiod", inst.Namespace, deploymentTech)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to get istio-istiod Release")
+			log.Error().Err(err).Msg("Failed to get istio-istiod resource")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
+		if deploymentTech == "argocd" {
+			// For ArgoCD Applications, check status.sync.status and status.health.status directly
+			syncStatus, found, _ := unstructured.NestedString(rel.Object, "status", "sync", "status")
+			healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
 
-		if !matchesConditionWithStatus(rel, "Ready", "True") {
-			log.Info().Msg("istio-istiod Release is not ready..")
-			return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
+			if !found || syncStatus != "Synced" {
+				log.Info().Str("deploymentTechnology", deploymentTech).
+					Str("syncStatus", syncStatus).Msg("istio-istiod Application is not synced..")
+				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not synced"), true, false)
+			}
+			if !healthFound || healthStatus != "Healthy" {
+				log.Info().Str("deploymentTechnology", deploymentTech).
+					Str("healthStatus", healthStatus).Msg("istio-istiod Application is not healthy..")
+				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not healthy"), true, false)
+			}
+		} else {
+			// For FluxCD HelmReleases, check Ready condition
+			if !matchesConditionWithStatus(rel, "Ready", "True") {
+				log.Info().Str("deploymentTechnology", deploymentTech).Msg("istio-istiod Release is not ready..")
+				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
+			}
 		}
 
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
@@ -307,6 +356,24 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 		infraProfileMap["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
 		infraProfileMap["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}
+
+	// Add deploymentTechnology from profile or templateVars (defaults to fluxcd if not specified)
+	deploymentTech := "fluxcd" // default
+	if deploymentTechFromProfile, ok := infraProfileMap["deploymentTechnology"].(string); ok && deploymentTechFromProfile != "" {
+		deploymentTech = deploymentTechFromProfile
+	}
+	if deploymentTechFromTemplateVars, ok := templateVarsMap["deploymentTechnology"].(string); ok && deploymentTechFromTemplateVars != "" {
+		deploymentTech = deploymentTechFromTemplateVars
+	}
+	// Normalize to lowercase
+	deploymentTech = strings.ToLower(deploymentTech)
+	if deploymentTech != "fluxcd" && deploymentTech != "argocd" {
+		deploymentTech = "fluxcd" // default to fluxcd if invalid
+	}
+	infraProfileMap["deploymentTechnology"] = deploymentTech
+
+	// destinationServer from infra profile (for AppProject destinations.server) will be available
+	// in templateVars automatically since infraProfileMap is merged with templateVarsMap
 
 	// Merge infra profile (base) with templateVars (overrides)
 	// templateVars take precedence over profile values
@@ -583,6 +650,33 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 		data["kubeConfigSecretKey"] = r.cfgOperator.RemoteRuntime.InfraSecretKey
 	}
 
+	// Add deploymentTechnology from profile or templateVars (defaults to fluxcd if not specified)
+	deploymentTech := "fluxcd" // default
+	if deploymentTechFromProfile, ok := values["deploymentTechnology"].(string); ok && deploymentTechFromProfile != "" {
+		deploymentTech = deploymentTechFromProfile
+	}
+	if deploymentTechFromTemplateVars, ok := templateVarsMap["deploymentTechnology"].(string); ok && deploymentTechFromTemplateVars != "" {
+		deploymentTech = deploymentTechFromTemplateVars
+	}
+	// Normalize to lowercase
+	deploymentTech = strings.ToLower(deploymentTech)
+	if deploymentTech != "fluxcd" && deploymentTech != "argocd" {
+		deploymentTech = "fluxcd" // default to fluxcd if invalid
+	}
+	data["deploymentTechnology"] = deploymentTech
+
+	// Calculate sync waves for ArgoCD Applications based on dependsOn
+	if deploymentTech == "argocd" {
+		if err := calculateSyncWaves(mergedServices, inst.Namespace); err != nil {
+			log.Warn().Err(err).Msg("Failed to calculate sync waves, continuing without sync wave annotations")
+		}
+	}
+
+	// Extract destinationServer from components profile and add it to root level for template access
+	if destinationServer, ok := values["destinationServer"].(string); ok && destinationServer != "" {
+		data["destinationServer"] = destinationServer
+	}
+
 	data["baseDomain"] = getBaseDomainFromInstance(inst)
 	data["port"] = "443"
 	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Port != 0 {
@@ -603,6 +697,129 @@ func getBaseDomainFromInstance(inst *v1alpha1.PlatformMesh) string {
 		return "portal.dev.local"
 	}
 	return inst.Spec.Exposure.BaseDomain
+}
+
+// calculateSyncWaves calculates ArgoCD sync waves based on dependsOn relationships
+// Services with no dependencies get wave 0, services depending on wave N get wave N+1
+func calculateSyncWaves(services map[string]interface{}, defaultNamespace string) error {
+	if services == nil {
+		return nil
+	}
+
+	// Build dependency graph: service -> list of dependencies
+	dependencies := make(map[string][]string)
+	serviceNames := make([]string, 0)
+
+	// First pass: collect all services and their dependencies
+	for serviceName, serviceConfig := range services {
+		serviceStr := serviceName
+		serviceNames = append(serviceNames, serviceStr)
+		dependencies[serviceStr] = []string{}
+
+		config, ok := serviceConfig.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check if service has dependsOn
+		dependsOn, found := config["dependsOn"]
+		if !found {
+			continue
+		}
+
+		// dependsOn can be a slice of maps with "name" and optional "namespace"
+		dependsOnSlice, ok := dependsOn.([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, dep := range dependsOnSlice {
+			depMap, ok := dep.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			depName, ok := depMap["name"].(string)
+			if !ok || depName == "" {
+				continue
+			}
+
+			// Add dependency (using service name as-is, assuming same namespace unless specified)
+			dependencies[serviceStr] = append(dependencies[serviceStr], depName)
+		}
+	}
+
+	// Calculate sync waves using iterative approach
+	// Services with no dependencies get wave 0
+	// Services depending on wave N services get wave N+1
+	syncWaves := make(map[string]int)
+
+	// Initialize all services to wave 0
+	for _, serviceName := range serviceNames {
+		syncWaves[serviceName] = 0
+	}
+
+	// Calculate waves iteratively until no changes (handles dependencies)
+	// Maximum iterations to prevent infinite loops (should be <= number of services)
+	maxIterations := len(serviceNames) + 1
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		changed := false
+		for _, serviceName := range serviceNames {
+			deps := dependencies[serviceName]
+			if len(deps) == 0 {
+				// No dependencies, stays at wave 0
+				continue
+			}
+
+			// Find max wave of all valid dependencies
+			maxDepWave := -1
+			hasValidDeps := false
+			for _, depName := range deps {
+				depWave, depExists := syncWaves[depName]
+				if !depExists {
+					// Dependency not found in services, ignore it
+					continue
+				}
+				hasValidDeps = true
+				if depWave > maxDepWave {
+					maxDepWave = depWave
+				}
+			}
+
+			if hasValidDeps {
+				// Set this service's wave to max dependency wave + 1
+				newWave := maxDepWave + 1
+				if syncWaves[serviceName] < newWave {
+					syncWaves[serviceName] = newWave
+					changed = true
+				}
+			}
+		}
+
+		if !changed {
+			// No more changes, we're done
+			break
+		}
+	}
+
+	// Add sync wave to each service config
+	for serviceName, serviceConfig := range services {
+		config, ok := serviceConfig.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		wave, exists := syncWaves[serviceName]
+		if !exists {
+			// Service not in syncWaves map, default to wave 0
+			wave = 0
+		}
+
+		// Set syncWave field (always set, even if it was 0, to ensure consistency)
+		config["syncWave"] = wave
+	}
+
+	return nil
 }
 
 // renderTemplatesInValue renders templates in a value and returns the rendered result
@@ -662,7 +879,106 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 		return errors.NewOperatorError(err, true, true)
 	}
 
-	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/infra", tmplVars, r.clientInfra, log, "infra")
+	// Determine which template to render based on deploymentTechnology from infra profile
+	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
+	if !ok {
+		deploymentTech = "fluxcd" // default
+	}
+	deploymentTech = strings.ToLower(deploymentTech)
+
+	err = filepath.WalkDir(r.gotemplatesInfraDir+"/infra", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml") {
+			return nil
+		}
+
+		// Conditionally render templates based on deploymentTechnology
+		fileName := d.Name()
+		if deploymentTech == "argocd" && (fileName == "helmrelease.yaml" || fileName == "kustomization.yaml") {
+			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
+			return nil
+		}
+		if deploymentTech == "fluxcd" && fileName == "application.yaml" {
+			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
+			return nil
+		}
+
+		log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Rendering infra template")
+
+		// Read and render template
+		obj, err := r.renderTemplateFile(path, tmplVars, log)
+		if err != nil {
+			return errors.Wrap(err, "Failed to render template: %s", path)
+		}
+
+		if obj == nil {
+			// Template rendered empty, skip
+			return nil
+		}
+
+		// For ArgoCD Applications, preserve existing repoURL and targetRevision if they're already set
+		// (not placeholder values) to avoid overwriting values set by ResourceSubroutine
+		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
+			existingApp := &unstructured.Unstructured{}
+			existingApp.SetGroupVersionKind(obj.GroupVersionKind())
+			if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existingApp); err == nil {
+				// Application exists - check if repoURL and targetRevision are already set (not placeholders)
+				existingRepoURL, found, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "repoURL")
+				existingTargetRevision, foundRev, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
+
+				// Check if the new object has repoURL/targetRevision before trying to preserve
+				var newRepoURL string
+				var newTargetRevision string
+				if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+					if source, ok := spec["source"].(map[string]interface{}); ok {
+						if url, ok := source["repoURL"].(string); ok {
+							newRepoURL = url
+						}
+						if rev, ok := source["targetRevision"].(string); ok {
+							newTargetRevision = rev
+						}
+					}
+				}
+
+				// Only preserve if:
+				// 1. Existing value is set and not a placeholder
+				// 2. New object has the field (so we don't remove required fields)
+				// 3. Existing value is different from new value (to avoid unnecessary removals)
+				if found && existingRepoURL != "" && existingRepoURL != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newRepoURL != "" && existingRepoURL != newRepoURL {
+					// Remove repoURL from the new object to preserve the existing value
+					if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+						if source, ok := spec["source"].(map[string]interface{}); ok {
+							delete(source, "repoURL")
+						}
+					}
+				}
+				if foundRev && existingTargetRevision != "" && existingTargetRevision != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newTargetRevision != "" && existingTargetRevision != newTargetRevision {
+					// Remove targetRevision from the new object to preserve the existing value
+					if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+						if source, ok := spec["source"].(map[string]interface{}); ok {
+							delete(source, "targetRevision")
+						}
+					}
+				}
+			}
+		}
+
+		// Apply the rendered manifest
+		if err := r.clientInfra.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
+			return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to render and apply infra templates")
+		return errors.NewOperatorError(err, false, true)
+	}
+
+	return nil
 }
 
 // renderAndApplyRuntimeTemplates renders all templates in gotemplates/infra/runtime and applies them to the runtime cluster.
@@ -689,6 +1005,13 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 		return errors.NewOperatorError(err, true, true)
 	}
 
+	// Determine which template to render based on deploymentTechnology
+	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
+	if !ok {
+		deploymentTech = "fluxcd" // default
+	}
+	deploymentTech = strings.ToLower(deploymentTech)
+
 	err = filepath.WalkDir(r.gotemplatesComponentsDir+"/infra", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -697,7 +1020,18 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 			return nil
 		}
 
-		log.Debug().Str("path", path).Msg("Rendering components infra template")
+		// Conditionally render templates based on deploymentTechnology
+		fileName := d.Name()
+		if deploymentTech == "argocd" && fileName == "helmreleases.yaml" {
+			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
+			return nil
+		}
+		if deploymentTech == "fluxcd" && fileName == "applications.yaml" {
+			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
+			return nil
+		}
+
+		log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Rendering components infra template")
 
 		tplBytes, err := os.ReadFile(path)
 		if err != nil {
@@ -732,6 +1066,55 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 				return errors.Wrap(err, "Failed to unmarshal rendered components infra YAML from template %s. Output:\n%s", path, doc)
 			}
 			obj := unstructured.Unstructured{Object: objMap}
+
+			// For ArgoCD Applications, preserve existing repoURL and targetRevision if they're already set
+			// (not placeholder values) to avoid overwriting values set by ResourceSubroutine
+			if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
+				existingApp := &unstructured.Unstructured{}
+				existingApp.SetGroupVersionKind(obj.GroupVersionKind())
+				if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existingApp); err == nil {
+					// Application exists - check if repoURL and targetRevision are already set (not placeholders)
+					existingRepoURL, found, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "repoURL")
+					existingTargetRevision, foundRev, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
+
+					// Check if the new object has repoURL/targetRevision before trying to preserve
+					var newRepoURL string
+					var newTargetRevision string
+					if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+						if source, ok := spec["source"].(map[string]interface{}); ok {
+							if url, ok := source["repoURL"].(string); ok {
+								newRepoURL = url
+							}
+							if rev, ok := source["targetRevision"].(string); ok {
+								newTargetRevision = rev
+							}
+						}
+					}
+
+					// Only preserve if:
+					// 1. Existing value is set and not a placeholder
+					// 2. New object has the field (so we don't remove required fields)
+					// 3. Existing value is different from new value (to avoid unnecessary removals)
+					if found && existingRepoURL != "" && existingRepoURL != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newRepoURL != "" && existingRepoURL != newRepoURL {
+						// Remove repoURL from the new object to preserve the existing value
+						if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+							if source, ok := spec["source"].(map[string]interface{}); ok {
+								delete(source, "repoURL")
+							}
+						}
+					}
+					if foundRev && existingTargetRevision != "" && existingTargetRevision != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newTargetRevision != "" && existingTargetRevision != newTargetRevision {
+						// Remove targetRevision from the new object to preserve the existing value
+						if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+							if source, ok := spec["source"].(map[string]interface{}); ok {
+								delete(source, "targetRevision")
+							}
+						}
+					}
+					// Update the unstructured object with the modified map
+					obj = unstructured.Unstructured{Object: objMap}
+				}
+			}
 
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
 			// This bypasses client-side schema validation and uses server-side validation instead
@@ -983,6 +1366,30 @@ func getHelmRelease(ctx context.Context, client client.Client, releaseName strin
 		return nil, nil
 	}
 	return kcpRelease, nil
+}
+
+// getDeploymentResource gets either a FluxCD HelmRelease or ArgoCD Application based on deploymentTechnology
+func getDeploymentResource(ctx context.Context, client client.Client, resourceName string, resourceNamespace string, deploymentTech string) (*unstructured.Unstructured, error) {
+	deploymentTech = strings.ToLower(deploymentTech)
+	obj := &unstructured.Unstructured{}
+
+	if deploymentTech == "argocd" {
+		obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Application"})
+	} else {
+		// Default to FluxCD
+		obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"})
+	}
+
+	err := client.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: resourceNamespace}, obj)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().Str("deploymentTechnology", deploymentTech).Msgf("%s/%s resource not found, waiting for it to be created", resourceName, resourceNamespace)
+			return nil, nil
+		}
+		log.Error().Err(err).Str("deploymentTechnology", deploymentTech).Msgf("Failed to get %s/%s resource", resourceName, resourceNamespace)
+		return nil, nil
+	}
+	return obj, nil
 }
 
 func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelSelector, namespace string) (bool, *unstructured.Unstructured, error) {

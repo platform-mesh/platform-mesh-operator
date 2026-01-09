@@ -83,7 +83,11 @@ func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.Ope
 		clientInfra = mgr.GetClient()
 	}
 
-	subs = append(subs, resource.NewResourceSubroutine(clientInfra))
+	resourceSubroutine := resource.NewResourceSubroutine(clientInfra, cfg)
+	// Set the runtime client for reading profile ConfigMaps (they're in the runtime cluster)
+	resourceSubroutine.SetRuntimeClient(mgr.GetClient())
+
+	subs = append(subs, resourceSubroutine)
 
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

@@ -24,4 +24,7 @@ resources:
 # if you do not want those helpers be installed with your Project.
 - platform-mesh_editor_role.yaml
 - platform-mesh_viewer_role.yaml
+# RBAC for ArgoCD namespace (required for AppProject resources)
+- argocd_role.yaml
+- argocd_role_binding.yaml
 
