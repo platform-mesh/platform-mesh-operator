@@ -161,6 +161,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["baseDomainPort"] = baseDomainPort
 	templateData["port"] = fmt.Sprintf("%d", port)
 	templateData["protocol"] = protocol
+	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
 
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {
@@ -410,4 +411,13 @@ func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath str
 	}
 
 	return res
+}
+
+func HasFeatureToggle(inst *corev1alpha1.PlatformMesh, name string) string {
+	for _, ft := range inst.Spec.FeatureToggles {
+		if ft.Name == name {
+			return "true"
+		}
+	}
+	return "false"
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -897,4 +898,108 @@ func (s *KcpsetupTestSuite) newPlatformMeshWithExtraWorkspaces(defs []extraWsDef
 		})
 	}
 	return pm
+}
+
+func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
+	tests := []struct {
+		name           string
+		featureToggles []corev1alpha1.FeatureToggle
+		toggleName     string
+		expected       string
+	}{
+		{
+			name:           "returns true when feature toggle exists",
+			featureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-disable-email-verification"}},
+			toggleName:     "feature-disable-email-verification",
+			expected:       "true",
+		},
+		{
+			name:           "returns false when feature toggle does not exist",
+			featureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
+			toggleName:     "feature-disable-email-verification",
+			expected:       "false",
+		},
+		{
+			name:           "returns false when feature toggles are empty",
+			featureToggles: nil,
+			toggleName:     "feature-disable-email-verification",
+			expected:       "false",
+		},
+		{
+			name: "returns true when toggle is among multiple toggles",
+			featureToggles: []corev1alpha1.FeatureToggle{
+				{Name: "feature-enable-getting-started"},
+				{Name: "feature-disable-email-verification"},
+				{Name: "feature-enable-marketplace-account"},
+			},
+			toggleName: "feature-disable-email-verification",
+			expected:   "true",
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			inst := &corev1alpha1.PlatformMesh{
+				Spec: corev1alpha1.PlatformMeshSpec{
+					FeatureToggles: tc.featureToggles,
+				},
+			}
+			result := subroutines.HasFeatureToggle(inst, tc.toggleName)
+			s.Assert().Equal(tc.expected, result)
+		})
+	}
+}
+
+func (s *KcpsetupTestSuite) Test_WorkspaceAuthConfigTemplate_FeatureDisableEmailVerification() {
+	templateBytes, err := os.ReadFile("../../manifests/kcp/workspace-authentication-configuration.yaml")
+	s.Require().NoError(err, "Failed to read workspace-authentication-configuration.yaml")
+
+	tests := []struct {
+		name                  string
+		featureToggleValue    string
+		expectClaimValidation bool
+		expectedExpression    string
+		expectedMessage       string
+	}{
+		{
+			name:                  "includes claimValidationRules when feature is enabled",
+			featureToggleValue:    "true",
+			expectClaimValidation: true,
+			expectedExpression:    `claims.?email_verified.orValue(true) == true || claims.?email_verified.orValue(true) == false`,
+			expectedMessage:       "Allowing both verified and unverified emails",
+		},
+		{
+			name:                  "excludes claimValidationRules when feature is disabled",
+			featureToggleValue:    "false",
+			expectClaimValidation: false,
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			templateData := map[string]string{
+				"baseDomainPort":                  "example.com:443",
+				"domainCADec":                     "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+				"featureDisableEmailVerification": tc.featureToggleValue,
+			}
+
+			result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+			s.Require().NoError(err, "Template rendering should not fail")
+
+			renderedYAML := string(result)
+
+			if tc.expectClaimValidation {
+				s.Assert().Contains(renderedYAML, "claimValidationRules:", "Should contain claimValidationRules")
+				s.Assert().Contains(renderedYAML, tc.expectedExpression, "Should contain the expected expression")
+				s.Assert().Contains(renderedYAML, tc.expectedMessage, "Should contain the expected message")
+			} else {
+				s.Assert().NotContains(renderedYAML, "claimValidationRules:", "Should NOT contain claimValidationRules")
+			}
+
+			// Always verify the basic structure is present
+			s.Assert().Contains(renderedYAML, "kind: WorkspaceAuthenticationConfiguration")
+			s.Assert().Contains(renderedYAML, "name: orgs-authentication")
+			s.Assert().Contains(renderedYAML, "claimMappings:")
+		})
+	}
 }
