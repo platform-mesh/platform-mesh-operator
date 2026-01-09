@@ -17,6 +17,7 @@ spec:
                           "pathSegment": "accounts",
                           "navigationContext": "accounts",
                           "label": "Accounts",
+                          "icon": "product",
                           "order": 300,
                           "entityType": "main",
                           "loadingIndicator": {
@@ -40,7 +41,7 @@ spec:
                                     "property": ["status.conditions.status", "status.conditions.type"]
                                   },
                                   "ui": {
-                                      "logoUrl": "https://www.kcp.io/icons/logo.svg",
+                                      "logoUrl": "https://platform-mesh.io/main/pm_logo.svg",
                                       "listView": {
                                           "fields": [
                                               {
