@@ -162,6 +162,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["port"] = fmt.Sprintf("%d", port)
 	templateData["protocol"] = protocol
 	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
+	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
 
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {

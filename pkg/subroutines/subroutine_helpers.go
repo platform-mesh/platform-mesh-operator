@@ -448,6 +448,14 @@ func ApplyManifestFromFile(
 		return nil
 	}
 
+	if obj.GetKind() == "ContentConfiguration" && obj.GetAPIVersion() == "ui.platform-mesh.io/v1alpha1" {
+		if templateData["featureDisableContentConfigurations"] == "true" {
+			log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
+				Msg("Skipping ContentConfiguration due to feature-disable-contentconfigurations toggle")
+			return nil
+		}
+	}
+
 	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
 		extraDefaultApiBindings := getExtraDefaultApiBindings(obj, wsPath, inst)
 		currentDefAPiBindings, found, err := unstructured.NestedSlice(obj.Object, "spec", "defaultAPIBindings")

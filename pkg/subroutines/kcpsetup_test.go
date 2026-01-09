@@ -935,6 +935,12 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 			toggleName: "feature-disable-email-verification",
 			expected:   "true",
 		},
+		{
+			name:           "returns true for feature-disable-contentconfigurations",
+			featureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-disable-contentconfigurations"}},
+			toggleName:     "feature-disable-contentconfigurations",
+			expected:       "true",
+		},
 	}
 
 	for _, tc := range tests {
@@ -1002,4 +1008,77 @@ func (s *KcpsetupTestSuite) Test_WorkspaceAuthConfigTemplate_FeatureDisableEmail
 			s.Assert().Contains(renderedYAML, "claimMappings:")
 		})
 	}
+}
+
+func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration_WhenToggleEnabled() {
+	tests := []struct {
+		name               string
+		featureToggleValue string
+		expectSkipped      bool
+	}{
+		{
+			name:               "skips ContentConfiguration when toggle is enabled",
+			featureToggleValue: "true",
+			expectSkipped:      true,
+		},
+		{
+			name:               "applies ContentConfiguration when toggle is disabled",
+			featureToggleValue: "false",
+			expectSkipped:      false,
+		},
+		{
+			name:               "applies ContentConfiguration when toggle is not present",
+			featureToggleValue: "",
+			expectSkipped:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+			kcpClientMock := new(mocks.Client)
+
+			templateData := map[string]string{
+				"featureDisableContentConfigurations": tc.featureToggleValue,
+			}
+
+			path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-home.yaml"
+
+			if tc.expectSkipped {
+				err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+				s.Assert().NoError(err)
+				kcpClientMock.AssertNotCalled(s.T(), "Get", mock.Anything, mock.Anything, mock.Anything)
+				kcpClientMock.AssertNotCalled(s.T(), "Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			} else {
+				kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+					Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Once()
+				kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+				err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+				s.Assert().NoError(err)
+			}
+		})
+	}
+}
+
+func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConfiguration_WhenToggleEnabled() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	kcpClientMock := new(mocks.Client)
+
+	templateData := map[string]string{
+		"featureDisableContentConfigurations": "true",
+	}
+
+	// Use a non-ContentConfiguration file (e.g., a workspace file)
+	path := "../../manifests/kcp/workspace-platform-mesh-system.yaml"
+
+	// Even with toggle enabled, non-ContentConfiguration files should be applied
+	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Once()
+	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &corev1alpha1.PlatformMesh{})
+	s.Assert().NoError(err)
 }
