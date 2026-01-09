@@ -41,6 +41,7 @@ spec:
                                       "graphqlEntity": {
                                           "group": "core.platform-mesh.io",
                                           "kind": "Account",
+                                          "version": "v1alpha1",
                                           "query": "{ metadata { name annotations deletionTimestamp } }"
                                       }
                                   },
