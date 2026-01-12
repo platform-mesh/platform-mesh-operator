@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/google/go-cmp/cmp"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -22,8 +23,6 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-
-	"strings"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -162,6 +161,8 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["baseDomainPort"] = baseDomainPort
 	templateData["port"] = fmt.Sprintf("%d", port)
 	templateData["protocol"] = protocol
+	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
+	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
 
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {
@@ -221,6 +222,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	}
 
 	caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
+	caBundles["domainCADec"] = string(domainCA)
 
 	// Cache the results
 	r.caBundleCache = caBundles
@@ -410,4 +412,13 @@ func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath str
 	}
 
 	return res
+}
+
+func HasFeatureToggle(inst *corev1alpha1.PlatformMesh, name string) string {
+	for _, ft := range inst.Spec.FeatureToggles {
+		if ft.Name == name {
+			return "true"
+		}
+	}
+	return "false"
 }

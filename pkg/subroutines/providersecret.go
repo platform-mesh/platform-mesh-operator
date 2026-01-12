@@ -221,17 +221,22 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		if ptr.Deref(pc.RawPath, "") != "" {
 			kcpUrl.Path = *pc.RawPath
 		} else {
-			kcpUrl.Path = path.Join("/clusters", pc.Path)
+			kcpUrl.Path = path.Join("clusters", pc.Path)
 		}
 		address = kcpUrl
 	}
 
 	newConfig := rest.CopyConfig(cfg)
+	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External {
-		newConfig.Host = fmt.Sprintf("https://kcp.api.%s:%d/%s", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, address.Path)
-	} else {
-		newConfig.Host = fmt.Sprintf("https://%s-front-proxy.%s:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort, address.Path)
+		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
 	}
+	host, err := url.JoinPath(hostPort, address.Path)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to join path for provider connection")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+	newConfig.Host = host
 
 	apiConfig := restConfigToAPIConfig(newConfig)
 	kcpConfigBytes, err := clientcmd.Write(*apiConfig)

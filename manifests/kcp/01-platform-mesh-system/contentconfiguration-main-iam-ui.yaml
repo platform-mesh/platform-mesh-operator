@@ -18,8 +18,14 @@ spec:
                 "icon": "company-view",
                 "order": 800,
                 "entityType": "main",
-                "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
                 "viewGroup": "members",
+                "category": {
+                    "id": "settings",
+                    "isGroup": true,
+                    "label": "Settings & Access",
+                    "order": 1000
+                },
                 "context": {
                   "entityType": "core_platform-mesh_io_account",
                   "entityContext": {
@@ -34,7 +40,7 @@ spec:
                 "entityType": "main",
                 "label": "members",
                 "hideFromNav": true,
-                "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
                 "viewGroup": "members",
                 "context": {
                   "entityType": "core_platform-mesh_io_account"

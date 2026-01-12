@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 	"time"
 
@@ -86,7 +87,20 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 }
 
 func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
-	tmpl, err := template.New("manifest").Parse(string(templateBytes))
+	funcMap := template.FuncMap{
+		"indent": func(spaces int, s string) string {
+			pad := strings.Repeat(" ", spaces)
+			lines := strings.Split(s, "\n")
+			for i, line := range lines {
+				if line != "" {
+					lines[i] = pad + line
+				}
+			}
+			return strings.Join(lines, "\n")
+		},
+	}
+
+	tmpl, err := template.New("manifest").Funcs(funcMap).Parse(string(templateBytes))
 	if err != nil {
 		return []byte{}, errors.Wrap(err, "Failed to parse template")
 	}
@@ -432,6 +446,14 @@ func ApplyManifestFromFile(
 	}
 	if obj.Object == nil {
 		return nil
+	}
+
+	if obj.GetKind() == "ContentConfiguration" && obj.GetAPIVersion() == "ui.platform-mesh.io/v1alpha1" {
+		if templateData["featureDisableContentConfigurations"] == "true" {
+			log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
+				Msg("Skipping ContentConfiguration due to feature-disable-contentconfigurations toggle")
+			return nil
+		}
 	}
 
 	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
