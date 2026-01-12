@@ -9,7 +9,7 @@ spec:
   - v250715-5b899f6.accounts.core.platform-mesh.io
   - v250704-6d57f16.contentconfigurations.ui.platform-mesh.io
   - v250725-732d200.providermetadatas.ui.platform-mesh.io
-  - v260108-81fc9ff.authorizationmodels.core.platform-mesh.io
+  - v260112-5925c7e.authorizationmodels.core.platform-mesh.io
   - v250718-a64f278.stores.core.platform-mesh.io
   - v251007-1d3512f.invites.core.platform-mesh.io
   - v251215-8997bd4.identityproviderconfigurations.core.platform-mesh.io
