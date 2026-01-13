@@ -4,7 +4,7 @@ go 1.25.1
 
 replace sigs.k8s.io/controller-runtime => github.com/kcp-dev/controller-runtime v0.19.0-kcp.1
 
-replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260113004017-8b288665779d
+replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260113082914-96b1da0d2498
 
 replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.0
 
