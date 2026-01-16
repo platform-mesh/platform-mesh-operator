@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250718-a64f278.authorizationmodels.core.platform-mesh.io
+  name: v260112-5925c7e.authorizationmodels.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
@@ -40,13 +40,16 @@ spec:
               type: string
             storeRef:
               properties:
+                cluster:
+                  type: string
                 name:
                   type: string
                 path:
+                  description: Path is deprecated. Use Cluster instead.
                   type: string
               required:
+              - cluster
               - name
-              - path
               type: object
             tuples:
               items:
