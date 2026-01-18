@@ -14,8 +14,8 @@ spec:
               "data": {
                   "nodes": [
                       {
-                          "pathSegment": "core_namespaces",
-                          "navigationContext": "core_namespaces",
+                          "pathSegment": "namespaces",
+                          "navigationContext": "namespaces",
                           "label": "Namespaces",
                           "entityType": "main.core_platform-mesh_io_account",
                           "icon": "group-2",
@@ -36,7 +36,7 @@ spec:
                           },
                           "context": {
                               "resourceDefinition": {
-                                  "group": "core",
+                                  "group": "",
                                   "plural": "namespaces",
                                   "singular": "namespace",
                                   "kind": "Namespace",
