@@ -59,6 +59,7 @@ spec:
                                           ]
                                       },
                                       "detailView": {
+                                          "showDownloadKubeconfig": true,
                                           "fields": [
                                               {
                                                   "label": "Description",
