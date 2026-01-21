@@ -304,7 +304,7 @@ func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiexte
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
 	port := 8443
-	baseDomain := "portal.dev.local"
+	baseDomain := "portal.localhost"
 	protocol := "https"
 	baseDomainPort := ""
 

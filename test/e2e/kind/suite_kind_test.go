@@ -200,7 +200,7 @@ func (s *KindTestSuite) createCerts() ([]byte, error) {
 	// mkcert
 	_, err := runCommand("mkdir", "-p", "certs")
 	s.Require().NoError(err, "Error creating certs directory")
-	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "*.dev.local", "*.portal.dev.local"); err != nil {
+	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
 		return nil, err
 	}
 	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
@@ -363,10 +363,6 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	}
 
 	s.logger.Info().Msg("helm resources ready")
-
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
 
 	time.Sleep(25 * time.Second)
 	return nil
@@ -537,7 +533,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
-	appConfig.KCP.Url = "https://kcp.api.portal.dev.local:8443"
+	appConfig.KCP.Url = "https://localhost:8443"
 	appConfig.KCP.RootShardName = "root"
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"
