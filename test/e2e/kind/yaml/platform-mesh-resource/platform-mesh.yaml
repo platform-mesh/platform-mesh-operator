@@ -46,8 +46,8 @@ spec:
           - "http://localhost:4300"
           - "http://*.localhost:4200"
           - "http://*.localhost:4300"
-          - "https://portal.dev.local:8443"
-          - "https://*.portal.dev.local:8443"
+          - "https://portal.localhost:8443"
+          - "https://*.portal.localhost:8443"
         gatewayApi:
           enabled: true
         mailpit:
@@ -58,7 +58,7 @@ spec:
           rootShard:
             extraArgs:
               - --feature-gates=WorkspaceAuthentication=true
-              - --shard-virtual-workspace-url=https://kcp.api.portal.dev.local:6443
+              - --shard-virtual-workspace-url=https://localhost:8443
           webhook:
             enabled: true
           frontProxy:
@@ -82,14 +82,14 @@ spec:
           component: infra
     security-operator:
       values:
-        baseDomain: "portal.dev.local:8443"
+        baseDomain: "portal.localhost:8443"
         initializer:
           extraArgs:
             - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
             - --idp-smtp-port=1025
-            - --idp-from-address=keycloak@portal.dev.local
+            - --idp-from-address=keycloak@portal.localhost
             - --domain-ca-lookup
-            - --idp-additional-redirect-urls="https://default.portal.dev.local:3000/callback*"
+            - --idp-additional-redirect-urls="https://default.portal.localhost:3000/callback*"
         caSecret: domain-certificate-ca
         hostAliases:
           enabled: true
@@ -105,9 +105,9 @@ spec:
               kind: Gateway
         extraEnvVars:
           - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-            value: https://${org-subdomain}portal.dev.local:8443/iam/graphql
+            value: https://${org-subdomain}portal.localhost:8443/iam/graphql
           - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-            value: "https://${org-subdomain}portal.dev.local:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+            value: "https://${org-subdomain}portal.localhost:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
           - name: NODE_EXTRA_CA_CERTS
             value: /etc/ssl/certs/domain-ca.crt
         extraVolumes:

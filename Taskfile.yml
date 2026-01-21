@@ -82,7 +82,6 @@ tasks:
       - cmd: |
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
-              echo "127.0.0.1 portal.dev.local kcp.api.portal.dev.local" | sudo tee -a /etc/hosts
               PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -timeout 10m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
@@ -90,16 +89,6 @@ tasks:
                 exit 1
               }
             else
-              # test if portal.dev.local and kcp.api.portal.dev.local are in /etc/hosts
-              if ! grep -q "portal.dev.local" /etc/hosts; then
-                echo "Missing portal.dev.local in /etc/hosts"
-                exit 1
-              fi
-              if ! grep -q "kcp.api.portal.dev.local" /etc/hosts;
-              then
-                echo "Missing kcp.api.portal.dev.local in /etc/hosts"
-                exit 1
-              fi
               export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
               go test -timeout 10m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
             fi

@@ -86,7 +86,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local:8443","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.localhost","baseDomainPort":"portal.localhost:8443","iamWebhookCA":"","port":"8443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil
@@ -140,7 +140,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 			specJSON, ok := specValues.(apiextensionsv1.JSON)
 			s.Require().True(ok, "spec.values should be of type apiextensionsv1.JSON")
 
-			expected := `{"baseDomain":"portal.dev.local","baseDomainPort":"portal.dev.local","iamWebhookCA":"","port":"443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
+			expected := `{"baseDomain":"portal.localhost","baseDomainPort":"portal.localhost","iamWebhookCA":"","port":"443","protocol":"https","services":{"services":{"platform-mesh-operator":{"version":"v1.0.0"}}}}`
 			s.Require().Equal(expected, string(specJSON.Raw), "spec.values.Raw should match expected JSON string")
 
 			return nil
