@@ -36,11 +36,10 @@ spec:
                           },
                           "context": {
                               "resourceDefinition": {
-                                  "group": "core",
+                                  "group": "v1",
                                   "plural": "namespaces",
                                   "singular": "namespace",
                                   "kind": "Namespace",
-                                  "version": "v1",
                                   "scope": "Cluster",
                                   "namespace": null,
                                   "ui": {
@@ -81,10 +80,9 @@ spec:
                                     "id": "core_namespace",
                                     "contextKey": "namespaceId",
                                     "graphqlEntity": {
-                                        "group": "core",
+                                        "group": "v1",
                                         "kind": "Namespace",
                                         "query": "{ metadata { name deletionTimestamp} }",
-                                        "version": "v1"
                                     }
                                 },
                                 "context": {
