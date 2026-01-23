@@ -15,7 +15,6 @@ import (
 	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
@@ -277,37 +276,19 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
-	kcpClient, err := r.kcpHelper.NewKcpClient(restCfg, ic.Path)
-	if err != nil {
-		log.Error().Err(err).Msg("creating kcp client for initializer")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	wt := &kcptenancyv1alpha.WorkspaceType{}
-	if err := kcpClient.Get(ctx, types.NamespacedName{Name: ic.WorkspaceTypeName}, wt); err != nil {
-		log.Error().Err(err).Msg("getting WorkspaceType")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-	if len(wt.Status.VirtualWorkspaces) == 0 {
-		err = fmt.Errorf("no virtual workspaces found in %s", ic.WorkspaceTypeName)
-		log.Error().Err(err).Msg("bad WorkspaceType")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
-	}
-
 	newConfig := rest.CopyConfig(restCfg)
 	apiConfig := restConfigToAPIConfig(newConfig)
 	curr := apiConfig.CurrentContext
 	cluster := apiConfig.Contexts[curr].Cluster
-	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
 
-	var url *url.URL
-	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
+	url, err := url.Parse(apiConfig.Clusters[cluster].Server)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing virtual workspace URL")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
+	url.Path = path.Join("clusters", ic.Path)
 	apiConfig.Clusters[cluster].Server = url.String()
 	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
 
