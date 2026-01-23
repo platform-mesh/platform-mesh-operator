@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
@@ -152,9 +153,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	// Merge the api export hashes with the CA bundle data
-	for k, v := range apiExportHashes {
-		templateData[k] = v
-	}
+	maps.Copy(templateData, apiExportHashes)
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 	templateData["baseDomain"] = baseDomain
@@ -163,6 +162,34 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["protocol"] = protocol
 	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
 	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
+
+	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
+	if err != nil {
+		log.Err(err).Msg("Failed to create kcp client for platform-mesh-system workspace")
+		return errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
+	}
+
+	templateData["welcomeAudience"] = "<placeholder>"
+
+	var ipc unstructured.Unstructured
+	ipc.SetGroupVersionKind(schema.GroupVersionKind{Group: "core.platform-mesh.io", Version: "v1alpha1", Kind: "IdentityProviderConfiguration"})
+
+	err = pmSystemClient.Get(ctx, types.NamespacedName{Name: "welcome"}, &ipc)
+	if err == nil {
+		clientId, found, err := unstructured.NestedString(ipc.Object, "status", "managedClients", "welcome", "clientId")
+		if err != nil {
+			log.Err(err).Msg("Failed to get client ID from IdentityProviderConfiguration 'welcome'")
+			return errors.Wrap(err, "Failed to get client ID from IdentityProviderConfiguration 'welcome'")
+		}
+		if !found {
+			log.Info().Msg("Client ID not found in IdentityProviderConfiguration 'welcome'")
+			clientId = ""
+		}
+
+		if clientId != "" {
+			templateData["welcomeAudience"] = clientId
+		}
+	}
 
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {
