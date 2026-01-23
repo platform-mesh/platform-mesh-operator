@@ -22,6 +22,7 @@ spec:
                 "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
                 "viewGroup": "marketplace",
                 "context": {
+                  "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},
                   "entityContext": {
                     "account": {
                       "policies": ["providerAdmin", "projectAdmin", "projectMember"]
@@ -40,6 +41,7 @@ spec:
                     "hideFromNav": true,
                     "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
+                      "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},
                       "providerName": ":providerName"
                     }
                   }
