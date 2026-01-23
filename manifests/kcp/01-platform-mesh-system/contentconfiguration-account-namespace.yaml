@@ -36,7 +36,7 @@ spec:
                           },
                           "context": {
                               "resourceDefinition": {
-                                  "group": "v1",
+                                  "version": "v1",
                                   "plural": "namespaces",
                                   "singular": "namespace",
                                   "kind": "Namespace",
@@ -80,7 +80,7 @@ spec:
                                     "id": "core_namespace",
                                     "contextKey": "namespaceId",
                                     "graphqlEntity": {
-                                        "group": "v1",
+                                        "version": "v1",
                                         "kind": "Namespace",
                                         "query": "{ metadata { name deletionTimestamp} }",
                                     }
