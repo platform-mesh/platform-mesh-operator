@@ -77,7 +77,7 @@ spec:
                                 "hideFromNav": true,
                                 "keepSelectedForChildren": false,
                                 "defineEntity": {
-                                    "id": "core_namespace",
+                                    "id": "namespace",
                                     "contextKey": "namespaceId",
                                     "graphqlEntity": {
                                         "version": "v1",
@@ -94,7 +94,7 @@ spec:
                           ]
                       },
                       {
-                        "entityType": "main.core_platform-mesh_io_account.core_namespace",
+                        "entityType": "main.core_platform-mesh_io_account.namespace",
                         "pathSegment": "dashboard",
                         "label": "Dashboard",
                         "order": 100,
