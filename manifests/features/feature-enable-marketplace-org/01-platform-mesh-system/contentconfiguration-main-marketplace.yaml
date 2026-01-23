@@ -19,7 +19,7 @@ spec:
                 "order": 700,
                 "icon": "retail-store",
                 "hideFromNav": false,
-                "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
                 "viewGroup": "marketplace",
                 "context": {
                   "entityContext": {
@@ -38,7 +38,7 @@ spec:
                   {
                     "pathSegment": ":providerName",
                     "hideFromNav": true,
-                    "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
+                    "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
                       "providerName": ":providerName"
                     }

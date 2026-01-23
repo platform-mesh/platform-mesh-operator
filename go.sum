@@ -37,12 +37,12 @@ github.com/evanphx/json-patch/v5 v5.9.11 h1:/8HVnzMq13/3x9TPvjG08wUGqBTmZBsCWzjT
 github.com/evanphx/json-patch/v5 v5.9.11/go.mod h1:3j+LviiESTElxA4p3EMKAB9HXj3/XEtnUf6OZxqIQTM=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/fluxcd/helm-controller/api v1.3.0 h1:PupXPuQbksmU0g2Lc6NjIYal2HJGL+6xohsf82eGVjo=
-github.com/fluxcd/helm-controller/api v1.3.0/go.mod h1:4b8PfdH0e/9Pfol2ogdMYbQ1nLjcVu9gAv27cQzIPK4=
+github.com/fluxcd/helm-controller/api v1.4.5 h1:hMEBtgXUbJjp+ah0jPI3OOQNVngoToOQvTgFgVpAjNg=
+github.com/fluxcd/helm-controller/api v1.4.5/go.mod h1:rCgx3qhjjtoIH+1EbzFC2vN71/pp0PgMDrZnGCZX5XY=
 github.com/fluxcd/pkg/apis/acl v0.9.0 h1:wBpgsKT+jcyZEcM//OmZr9RiF8klL3ebrDp2u2ThsnA=
 github.com/fluxcd/pkg/apis/acl v0.9.0/go.mod h1:TttNS+gocsGLwnvmgVi3/Yscwqrjc17+vhgYfqkfrV4=
-github.com/fluxcd/pkg/apis/kustomize v1.10.0 h1:47EeSzkQvlQZdH92vHMe2lK2iR8aOSEJq95avw5idts=
-github.com/fluxcd/pkg/apis/kustomize v1.10.0/go.mod h1:UsqMV4sqNa1Yg0pmTsdkHRJr7bafBOENIJoAN+3ezaQ=
+github.com/fluxcd/pkg/apis/kustomize v1.14.0 h1:PmWqMpRX0v7/aCAUNWfohe4o1qa9G3Cg/vVr5PCedI4=
+github.com/fluxcd/pkg/apis/kustomize v1.14.0/go.mod h1:CGRpU9Od4ht5+MHL6QlMfWaW87U9UTfGVM5CM4PZ28I=
 github.com/fluxcd/pkg/apis/meta v1.23.0 h1:fLis5YcHnOsyKYptzBtituBm5EWNx13I0bXQsy0FG4s=
 github.com/fluxcd/pkg/apis/meta v1.23.0/go.mod h1:UWsIbBPCxYvoVklr2mV2uLFBf/n17dNAmKFjRfApdDo=
 github.com/fluxcd/source-controller/api v1.7.4 h1:+EOVnRA9LmLxOx7J273l7IOEU39m+Slt/nQGBy69ygs=
@@ -183,8 +183,8 @@ github.com/pingcap/errors v0.11.4 h1:lFuQV/oaUMGcD2tqt+01ROSmJs75VG1ToEOkZIZ4nE4
 github.com/pingcap/errors v0.11.4/go.mod h1:Oi8TUi2kEtXXLMJk9l1cGmz20kV3TaQ0usTwv5KuLY8=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/platform-mesh/golang-commons v0.9.21 h1:vZDHU5CWvrh5wosfTUWPnJAz3fO51qLIZ9NCMFbmy9M=
-github.com/platform-mesh/golang-commons v0.9.21/go.mod h1:BoIOgVR7P+qoT8i1VWKqJq8YX8GTT3ZiwOxaBm49au4=
+github.com/platform-mesh/golang-commons v0.9.23 h1:+JO3om6WbzxCMqX+HA+I1jgiDqnjlqL15H6qf4C4rtc=
+github.com/platform-mesh/golang-commons v0.9.23/go.mod h1:/HkTA2f8E6vUlBxi4PlPnMbjAWyEt9sWKeorZAkANYc=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
