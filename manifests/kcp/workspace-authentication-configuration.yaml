@@ -7,8 +7,7 @@ spec:
     - issuer:
         url: https://{{ .baseDomainPort }}/keycloak/realms/welcome
         audiences:
-          - welcome
-          - welcome-kubectl
+        - {{ .welcomeAudience }}
         audienceMatchPolicy: MatchAny
         {{- with .domainCADec }}
         certificateAuthority: |

@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v251215-8997bd4.identityproviderconfigurations.core.platform-mesh.io
+  name: v260123-dbda1fc.identityproviderconfigurations.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
@@ -40,8 +40,6 @@ spec:
             clients:
               items:
                 properties:
-                  clientId:
-                    type: string
                   clientName:
                     type: string
                   clientType:
@@ -57,8 +55,6 @@ spec:
                     items:
                       type: string
                     type: array
-                  registrationClientUri:
-                    type: string
                   secretRef:
                     description: |-
                       SecretReference represents a Secret Reference. It has enough information to retrieve secret
@@ -75,7 +71,6 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                 required:
-                - clientId
                 - clientName
                 - clientType
                 - redirectUris
