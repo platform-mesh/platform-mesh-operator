@@ -21,7 +21,8 @@ spec:
                 "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/:accountId/marketplace",
                 "viewGroup": "marketplace",
                 "context": {
-                  "accountId": ":core_platform-mesh_io_accountId"
+                  "accountId": ":core_platform-mesh_io_accountId",
+                  "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"}
                 }
               },
               {
@@ -36,7 +37,8 @@ spec:
                     "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
                       "providerName": ":providerName",
-                      "accountId": ":core_platform-mesh_io_accountId"
+                      "accountId": ":core_platform-mesh_io_accountId",
+                      "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"}
                     }
                   }
                 ]
