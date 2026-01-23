@@ -32,7 +32,6 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
-	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/client-go/rest"
@@ -159,7 +158,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	// register scheme
 	s.scheme = runtime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
-	utilruntime.Must(helmv2beta.AddToScheme(s.scheme))
+	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(corev1.AddToScheme(s.scheme))
 	utilruntime.Must(appsv1.AddToScheme(s.scheme))
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
