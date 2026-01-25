@@ -21,9 +21,8 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "account-operator-kubeconfig",
 	},
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "rebac-authz-webhook-kubeconfig",
+		Path:   "root:platform-mesh-system",
+		Secret: "rebac-authz-webhook-kubeconfig",
 	},
 	{
 		Path:   "root:platform-mesh-system",
