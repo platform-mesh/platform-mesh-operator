@@ -6,6 +6,8 @@ metadata:
   namespace: {{ .helmReleaseNamespace }}
   labels:
     core.platform-mesh.io/operator-created: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ .traefik.syncWave | default 0 }}"
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:

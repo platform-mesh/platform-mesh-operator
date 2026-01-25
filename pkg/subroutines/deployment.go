@@ -749,14 +749,41 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 		}
 	}
 
+	// First, collect user-configured syncWave values (from profile or PlatformMesh.spec.Values)
+	// These should be preserved and not overwritten by automatic calculation
+	userConfiguredSyncWaves := make(map[string]int)
+	for serviceName, serviceConfig := range services {
+		config, ok := serviceConfig.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check if syncWave is already configured by the user
+		if syncWaveVal, found := config["syncWave"]; found {
+			switch v := syncWaveVal.(type) {
+			case int:
+				userConfiguredSyncWaves[serviceName] = v
+			case int64:
+				userConfiguredSyncWaves[serviceName] = int(v)
+			case float64:
+				// JSON numbers unmarshal as float64
+				userConfiguredSyncWaves[serviceName] = int(v)
+			}
+		}
+	}
+
 	// Calculate sync waves using iterative approach
 	// Services with no dependencies get wave 0
 	// Services depending on wave N services get wave N+1
 	syncWaves := make(map[string]int)
 
-	// Initialize all services to wave 0
+	// Initialize all services to wave 0, or use user-configured value if present
 	for _, serviceName := range serviceNames {
-		syncWaves[serviceName] = 0
+		if userWave, exists := userConfiguredSyncWaves[serviceName]; exists {
+			syncWaves[serviceName] = userWave
+		} else {
+			syncWaves[serviceName] = 0
+		}
 	}
 
 	// Calculate waves iteratively until no changes (handles dependencies)
@@ -789,9 +816,14 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 			if hasValidDeps {
 				// Set this service's wave to max dependency wave + 1
 				newWave := maxDepWave + 1
-				if syncWaves[serviceName] < newWave {
-					syncWaves[serviceName] = newWave
-					changed = true
+				// Only update if not user-configured (preserve user-configured values)
+				// Dependencies will still be respected because we use syncWaves (which includes user values) for dependency calculation
+				if _, isUserConfigured := userConfiguredSyncWaves[serviceName]; !isUserConfigured {
+					currentWave := syncWaves[serviceName]
+					if currentWave < newWave {
+						syncWaves[serviceName] = newWave
+						changed = true
+					}
 				}
 			}
 		}
@@ -803,9 +835,17 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 	}
 
 	// Add sync wave to each service config
+	// Only overwrite if not user-configured, otherwise preserve user value
 	for serviceName, serviceConfig := range services {
 		config, ok := serviceConfig.(map[string]interface{})
 		if !ok {
+			continue
+		}
+
+		// If user configured syncWave, preserve it; otherwise use calculated value
+		if _, isUserConfigured := userConfiguredSyncWaves[serviceName]; isUserConfigured {
+			// Keep user-configured value, but still respect dependencies if needed
+			// For user-configured values, we keep them as-is
 			continue
 		}
 
@@ -815,7 +855,7 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 			wave = 0
 		}
 
-		// Set syncWave field (always set, even if it was 0, to ensure consistency)
+		// Set syncWave field (only if not user-configured)
 		config["syncWave"] = wave
 	}
 
