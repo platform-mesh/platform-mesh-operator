@@ -49,13 +49,32 @@ type WaitConfig struct {
 }
 
 type ResourceType struct {
-	metav1.APIVersions      `json:",inline"`
-	metav1.GroupKind        `json:",inline"`
-	Name                    string `json:"name,omitempty"`
-	Namespace               string `json:"namespace,omitempty"`
-	metav1.LabelSelector    `json:",inline,omitempty"`
-	metav1.ConditionStatus  `json:"conditionStatus,omitempty"` // e.g., "True"
-	metav1.RowConditionType `json:"conditionType,omitempty"`   // e.g., "Ready"
+	// Versions are the API versions to check (e.g., ["v1", "v1alpha1"]).
+	Versions []string `json:"versions,omitempty"`
+	// Group is the API group (e.g., "argoproj.io").
+	Group string `json:"group,omitempty"`
+	// Kind is the resource kind (e.g., "Application").
+	Kind string `json:"kind,omitempty"`
+	// Name is the specific resource name to check. If empty, uses LabelSelector.
+	Name string `json:"name,omitempty"`
+	// Namespace is the namespace to search in.
+	Namespace string `json:"namespace,omitempty"`
+	// LabelSelector filters resources by labels when Name is not specified.
+	metav1.LabelSelector `json:",inline,omitempty"`
+	// ConditionStatus is the expected condition status (e.g., "True").
+	ConditionStatus metav1.ConditionStatus `json:"conditionStatus,omitempty"`
+	// ConditionType is the condition type to check (e.g., "Ready").
+	ConditionType string `json:"conditionType,omitempty"`
+	// StatusFieldPath specifies a path to a nested status field to check instead of conditions.
+	// When set, StatusValue is required and ConditionType/ConditionStatus are ignored.
+	// Example: ["status", "sync", "status"] for ArgoCD Application sync status.
+	// +optional
+	StatusFieldPath []string `json:"statusFieldPath,omitempty"`
+	// StatusValue is the expected value at the StatusFieldPath.
+	// Required when StatusFieldPath is set.
+	// Example: "Synced" for ArgoCD Application sync status.
+	// +optional
+	StatusValue string `json:"statusValue,omitempty"`
 }
 type FeatureToggle struct {
 	Name       string            `json:"name,omitempty"`
