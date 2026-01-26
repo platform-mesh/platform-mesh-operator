@@ -8,10 +8,12 @@ import (
 	"github.com/platform-mesh/golang-commons/context/keys"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -21,9 +23,12 @@ import (
 
 type WaitTestSuite struct {
 	suite.Suite
-	clientMock *mocks.Client
-	testObj    *subroutines.WaitSubroutine
-	log        *logger.Logger
+	clientMock    *mocks.Client
+	kcpClientMock *mocks.Client
+	kcpHelperMock *mocks.KcpHelper
+	testObj       *subroutines.WaitSubroutine
+	log           *logger.Logger
+	cfg           config.OperatorConfig
 }
 
 func TestWaitTestSuite(t *testing.T) {
@@ -32,17 +37,61 @@ func TestWaitTestSuite(t *testing.T) {
 
 func (s *WaitTestSuite) SetupTest() {
 	s.clientMock = new(mocks.Client)
-	cfg := logger.DefaultConfig()
-	cfg.Level = "debug"
-	cfg.NoJSON = true
-	cfg.Name = "WaitTestSuite"
-	s.log, _ = logger.New(cfg)
-	s.testObj = subroutines.NewWaitSubroutine(s.clientMock)
+	s.kcpClientMock = new(mocks.Client)
+	s.kcpHelperMock = new(mocks.KcpHelper)
+	s.cfg = config.OperatorConfig{}
+	s.cfg.KCP.ClusterAdminSecretName = "kcp-admin-secret"
+	s.cfg.KCP.Namespace = "platform-mesh-system"
+
+	logCfg := logger.DefaultConfig()
+	logCfg.Level = "debug"
+	logCfg.NoJSON = true
+	logCfg.Name = "WaitTestSuite"
+	s.log, _ = logger.New(logCfg)
+	s.testObj = subroutines.NewWaitSubroutine(s.clientMock, s.kcpHelperMock, &s.cfg, "https://kcp.example.com")
 }
 
 func (s *WaitTestSuite) TearDownTest() {
 	s.clientMock = nil
+	s.kcpClientMock = nil
+	s.kcpHelperMock = nil
 	s.testObj = nil
+}
+
+func (s *WaitTestSuite) mockWorkspaceAuthConfigCheck(audience string) {
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt":  []byte("fake-ca"),
+				"tls.crt": []byte("fake-cert"),
+				"tls.key": []byte("fake-key"),
+			}
+			return nil
+		})
+
+	s.kcpHelperMock.EXPECT().
+		NewKcpClient(mock.Anything, "root:orgs").
+		Return(s.kcpClientMock, nil)
+
+	s.kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "orgs-authentication"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			wac := obj.(*unstructured.Unstructured)
+			wac.Object = map[string]any{
+				"spec": map[string]any{
+					"jwt": []any{
+						map[string]any{
+							"issuer": map[string]any{
+								"audiences": []any{audience},
+							},
+						},
+					},
+				},
+			}
+			return nil
+		})
 }
 
 func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
@@ -58,14 +107,13 @@ func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
 		},
 	}
 
-	// Mock List calls for each resource type in DEFAULT_WAIT_CONFIG
-	// For HelmRelease v2 - platform-mesh-operator-components
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-			// Return empty list
 			return nil
-		}).Twice() // Called twice for the two default resource types
+		}).Twice()
+
+	s.mockWorkspaceAuthConfigCheck("valid-audience")
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -86,35 +134,29 @@ func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
 		},
 	}
 
-	// Mock List calls returning ready resources
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
-			readyResource := unstructured.Unstructured{
-				Object: map[string]interface{}{
+			unstructuredList.Items = []unstructured.Unstructured{{
+				Object: map[string]any{
 					"apiVersion": "helm.toolkit.fluxcd.io/v2",
 					"kind":       "HelmRelease",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      "test-helmrelease",
 						"namespace": "default",
-						"labels": map[string]interface{}{
-							"helm.toolkit.fluxcd.io/name": "platform-mesh-operator-components",
-						},
 					},
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
-								"type":   "Ready",
-								"status": "True",
-							},
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{"type": "Ready", "status": "True"},
 						},
 					},
 				},
-			}
-			unstructuredList.Items = []unstructured.Unstructured{readyResource}
+			}}
 			return nil
 		}).Twice()
+
+	s.mockWorkspaceAuthConfigCheck("valid-audience")
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -211,45 +253,26 @@ func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 		},
 	}
 
-	callCount := 0
-	// Mock List calls for multiple resource types
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
-			callCount++
-
-			var helmReleaseName string
-			if callCount == 1 {
-				helmReleaseName = "platform-mesh-operator-components"
-			} else {
-				helmReleaseName = "platform-mesh-operator-infra-components"
-			}
-
-			readyResource := unstructured.Unstructured{
-				Object: map[string]interface{}{
+			unstructuredList.Items = []unstructured.Unstructured{{
+				Object: map[string]any{
 					"apiVersion": "helm.toolkit.fluxcd.io/v2",
 					"kind":       "HelmRelease",
-					"metadata": map[string]interface{}{
-						"name":      helmReleaseName,
-						"namespace": "default",
-						"labels": map[string]interface{}{
-							"helm.toolkit.fluxcd.io/name": helmReleaseName,
-						},
-					},
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
-								"type":   "Ready",
-								"status": "True",
-							},
+					"metadata":   map[string]any{"name": "test", "namespace": "default"},
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{"type": "Ready", "status": "True"},
 						},
 					},
 				},
-			}
-			unstructuredList.Items = []unstructured.Unstructured{readyResource}
+			}}
 			return nil
 		}).Twice()
+
+	s.mockWorkspaceAuthConfigCheck("valid-audience")
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -274,56 +297,33 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-						APIVersions: metav1.APIVersions{
-							Versions: []string{"v1"},
-						},
-						GroupKind: metav1.GroupKind{
-							Group: "kustomize.toolkit.fluxcd.io",
-							Kind:  "Kustomization",
-						},
-						Namespace: "flux-system",
-						LabelSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{
-								"app": "platform-mesh",
-							},
-						},
-						ConditionStatus:  metav1.ConditionTrue,
-						RowConditionType: "Ready",
+						APIVersions:     metav1.APIVersions{Versions: []string{"v1"}},
+						GroupKind:       metav1.GroupKind{Group: "kustomize.toolkit.fluxcd.io", Kind: "Kustomization"},
+						Namespace:       "flux-system",
+						LabelSelector:   metav1.LabelSelector{MatchLabels: map[string]string{"app": "platform-mesh"}},
+						ConditionStatus: metav1.ConditionTrue, RowConditionType: "Ready",
 					},
 				},
 			},
 		},
 	}
 
-	// Mock List call returning ready Kustomization resource
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
-			readyResource := unstructured.Unstructured{
-				Object: map[string]interface{}{
+			unstructuredList.Items = []unstructured.Unstructured{{
+				Object: map[string]any{
 					"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
 					"kind":       "Kustomization",
-					"metadata": map[string]interface{}{
-						"name":      "test-kustomization",
-						"namespace": "flux-system",
-						"labels": map[string]interface{}{
-							"app": "platform-mesh",
-						},
-					},
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
-								"type":   "Ready",
-								"status": "True",
-							},
-						},
-					},
+					"metadata":   map[string]any{"name": "test-kustomization", "namespace": "flux-system"},
+					"status":     map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}},
 				},
-			}
-			unstructuredList.Items = []unstructured.Unstructured{readyResource}
+			}}
 			return nil
 		}).Once()
+
+	s.mockWorkspaceAuthConfigCheck("valid-audience")
 
 	result, err := s.testObj.Process(ctx, instance)
 
@@ -359,13 +359,8 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-						APIVersions: metav1.APIVersions{
-							Versions: []string{"v2"},
-						},
-						GroupKind: metav1.GroupKind{
-							Group: "helm.toolkit.fluxcd.io",
-							Kind:  "HelmRelease",
-						},
+						APIVersions:      metav1.APIVersions{Versions: []string{"v2"}},
+						GroupKind:        metav1.GroupKind{Group: "helm.toolkit.fluxcd.io", Kind: "HelmRelease"},
 						Namespace:        "default",
 						Name:             "platform-mesh-operator-components",
 						ConditionStatus:  metav1.ConditionTrue,
@@ -376,34 +371,20 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 		},
 	}
 
-	// Mock Get call returning a ready resource
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "platform-mesh-operator-components"}, mock.Anything).
-		// List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
-				"kind":       "Kustomization",
-				"metadata": map[string]interface{}{
-					"name":      "test-kustomization",
-					"namespace": "flux-system",
-					"labels": map[string]interface{}{
-						"app": "platform-mesh",
-					},
-				},
-				"status": map[string]interface{}{
-					"conditions": []interface{}{
-						map[string]interface{}{
-							"type":   "Ready",
-							"status": "True",
-						},
-					},
-				},
+			unstructuredObj.Object = map[string]any{
+				"apiVersion": "helm.toolkit.fluxcd.io/v2",
+				"kind":       "HelmRelease",
+				"metadata":   map[string]any{"name": "platform-mesh-operator-components", "namespace": "default"},
+				"status":     map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}},
 			}
-
 			return nil
 		})
+
+	s.mockWorkspaceAuthConfigCheck("valid-audience")
 
 	result, err := s.testObj.Process(ctx, instance)
 
