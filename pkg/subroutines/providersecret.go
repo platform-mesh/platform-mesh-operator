@@ -141,34 +141,6 @@ func (r *ProvidersecretSubroutine) Process(
 			return ctrl.Result{}, opErr
 		}
 	}
-
-	// Determine which initializer connections to use based on configuration:
-	var inits []corev1alpha1.InitializerConnection
-	hasInit := len(instance.Spec.Kcp.InitializerConnections) > 0
-	hasExtraInit := len(instance.Spec.Kcp.ExtraInitializerConnections) > 0
-
-	switch {
-	case !hasInit && !hasExtraInit:
-		// Nothing configured -> use default initializers
-		inits = DefaultInitializerConnection
-	case !hasInit && hasExtraInit:
-		// Only extra initializers configured -> use default + extra initializers
-		inits = append(DefaultInitializerConnection, instance.Spec.Kcp.ExtraInitializerConnections...)
-	case hasInit && !hasExtraInit:
-		// Only initializers configured -> use only specified initializers
-		inits = instance.Spec.Kcp.InitializerConnections
-	default:
-		// Both initializers and extra initializers configured -> use specified + extra initializers
-		inits = append(instance.Spec.Kcp.InitializerConnections, instance.Spec.Kcp.ExtraInitializerConnections...)
-	}
-
-	for _, ic := range inits {
-		if _, opErr := r.HandleInitializerConnection(ctx, instance, ic, cfg); opErr != nil {
-			log.Error().Err(opErr.Err()).Msg("Failed to handle initializer connection")
-			return ctrl.Result{}, opErr
-		}
-	}
-
 	return ctrl.Result{}, nil
 }
 

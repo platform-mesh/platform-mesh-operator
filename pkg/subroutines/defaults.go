@@ -47,12 +47,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		RawPath: ptr.To("/services/contentconfigurations"),
 		Secret:  "portal-kubeconfig",
 	},
-}
-var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
 	{
-		WorkspaceTypeName: "security",
-		Path:              "root",
-		Secret:            "security-initializer-kubeconfig",
+		Path:   "root",
+		Secret: "security-initializer-kubeconfig",
 	},
 }
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
