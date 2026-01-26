@@ -72,7 +72,7 @@ func (s *WaitTestSuite) mockWorkspaceAuthConfigCheck(audience string) {
 		})
 
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:orgs").
+		NewKcpClient(mock.Anything, "root").
 		Return(s.kcpClientMock, nil)
 
 	s.kcpClientMock.EXPECT().
