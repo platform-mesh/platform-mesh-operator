@@ -3,6 +3,7 @@ package subroutines
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -10,23 +11,33 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 func NewWaitSubroutine(
 	client client.Client,
+	kcpHelper KcpHelper,
+	cfg *config.OperatorConfig,
+	kcpUrl string,
 ) *WaitSubroutine {
-	sub := &WaitSubroutine{
-		client: client,
+	return &WaitSubroutine{
+		client:    client,
+		kcpHelper: kcpHelper,
+		cfg:       cfg,
+		kcpUrl:    kcpUrl,
 	}
-	return sub
 }
 
 type WaitSubroutine struct {
-	client client.Client
+	client    client.Client
+	kcpHelper KcpHelper
+	cfg       *config.OperatorConfig
+	kcpUrl    string
 }
 
 const (
@@ -99,7 +110,63 @@ func (r *WaitSubroutine) Process(
 		}
 	}
 
+	// Check if WorkspaceAuthenticationConfiguration audience is still a placeholder
+	// If so, trigger a reconcile to ensure all logic is finished
+	if err := r.checkWorkspaceAuthConfigAudience(ctx, log); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger) error {
+	kubeCfg, err := buildKubeconfigFromConfig(r.client, r.cfg, r.kcpUrl)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
+		return nil
+	}
+
+	orgsClient, err := r.kcpHelper.NewKcpClient(kubeCfg, "root")
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to create KCP client for root workspace, skipping")
+		return nil
+	}
+
+	wac := &unstructured.Unstructured{}
+	wac.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "tenancy.kcp.io",
+		Version: "v1alpha1",
+		Kind:    "WorkspaceAuthenticationConfiguration",
+	})
+
+	if err = orgsClient.Get(ctx, types.NamespacedName{Name: "orgs-authentication"}, wac); err != nil {
+		log.Debug().Err(err).Msg("Failed to get WorkspaceAuthenticationConfiguration, skipping")
+		return nil
+	}
+
+	jwtConfigs, found, err := unstructured.NestedSlice(wac.Object, "spec", "jwt")
+	if err != nil || !found || len(jwtConfigs) == 0 {
+		return nil
+	}
+	jwt, ok := jwtConfigs[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+	issuer, ok := jwt["issuer"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	audiences, ok, _ := unstructured.NestedStringSlice(issuer, "audiences")
+	if !ok {
+		return nil
+	}
+
+	if slices.Contains(audiences, "<placeholder>") {
+		log.Info().Msg("WorkspaceAuthenticationConfiguration audience is still set to <placeholder>, triggering reconcile")
+		return errors.New("WorkspaceAuthenticationConfiguration audience is still <placeholder>")
+	}
+
+	return nil
 }
 
 func (r *WaitSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore

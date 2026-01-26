@@ -356,6 +356,10 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 
 func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
+}
+
+func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
