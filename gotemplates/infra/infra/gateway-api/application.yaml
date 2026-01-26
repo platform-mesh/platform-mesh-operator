@@ -12,6 +12,10 @@ metadata:
   - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform-mesh-runtime
+  {{- if .gatewayApi.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml .gatewayApi.ignoreDifferences | nindent 4 }}
+  {{- end }}
   source:
     {{- if and .gatewayApi.repoURL (ne .gatewayApi.repoURL "") }}
     repoURL: {{ .gatewayApi.repoURL }}
@@ -31,11 +35,19 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    {{- if .gatewayApi.syncOptions }}
+    syncOptions:
+{{ toYaml .gatewayApi.syncOptions | nindent 4 }}
+    {{- else }}
     syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true
+    {{- if .gatewayApi.ignoreDifferences }}
+    - RespectIgnoreDifferences=true
+    {{- end }}
     {{- if and .gatewayApi.kustomization.install.crds (eq .gatewayApi.kustomization.install.crds "Skip") }}
     - SkipDryRunOnMissingResource=true
+    {{- end }}
     {{- end }}
 {{- end }}
 

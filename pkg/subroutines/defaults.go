@@ -87,13 +87,9 @@ var DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration
 var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 	ResourceTypes: []corev1alpha1.ResourceType{
 		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
-				Group: "helm.toolkit.fluxcd.io",
-				Kind:  "HelmRelease",
-			},
+			Versions:  []string{"v2"},
+			Group:     "helm.toolkit.fluxcd.io",
+			Kind:      "HelmRelease",
 			Namespace: "platform-mesh-system",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
@@ -104,8 +100,8 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 					},
 				},
 			},
-			ConditionStatus:  v1.ConditionTrue,
-			RowConditionType: "Ready",
+			ConditionStatus: v1.ConditionTrue,
+			ConditionType:   "Ready",
 		},
 	},
 }

@@ -12,6 +12,10 @@ metadata:
   - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform-mesh-runtime
+  {{- if .traefikCRDs.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml .traefikCRDs.ignoreDifferences | nindent 4 }}
+  {{- end }}
   source:
     {{- if .traefikCRDs.repoURL }}
     repoURL: {{ .traefikCRDs.repoURL }}
@@ -19,7 +23,16 @@ spec:
     repoURL: https://traefik.github.io/charts
     {{- end }}
     chart: traefik-crds
+    {{- if .traefikCRDs.targetRevision }}
+    targetRevision: "{{ .traefikCRDs.targetRevision }}"
+    {{- else }}
     targetRevision: "*"
+    {{- end }}
+    {{- if .traefikCRDs.values }}
+    helm:
+      values: |
+{{ toYaml .traefikCRDs.values | nindent 8 }}
+    {{- end }}
   destination:
     server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
     namespace: {{ .releaseNamespace }}
@@ -27,9 +40,15 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    {{- if .traefikCRDs.syncOptions }}
+    syncOptions:
+{{ toYaml .traefikCRDs.syncOptions | nindent 4 }}
+    {{- else }}
     syncOptions:
     - CreateNamespace=true
-  # CRDs should be synced first (wave 0)
-  # This should be added via annotations: argocd.argoproj.io/sync-wave: "0"
+    {{- if .traefikCRDs.ignoreDifferences }}
+    - RespectIgnoreDifferences=true
+    {{- end }}
+    {{- end }}
 {{- end }}
 

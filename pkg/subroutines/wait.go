@@ -55,10 +55,14 @@ func (r *WaitSubroutine) Process(
 	for _, resourceType := range waitConfig.ResourceTypes {
 		log.Info().Msgf("Waiting for resource type: %s", resourceType)
 
-		for _, version := range resourceType.APIVersions.Versions {
+		for _, version := range resourceType.Versions {
 			waitList := &unstructured.UnstructuredList{}
 
 			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
+
+			// Determine which status checking method to use
+			useStatusFieldPath := len(resourceType.StatusFieldPath) > 0
+
 			if resourceType.Name != "" {
 				res := &unstructured.Unstructured{}
 				res.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
@@ -67,7 +71,7 @@ func (r *WaitSubroutine) Process(
 					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
 					return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 				}
-				if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				if !checkResourceStatus(res, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
 					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind()), true, false)
 				}
@@ -90,7 +94,7 @@ func (r *WaitSubroutine) Process(
 			}
 
 			for _, item := range waitList.Items {
-				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				if !checkResourceStatus(&item, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
 					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind()), true, false)
 				}
@@ -107,4 +111,14 @@ func (r *WaitSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []stri
 
 func (r *WaitSubroutine) GetName() string {
 	return WaitSubroutineName
+}
+
+// checkResourceStatus checks if a resource matches the expected status.
+// If useStatusFieldPath is true, it checks the value at statusFieldPath equals statusValue.
+// Otherwise, it checks the conditions array for a matching conditionType and conditionStatus.
+func checkResourceStatus(res *unstructured.Unstructured, useStatusFieldPath bool, statusFieldPath []string, statusValue string, conditionType string, conditionStatus string) bool {
+	if useStatusFieldPath {
+		return matchesStatusFieldValue(res, statusFieldPath, statusValue)
+	}
+	return matchesConditionWithStatus(res, conditionType, conditionStatus)
 }

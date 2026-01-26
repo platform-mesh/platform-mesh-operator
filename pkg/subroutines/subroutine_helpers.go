@@ -495,6 +495,20 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 	return false
 }
 
+// matchesStatusFieldValue checks if a resource has a specific value at a given nested field path.
+// This is useful for resources like ArgoCD Applications that use nested status fields
+// (e.g., status.sync.status) instead of the standard conditions array.
+func matchesStatusFieldValue(resource *unstructured.Unstructured, fieldPath []string, expectedValue string) bool {
+	if resource == nil || len(fieldPath) == 0 {
+		return false
+	}
+	value, found, err := unstructured.NestedString(resource.Object, fieldPath...)
+	if err != nil || !found {
+		return false
+	}
+	return value == expectedValue
+}
+
 func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
 	manifestBytes, err := os.ReadFile(path)
 	if err != nil {

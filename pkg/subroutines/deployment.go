@@ -836,6 +836,8 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 
 	// Add sync wave to each service config
 	// Only overwrite if not user-configured, otherwise preserve user value
+	// Note: ignoreDifferences is also preserved from the profile components section
+	// and will be available in the config for use in templates
 	for serviceName, serviceConfig := range services {
 		config, ok := serviceConfig.(map[string]interface{})
 		if !ok {
@@ -857,6 +859,10 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 
 		// Set syncWave field (only if not user-configured)
 		config["syncWave"] = wave
+
+		// ignoreDifferences is preserved from the profile components section
+		// It is already in the config map from the merged services, so no explicit
+		// handling is needed here - it will be available in templates via $config.ignoreDifferences
 	}
 
 	return nil

@@ -265,21 +265,17 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-						APIVersions: metav1.APIVersions{
-							Versions: []string{"v1"},
-						},
-						GroupKind: metav1.GroupKind{
-							Group: "kustomize.toolkit.fluxcd.io",
-							Kind:  "Kustomization",
-						},
+						Versions:  []string{"v1"},
+						Group:     "kustomize.toolkit.fluxcd.io",
+						Kind:      "Kustomization",
 						Namespace: "flux-system",
 						LabelSelector: metav1.LabelSelector{
 							MatchLabels: map[string]string{
 								"app": "platform-mesh",
 							},
 						},
-						ConditionStatus:  metav1.ConditionTrue,
-						RowConditionType: "Ready",
+						ConditionStatus: metav1.ConditionTrue,
+						ConditionType:   "Ready",
 					},
 				},
 			},
@@ -350,17 +346,13 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-						APIVersions: metav1.APIVersions{
-							Versions: []string{"v2"},
-						},
-						GroupKind: metav1.GroupKind{
-							Group: "helm.toolkit.fluxcd.io",
-							Kind:  "HelmRelease",
-						},
-						Namespace:        "default",
-						Name:             "test-helmrelease",
-						ConditionStatus:  metav1.ConditionTrue,
-						RowConditionType: "Ready",
+						Versions:        []string{"v2"},
+						Group:           "helm.toolkit.fluxcd.io",
+						Kind:            "HelmRelease",
+						Namespace:       "default",
+						Name:            "test-helmrelease",
+						ConditionStatus: metav1.ConditionTrue,
+						ConditionType:   "Ready",
 					},
 				},
 			},
@@ -393,6 +385,198 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 				},
 			}
 
+			return nil
+		})
+
+	result, err := s.testObj.Process(ctx, instance)
+
+	s.Assert().Nil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+func (s *WaitTestSuite) TestProcess_ArgoCD_Application_Synced() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	instance := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mesh",
+			Namespace: "default",
+		},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Wait: &corev1alpha1.WaitConfig{
+				ResourceTypes: []corev1alpha1.ResourceType{
+					{
+						Versions:  []string{"v1alpha1"},
+						Group:     "argoproj.io",
+						Kind:      "Application",
+						Namespace: "platform-mesh-system",
+						LabelSelector: metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"core.platform-mesh.io/operator-created": "true",
+							},
+						},
+						// Use StatusFieldPath for ArgoCD Application sync status
+						StatusFieldPath: []string{"status", "sync", "status"},
+						StatusValue:     "Synced",
+					},
+				},
+			},
+		},
+	}
+
+	// Mock List call returning synced ArgoCD Application
+	s.clientMock.EXPECT().
+		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+			unstructuredList := list.(*unstructured.UnstructuredList)
+			syncedApp := unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "argoproj.io/v1alpha1",
+					"kind":       "Application",
+					"metadata": map[string]interface{}{
+						"name":      "infra",
+						"namespace": "platform-mesh-system",
+						"labels": map[string]interface{}{
+							"core.platform-mesh.io/operator-created": "true",
+						},
+					},
+					"status": map[string]interface{}{
+						"sync": map[string]interface{}{
+							"status": "Synced",
+						},
+						"health": map[string]interface{}{
+							"status": "Healthy",
+						},
+					},
+				},
+			}
+			unstructuredList.Items = []unstructured.Unstructured{syncedApp}
+			return nil
+		}).Once()
+
+	result, err := s.testObj.Process(ctx, instance)
+
+	s.Assert().Nil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+func (s *WaitTestSuite) TestProcess_ArgoCD_Application_NotSynced() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	instance := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mesh",
+			Namespace: "default",
+		},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Wait: &corev1alpha1.WaitConfig{
+				ResourceTypes: []corev1alpha1.ResourceType{
+					{
+						Versions:  []string{"v1alpha1"},
+						Group:     "argoproj.io",
+						Kind:      "Application",
+						Namespace: "platform-mesh-system",
+						LabelSelector: metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"core.platform-mesh.io/operator-created": "true",
+							},
+						},
+						// Use StatusFieldPath for ArgoCD Application sync status
+						StatusFieldPath: []string{"status", "sync", "status"},
+						StatusValue:     "Synced",
+					},
+				},
+			},
+		},
+	}
+
+	// Mock List call returning OutOfSync ArgoCD Application
+	s.clientMock.EXPECT().
+		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+			unstructuredList := list.(*unstructured.UnstructuredList)
+			outOfSyncApp := unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "argoproj.io/v1alpha1",
+					"kind":       "Application",
+					"metadata": map[string]interface{}{
+						"name":      "infra",
+						"namespace": "platform-mesh-system",
+						"labels": map[string]interface{}{
+							"core.platform-mesh.io/operator-created": "true",
+						},
+					},
+					"status": map[string]interface{}{
+						"sync": map[string]interface{}{
+							"status": "OutOfSync",
+						},
+						"health": map[string]interface{}{
+							"status": "Degraded",
+						},
+					},
+				},
+			}
+			unstructuredList.Items = []unstructured.Unstructured{outOfSyncApp}
+			return nil
+		}).Once()
+
+	result, err := s.testObj.Process(ctx, instance)
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "is not ready yet")
+}
+
+func (s *WaitTestSuite) TestProcess_ArgoCD_Application_ByName_Synced() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	instance := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mesh",
+			Namespace: "default",
+		},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Wait: &corev1alpha1.WaitConfig{
+				ResourceTypes: []corev1alpha1.ResourceType{
+					{
+						Versions:  []string{"v1alpha1"},
+						Group:     "argoproj.io",
+						Kind:      "Application",
+						Namespace: "platform-mesh-system",
+						Name:      "infra",
+						// Use StatusFieldPath for ArgoCD Application sync status
+						StatusFieldPath: []string{"status", "sync", "status"},
+						StatusValue:     "Synced",
+					},
+				},
+			},
+		},
+	}
+
+	// Mock Get call returning synced ArgoCD Application
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Namespace: "platform-mesh-system", Name: "infra"}, mock.Anything).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstructuredObj := obj.(*unstructured.Unstructured)
+			unstructuredObj.Object = map[string]interface{}{
+				"apiVersion": "argoproj.io/v1alpha1",
+				"kind":       "Application",
+				"metadata": map[string]interface{}{
+					"name":      "infra",
+					"namespace": "platform-mesh-system",
+					"labels": map[string]interface{}{
+						"core.platform-mesh.io/operator-created": "true",
+					},
+				},
+				"status": map[string]interface{}{
+					"sync": map[string]interface{}{
+						"status": "Synced",
+					},
+					"health": map[string]interface{}{
+						"status": "Healthy",
+					},
+				},
+			}
 			return nil
 		})
 
