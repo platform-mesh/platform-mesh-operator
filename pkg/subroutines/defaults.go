@@ -16,9 +16,8 @@ var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "account-operator-kubeconfig",
+		Path:   "root:platform-mesh-system",
+		Secret: "account-operator-kubeconfig",
 	},
 	{
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),

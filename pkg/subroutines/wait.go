@@ -126,9 +126,9 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 		return nil
 	}
 
-	orgsClient, err := r.kcpHelper.NewKcpClient(kubeCfg, "root:orgs")
+	orgsClient, err := r.kcpHelper.NewKcpClient(kubeCfg, "root")
 	if err != nil {
-		log.Debug().Err(err).Msg("Failed to create KCP client for root:orgs workspace, skipping")
+		log.Debug().Err(err).Msg("Failed to create KCP client for root workspace, skipping")
 		return nil
 	}
 
