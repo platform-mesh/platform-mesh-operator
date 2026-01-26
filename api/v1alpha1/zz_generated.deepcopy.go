@@ -139,16 +139,6 @@ func (in *Kcp) DeepCopyInto(out *Kcp) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.InitializerConnections != nil {
-		in, out := &in.InitializerConnections, &out.InitializerConnections
-		*out = make([]InitializerConnection, len(*in))
-		copy(*out, *in)
-	}
-	if in.ExtraInitializerConnections != nil {
-		in, out := &in.ExtraInitializerConnections, &out.ExtraInitializerConnections
-		*out = make([]InitializerConnection, len(*in))
-		copy(*out, *in)
-	}
 	if in.ExtraDefaultAPIBindings != nil {
 		in, out := &in.ExtraDefaultAPIBindings, &out.ExtraDefaultAPIBindings
 		*out = make([]DefaultAPIBindingConfiguration, len(*in))

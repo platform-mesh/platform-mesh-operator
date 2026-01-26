@@ -110,22 +110,6 @@ spec:
                       - workspaceTypePath
                       type: object
                     type: array
-                  extraInitializerConnections:
-                    items:
-                      properties:
-                        namespace:
-                          type: string
-                        path:
-                          type: string
-                        secret:
-                          type: string
-                        workspaceTypeName:
-                          type: string
-                      required:
-                      - path
-                      - workspaceTypeName
-                      type: object
-                    type: array
                   extraProviderConnections:
                     items:
                       properties:
@@ -174,22 +158,6 @@ spec:
                       required:
                       - path
                       - type
-                      type: object
-                    type: array
-                  initializerConnections:
-                    items:
-                      properties:
-                        namespace:
-                          type: string
-                        path:
-                          type: string
-                        secret:
-                          type: string
-                        workspaceTypeName:
-                          type: string
-                      required:
-                      - path
-                      - workspaceTypeName
                       type: object
                     type: array
                   providerConnections:
