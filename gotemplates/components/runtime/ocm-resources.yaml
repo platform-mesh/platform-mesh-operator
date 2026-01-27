@@ -30,14 +30,14 @@ spec:
       resource:
         name: chart
       referencePath:
-        {{- if $config.referencePath }}
-        {{- toYaml $config.referencePath | nindent 8 }}
-        {{- else }}
-        {{- with $values.ocm.referencePath }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        - name: {{ $service}}
-        {{- end }}
+{{- if $config.referencePath }}
+{{ toYaml $config.referencePath | nindent 8 }}
+{{- else }}
+{{- with $values.ocm.referencePath }}
+{{ toYaml . | nindent 8 }}
+{{- end }}
+        - name: {{ $service }}
+{{- end }}
   interval: {{ $values.ocm.interval }}
   ocmConfig:
     - kind: Repository

@@ -29,16 +29,16 @@ spec:
       resource:
         name: {{ .resource | default "image" }}
       referencePath:
-        {{- if .referencePath }}
-        {{- toYaml .referencePath | nindent 8 }}
-        {{- else if $config.referencePath }}
-        {{- toYaml $config.referencePath | nindent 8 }}
-        {{- else }}
-        {{- with $values.ocm.referencePath }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        - name: {{ $service}}
-        {{- end }}
+{{- if .referencePath }}
+{{ toYaml .referencePath | nindent 8 }}
+{{- else if $config.referencePath }}
+{{ toYaml $config.referencePath | nindent 8 }}
+{{- else }}
+{{- with $values.ocm.referencePath }}
+{{ toYaml . | nindent 8 }}
+{{- end }}
+        - name: {{ $service }}
+{{- end }}
   interval: 1m
   ocmConfig:
     - kind: Repository

@@ -34,14 +34,6 @@ data:
               collector:
                 host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
               enabled: false
-        crossplane:
-          enabled: true
-          helmRepo: true
-          targetNamespace: crossplane-system
-          values:
-            provider:
-              packages:
-              - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
         etcd-druid:
           enabled: true
           gitRepo: true

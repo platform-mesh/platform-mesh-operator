@@ -16,19 +16,16 @@ var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "account-operator-kubeconfig",
+		Path:   "root:platform-mesh-system",
+		Secret: "account-operator-kubeconfig",
 	},
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "rebac-authz-webhook-kubeconfig",
+		Path:   "root:platform-mesh-system",
+		Secret: "rebac-authz-webhook-kubeconfig",
 	},
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "security-operator-kubeconfig",
+		Path:   "root:platform-mesh-system",
+		Secret: "security-operator-kubeconfig",
 	},
 	{
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
@@ -48,14 +45,12 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		RawPath: ptr.To("/services/contentconfigurations"),
 		Secret:  "portal-kubeconfig",
 	},
-}
-var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{
 	{
-		WorkspaceTypeName: "security",
-		Path:              "root",
-		Secret:            "security-initializer-kubeconfig",
+		Path:   "root",
+		Secret: "security-initializer-kubeconfig",
 	},
 }
+var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{}
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
 		Name:      AccountOperatorWebhookSecretName,
