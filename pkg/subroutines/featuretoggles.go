@@ -92,6 +92,13 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Marketplace configuration' feature")
+		case "feature-accounts-in-accounts":
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-accounts-in-accounts")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply accounts-in-accounts manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Accounts in accounts' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}

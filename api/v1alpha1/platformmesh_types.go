@@ -108,11 +108,9 @@ type ExposureConfig struct {
 }
 
 type Kcp struct {
-	ProviderConnections         []ProviderConnection             `json:"providerConnections,omitempty"`
-	ExtraProviderConnections    []ProviderConnection             `json:"extraProviderConnections,omitempty"`
-	InitializerConnections      []InitializerConnection          `json:"initializerConnections,omitempty"`
-	ExtraInitializerConnections []InitializerConnection          `json:"extraInitializerConnections,omitempty"`
-	ExtraDefaultAPIBindings     []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
+	ProviderConnections      []ProviderConnection             `json:"providerConnections,omitempty"`
+	ExtraProviderConnections []ProviderConnection             `json:"extraProviderConnections,omitempty"`
+	ExtraDefaultAPIBindings  []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
 	// ExtraWorkspaces allows declaring additional workspaces that the operator will create.
 	// +optional
 	ExtraWorkspaces []WorkspaceDeclaration `json:"extraWorkspaces,omitempty"`

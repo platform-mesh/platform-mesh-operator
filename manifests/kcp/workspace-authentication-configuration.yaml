@@ -7,15 +7,25 @@ spec:
     - issuer:
         url: https://{{ .baseDomainPort }}/keycloak/realms/welcome
         audiences:
-          - welcome
+        - {{ .welcomeAudience }}
         audienceMatchPolicy: MatchAny
-        {{- with .domainCA }}
-        certificateAuthority: {{ . }}
+        {{- with .domainCADec }}
+        certificateAuthority: |
+{{ . | indent 10 }}
         {{- end }}
       claimMappings:
         groups:
           claim: groups
           prefix: ""
         username:
+      {{- if eq .featureDisableEmailVerification "true" }}
+          expression: claims.email
+      {{- else }}
           claim: email
           prefix: ""
+      {{- end }}
+      {{- if eq .featureDisableEmailVerification "true" }}
+      claimValidationRules:
+        - expression: "claims.?email_verified.orValue(true) == true || claims.?email_verified.orValue(true) == false"
+          message: "Allowing both verified and unverified emails"
+      {{- end }}

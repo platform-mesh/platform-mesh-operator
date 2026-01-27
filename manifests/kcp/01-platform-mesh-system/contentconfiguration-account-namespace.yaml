@@ -14,12 +14,18 @@ spec:
               "data": {
                   "nodes": [
                       {
-                          "pathSegment": "core_namespaces",
-                          "navigationContext": "core_namespaces",
+                          "pathSegment": "namespaces",
+                          "navigationContext": "namespaces",
                           "label": "Namespaces",
                           "entityType": "main.core_platform-mesh_io_account",
                           "icon": "group-2",
                           "order": 110,
+                          "category": {
+                              "id": "workspace",
+                              "isGroup": true,
+                              "label": "Workspace Resources",
+                              "order": 500
+                          },
                           "loadingIndicator": {
                               "enabled": false
                           },
@@ -30,7 +36,7 @@ spec:
                           },
                           "context": {
                               "resourceDefinition": {
-                                  "group": "core",
+                                  "version": "v1",
                                   "plural": "namespaces",
                                   "singular": "namespace",
                                   "kind": "Namespace",
@@ -71,12 +77,12 @@ spec:
                                 "hideFromNav": true,
                                 "keepSelectedForChildren": false,
                                 "defineEntity": {
-                                    "id": "core_namespace",
+                                    "id": "namespace",
                                     "contextKey": "namespaceId",
                                     "graphqlEntity": {
-                                        "group": "core",
+                                        "version": "v1",
                                         "kind": "Namespace",
-                                        "query": "{ metadata { name } }"
+                                        "query": "{ metadata { name deletionTimestamp} }"
                                     }
                                 },
                                 "context": {
@@ -88,7 +94,7 @@ spec:
                           ]
                       },
                       {
-                        "entityType": "main.core_platform-mesh_io_account.core_namespace",
+                        "entityType": "main.core_platform-mesh_io_account.namespace",
                         "pathSegment": "dashboard",
                         "label": "Dashboard",
                         "order": 100,

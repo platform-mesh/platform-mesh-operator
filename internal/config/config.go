@@ -24,12 +24,6 @@ type OperatorConfig struct {
 		ProviderSecret struct {
 			Enabled bool `mapstructure:"subroutines-provider-secret-enabled" default:"true"`
 		} `mapstructure:",squash"`
-		PatchOIDC struct {
-			ConfigMapName  string `mapstructure:"subroutines-patch-oidc-configmap-name" default:"oidc-authentication-config"`
-			Namespace      string `mapstructure:"subroutines-patch-oidc-namespace" default:"platform-mesh-system"`
-			BaseDomain     string `mapstructure:"subroutines-patch-oidc-basedomain" default:"portal.dev.local:8443"`
-			DomainCALookup bool   `mapstructure:"subroutines-patch-oidc-domain-ca-lookup" default:"false"`
-		} `mapstructure:",squash"`
 		FeatureToggles struct {
 			Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
 		} `mapstructure:",squash"`

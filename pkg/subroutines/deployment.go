@@ -694,7 +694,7 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 // getBaseDomainFromInstance extracts the base domain from PlatformMesh instance
 func getBaseDomainFromInstance(inst *v1alpha1.PlatformMesh) string {
 	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
-		return "portal.dev.local"
+		return "portal.localhost"
 	}
 	return inst.Spec.Exposure.BaseDomain
 }

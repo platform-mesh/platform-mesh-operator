@@ -81,7 +81,7 @@ data:
               rootShard:
                 extraArgs:
                 - --feature-gates=WorkspaceAuthentication=true
-                - --shard-virtual-workspace-url=https://kcp.api.{{ .baseDomainPort }}
+                - --shard-virtual-workspace-url=https://{{ .baseDomainPort }}
               webhook:
                 enabled: true
             keycloak:

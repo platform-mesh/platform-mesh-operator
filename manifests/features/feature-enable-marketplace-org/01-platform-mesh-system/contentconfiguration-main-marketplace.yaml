@@ -19,9 +19,10 @@ spec:
                 "order": 700,
                 "icon": "retail-store",
                 "hideFromNav": false,
-                "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
                 "viewGroup": "marketplace",
                 "context": {
+                  "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},
                   "entityContext": {
                     "account": {
                       "policies": ["providerAdmin", "projectAdmin", "projectMember"]
@@ -38,8 +39,9 @@ spec:
                   {
                     "pathSegment": ":providerName",
                     "hideFromNav": true,
-                    "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
+                    "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
+                      "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},
                       "providerName": ":providerName"
                     }
                   }

@@ -93,7 +93,20 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 }
 
 func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
-	tmpl, err := template.New("manifest").Parse(string(templateBytes))
+	funcMap := template.FuncMap{
+		"indent": func(spaces int, s string) string {
+			pad := strings.Repeat(" ", spaces)
+			lines := strings.Split(s, "\n")
+			for i, line := range lines {
+				if line != "" {
+					lines[i] = pad + line
+				}
+			}
+			return strings.Join(lines, "\n")
+		},
+	}
+
+	tmpl, err := template.New("manifest").Funcs(funcMap).Parse(string(templateBytes))
 	if err != nil {
 		return []byte{}, errors.Wrap(err, "Failed to parse template")
 	}
@@ -232,7 +245,7 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
 	port := 8443
-	baseDomain := "portal.dev.local"
+	baseDomain := "portal.localhost"
 	protocol := "https"
 	baseDomainPort := ""
 
@@ -290,6 +303,10 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 
 func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
+}
+
+func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
@@ -380,6 +397,14 @@ func ApplyManifestFromFile(
 	}
 	if obj.Object == nil {
 		return nil
+	}
+
+	if obj.GetKind() == "ContentConfiguration" && obj.GetAPIVersion() == "ui.platform-mesh.io/v1alpha1" {
+		if templateData["featureDisableContentConfigurations"] == "true" {
+			log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
+				Msg("Skipping ContentConfiguration due to feature-disable-contentconfigurations toggle")
+			return nil
+		}
 	}
 
 	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
@@ -649,7 +674,7 @@ func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig)
 	if inst.Spec.Exposure == nil {
 		return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	}
-	kcpUrl := inst.Spec.Exposure.Protocol + "://kcp.api." + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	kcpUrl := inst.Spec.Exposure.Protocol + "://" + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
 	return kcpUrl
 }
 

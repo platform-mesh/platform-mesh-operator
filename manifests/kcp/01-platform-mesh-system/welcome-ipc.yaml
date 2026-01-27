@@ -1,0 +1,13 @@
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: IdentityProviderConfiguration
+metadata:
+  name: welcome
+spec:
+  clients:
+  - clientType: confidential
+    clientName: welcome
+    redirectUris:
+    - https://{{ .baseDomainPort }}/callback*
+    secretRef:
+      name: portal-client-secret-welcome
+      namespace: default

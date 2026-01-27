@@ -19,6 +19,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -31,7 +32,6 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
-	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/client-go/rest"
@@ -164,7 +164,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	// register scheme
 	s.scheme = runtime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
-	utilruntime.Must(helmv2beta.AddToScheme(s.scheme))
+	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(corev1.AddToScheme(s.scheme))
 	utilruntime.Must(appsv1.AddToScheme(s.scheme))
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
@@ -205,7 +205,7 @@ func (s *KindTestSuite) createCerts() ([]byte, error) {
 	// mkcert
 	_, err := runCommand("mkdir", "-p", "certs")
 	s.Require().NoError(err, "Error creating certs directory")
-	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "*.dev.local", "*.portal.dev.local"); err != nil {
+	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
 		return nil, err
 	}
 	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
@@ -414,6 +414,15 @@ func (s *KindTestSuite) SetupSuite() {
 	if err = s.applyKustomize(ctx); err != nil {
 		s.FailNow("Failed to apply kustomize manifests")
 	}
+	if err = s.waitForCRDEstablished(ctx, "repositories.delivery.ocm.software", 2*time.Minute); err != nil {
+		s.FailNow("OCM Repository CRD not established in time")
+	}
+	s.logger.Info().Msg("repositories.delivery.ocm.software CRD established")
+	if err = s.waitForCRDEstablished(ctx, "components.delivery.ocm.software", 2*time.Minute); err != nil {
+		s.FailNow("OCM Component CRD not established in time")
+	}
+	s.logger.Info().Msg("components.delivery.ocm.software CRD established")
+
 	if err = s.applyOCM(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("applyOCM failed")
 		s.FailNow("Failed to apply OCM manifests")
@@ -450,6 +459,27 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("starting operator...")
 	s.runOperator(ctx)
 
+}
+
+func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {
+	return wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err := s.client.Get(ctx, client.ObjectKey{Name: crdName}, crd)
+		if err != nil {
+			return false, nil
+		}
+
+		for _, condition := range crd.Status.Conditions {
+			if condition.Type == apiextensionsv1.Established {
+				if condition.Status == apiextensionsv1.ConditionTrue {
+					s.logger.Info().Msgf("CRD %s is established", crdName)
+					return true, nil
+				}
+			}
+		}
+		s.logger.Debug().Msgf("CRD %s not established yet", crdName)
+		return false, nil
+	})
 }
 
 // applyOCM applies the OCM component and repository to the cluster.

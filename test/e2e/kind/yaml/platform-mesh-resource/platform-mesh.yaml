@@ -9,7 +9,7 @@ spec:
     namespace: platform-mesh-system
   exposure:
     port: 8443
-    baseDomain: portal.dev.local
+    baseDomain: portal.localhost
     protocol: https
   ocm:
     repo:
@@ -43,12 +43,23 @@ spec:
           - "http://localhost:4300"
           - "http://*.localhost:4200"
           - "http://*.localhost:4300"
-          - "https://portal.dev.local:8443"
-          - "https://*.portal.dev.local:8443"
+          - "https://portal.localhost:8443"
+          - "https://*.portal.localhost:8443"
+        gatewayApi:
+          enabled: true
         mailpit:
           enabled: true
         hostAliases:
           enabled: true
+        kcp:
+          rootShard:
+            extraArgs:
+              - --feature-gates=WorkspaceAuthentication=true
+              - --shard-virtual-workspace-url=https://localhost:8443
+          webhook:
+            enabled: true
+          frontProxy:
+            clusterIP: "10.96.0.100"
         keycloak:
           crossplane:
             clients:
@@ -59,14 +70,16 @@ spec:
                   - "https://*"
     security-operator:
       values:
-        baseDomain: "{{ .baseDomainPort }}"
+        baseDomain: "portal.localhost:8443"
         initializer:
           extraArgs:
             - --domain-ca-lookup
             # remove arguments below when the operator and the portal are ready
             - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
             - --idp-smtp-port=1025
-            - --idp-from-address=keycloak@portal.dev.local
+            - --idp-from-address=keycloak@portal.localhost
+            - --domain-ca-lookup
+            - --idp-additional-redirect-urls="https://default.portal.localhost:3000/callback*"
         caSecret: domain-certificate-ca
         hostAliases:
           enabled: true
@@ -75,9 +88,9 @@ spec:
       values:
         extraEnvVars:
           - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-            value: https://${org-subdomain}{{ .baseDomainPort }}/iam/graphql
+            value: https://${org-subdomain}portal.localhost:8443/iam/graphql
           - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-            value: "https://${org-subdomain}{{ .baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+            value: "https://${org-subdomain}portal.localhost:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
           - name: NODE_EXTRA_CA_CERTS
             value: /etc/ssl/certs/domain-ca.crt
         extraVolumes:
@@ -105,8 +118,8 @@ spec:
       values:
         hostAliases:
           - hostnames:
-            - kcp.api.portal.dev.local
-            - portal.dev.local
+            - localhost
+            - portal.localhost
             ip: 10.96.188.4
         cors:
           enabled: true
@@ -140,11 +153,6 @@ spec:
           enabled: true
         hostAliases:
           enabled: true
-          # entries:
-          #   - ip: "10.96.188.4"
-          #     hostnames:
-          #       - "kcp.api.portal.dev.local"
-          #       - "portal.dev.local"
         tracing:
           enabled: false
         trust:

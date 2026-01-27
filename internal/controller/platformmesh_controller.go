@@ -146,7 +146,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg))
 	}
 	if cfg.Subroutines.Wait.Enabled {
-		subs = append(subs, subroutines.NewWaitSubroutine(clientInfra))
+		subs = append(subs, subroutines.NewWaitSubroutine(clientInfra, cfg, &subroutines.Helper{}))
 	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
