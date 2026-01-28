@@ -166,6 +166,8 @@ type KcpWorkspace struct {
 // +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].reason",name="SECRET_REASON",type=string,description="Provider Secret reason if status is Unknown",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",name="DEPLOYMENT",type=string,description="Deployment status (shows reason if Unknown)",priority=0
 // +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason",name="DEPLOYMENT_REASON",type=string,description="Deployment reason if status is Unknown",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",name="WAIT",type=string,description="Wait status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].reason",name="WAIT_REASON",type=string,description="Wait reason if status is Unknown",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='Ready')].status",name="Ready",type=string,description="Shows if resource is ready",priority=0
 
 // PlatformMesh is the Schema for the platform-mesh API

@@ -42,6 +42,15 @@ spec:
       name: DEPLOYMENT_REASON
       priority: 1
       type: string
+    - description: Wait status (shows reason if Unknown)
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].status
+      name: WAIT
+      type: string
+    - description: Wait reason if status is Unknown
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].reason
+      name: WAIT_REASON
+      priority: 1
+      type: string
     - description: Shows if resource is ready
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
