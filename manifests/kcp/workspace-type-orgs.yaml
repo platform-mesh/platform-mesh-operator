@@ -13,8 +13,6 @@ spec:
     with:
       - name: universal
         path: root
-      - name: search
-        path: root
   limitAllowedChildren:
     types:
       - name: org
