@@ -15,31 +15,7 @@ spec:
   - v260123-dbda1fc.identityproviderconfigurations.core.platform-mesh.io
   permissionClaims:
     - all: true
-      group: tenancy.kcp.io
-      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
-      resource: workspaces
-    - all: true
-      group: tenancy.kcp.io
-      identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
-      resource: workspacetypes
-    - resource: apibindings
-      group: apis.kcp.io
-      all: true
-      identityHash: ""
-    - resource: apiexports
-      group: apis.kcp.io
-      all: true
-      identityHash: ""
-    - resource: apiresourceschemas
-      group: apis.kcp.io
-      all: true
-      identityHash: ""
-    - resource: logicalclusters
-      group: core.kcp.io
-      all: true
-      identityHash: ""
-    - resource: secrets
       group: ""
-      all: true
       identityHash: ""
+      resource: searchindices
 status: {}
