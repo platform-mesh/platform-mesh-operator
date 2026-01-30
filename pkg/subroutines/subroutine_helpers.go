@@ -486,11 +486,14 @@ func ApplyManifestFromFile(
 
 	existingObj := obj.DeepCopy()
 	err = k8sClient.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}, existingObj)
-	if err != nil && !kerrors.IsNotFound(err) {
+	// Check if this is a "no matches for kind" error (CRD not yet available)
+	// This can happen during migrations when APIBindings haven't synced yet
+	isCRDNotAvailable := err != nil && strings.Contains(err.Error(), "no matches for kind")
+	if err != nil && !kerrors.IsNotFound(err) && !isCRDNotAvailable {
 		return errors.Wrap(err, "Failed to get existing object: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 
-	if kerrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
+	if kerrors.IsNotFound(err) || isCRDNotAvailable || needsPatch(*existingObj, obj, log) {
 		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
