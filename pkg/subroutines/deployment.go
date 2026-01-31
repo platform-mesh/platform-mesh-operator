@@ -942,11 +942,11 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 
 		// Conditionally render templates based on deploymentTechnology
 		fileName := d.Name()
-		if deploymentTech == "argocd" && (fileName == "helmrelease.yaml" || fileName == "kustomization.yaml") {
+		if deploymentTech == "argocd" && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
 			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
 			return nil
 		}
-		if deploymentTech == "fluxcd" && fileName == "application.yaml" {
+		if deploymentTech == "fluxcd" && strings.HasPrefix(fileName, "application") {
 			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
 			return nil
 		}
@@ -1068,11 +1068,11 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 
 		// Conditionally render templates based on deploymentTechnology
 		fileName := d.Name()
-		if deploymentTech == "argocd" && fileName == "helmreleases.yaml" {
+		if deploymentTech == "argocd" && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
 			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
 			return nil
 		}
-		if deploymentTech == "fluxcd" && fileName == "applications.yaml" {
+		if deploymentTech == "fluxcd" && strings.HasPrefix(fileName, "application") {
 			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
 			return nil
 		}

@@ -41,7 +41,7 @@ spec:
   {{- end }}
   interval: 1m
   releaseName: {{ $service}}
-  targetNamespace: {{ $config.targetNamespace | default $values.targetNamespace }}
+  targetNamespace: {{ $config.targetNamespace | default $.releaseNamespace }}
   {{- if $config.dependsOn }}
   dependsOn:
 {{ toYaml $config.dependsOn | nindent 4 }}

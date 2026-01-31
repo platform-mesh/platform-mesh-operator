@@ -671,6 +671,10 @@ func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, i
 }
 
 func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
+	// If kcp-url is explicitly configured, use it
+	if cfg.KCP.Url != "" {
+		return cfg.KCP.Url
+	}
 	if inst.Spec.Exposure == nil {
 		return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	}
