@@ -38,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
 	"k8s.io/client-go/tools/clientcmd"
@@ -605,7 +604,6 @@ func GetClientScheme() *runtime.Scheme {
 
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(helmv2beta.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(certmanager.AddToScheme(scheme))

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	subroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
 	"github.com/stretchr/testify/mock"
@@ -25,7 +26,7 @@ func TestResourceTestSuite(t *testing.T) {
 
 func (s *ResourceTestSuite) SetupTest() {
 	s.managerMock = new(mocks.Manager)
-	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client))
+	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client), &config.OperatorConfig{})
 }
 
 func (s *ResourceTestSuite) Test_GetName() {
@@ -220,7 +221,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			}
 
 			managerMock.On("GetClient").Return(clientMock)
-			subroutine := subroutines.NewResourceSubroutine(clientMock)
+			subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 
 			// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
 			// Patch is called with: ctx, obj, patch, fieldOwner, forceOwnership (5 args total)
@@ -298,7 +299,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 		},
 	)
 
-	sub := subroutines.NewResourceSubroutine(clientMock)
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	result, err := sub.Process(ctx, inst)
 
 	s.Nil(err)
@@ -339,7 +340,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 	// updateGitRepo uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
-	sub := subroutines.NewResourceSubroutine(clientMock)
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	result, err := sub.Process(ctx, inst)
 
 	s.NotNil(err)
@@ -420,7 +421,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 		},
 	)
 
-	sub := subroutines.NewResourceSubroutine(clientMock)
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	result, err := sub.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -492,7 +493,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 
 	managerMock := new(mocks.Manager)
 	clientMock := new(mocks.Client)
-	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	managerMock.On("GetClient").Return(clientMock)
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
@@ -554,7 +555,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 
 	managerMock := new(mocks.Manager)
 	clientMock := new(mocks.Client)
-	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	managerMock.On("GetClient").Return(clientMock)
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
@@ -597,7 +598,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 
 	managerMock := new(mocks.Manager)
 	clientMock := new(mocks.Client)
-	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	managerMock.On("GetClient").Return(clientMock)
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
@@ -636,7 +637,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 
 	managerMock := new(mocks.Manager)
 	clientMock := new(mocks.Client)
-	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	managerMock.On("GetClient").Return(clientMock)
 
 	// updateHelmReleaseWithImageTag uses Patch directly, so test Patch error
@@ -673,7 +674,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 
 	managerMock := new(mocks.Manager)
 	clientMock := new(mocks.Client)
-	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	managerMock.On("GetClient").Return(clientMock)
 
 	// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
@@ -753,7 +754,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 	s.managerMock.On("GetClient").Return(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
