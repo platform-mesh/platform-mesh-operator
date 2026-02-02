@@ -16,7 +16,7 @@ spec:
               {
                 "entityType": "user.overview::compound",
                 "pathSegment": "user-overview-header",
-                "url": "https://{{ .baseDomainPort }}/ui/iam/wc/main.js#user-overview",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/wc/main.js#user-overview",
                 "layoutConfig": {
                   "slot": "header"
                 },
