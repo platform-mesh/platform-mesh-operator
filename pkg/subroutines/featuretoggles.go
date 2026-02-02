@@ -101,6 +101,8 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Accounts in accounts' feature")
+		case "feature-disable-email-verification":
+			log.Info().Msg("Enabled 'disable-email-verification' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
