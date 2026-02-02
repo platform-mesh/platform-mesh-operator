@@ -2,8 +2,8 @@ apiVersion: ui.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
-    ui.platform-mesh.io/entity: core_platform-mesh_io_account
-  name: account-iam-ui
+    ui.platform-mesh.io/entity: main
+  name: main-iam-ui
 spec:
   inlineConfiguration:
     content: |-
@@ -17,9 +17,15 @@ spec:
                 "label": "Members",
                 "icon": "company-view",
                 "order": 800,
-                "entityType": "main.core_platform-mesh_io_account",
-                "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
+                "entityType": "main",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
                 "viewGroup": "members",
+                "category": {
+                    "id": "settings",
+                    "isGroup": true,
+                    "label": "Settings & Access",
+                    "order": 1000
+                },
                 "context": {
                   "entityType": "core_platform-mesh_io_account",
                   "entityContext": {
@@ -31,10 +37,10 @@ spec:
               },
               {
                 "pathSegment": "add-members",
-                "entityType": "main.core_platform-mesh_io_account",
+                "entityType": "main",
                 "label": "members",
                 "hideFromNav": true,
-                "url": "https://{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
                 "viewGroup": "members",
                 "context": {
                   "entityType": "core_platform-mesh_io_account"

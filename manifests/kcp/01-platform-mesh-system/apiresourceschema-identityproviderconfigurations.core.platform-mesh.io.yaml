@@ -2,29 +2,20 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v260109-82344be.accounts.core.platform-mesh.io
+  name: v260123-dbda1fc.identityproviderconfigurations.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
-    kind: Account
-    listKind: AccountList
-    plural: accounts
-    singular: account
+    kind: IdentityProviderConfiguration
+    listKind: IdentityProviderConfigurationList
+    plural: identityproviderconfigurations
+    singular: identityproviderconfiguration
   scope: Cluster
   versions:
-  - additionalPrinterColumns:
-    - jsonPath: .spec.displayName
-      name: Display Name
-      type: string
-    - jsonPath: .spec.type
-      name: Type
-      type: string
-    - jsonPath: .status.conditions[?(@.type=="Ready")].status
-      name: Ready
-      type: string
-    name: v1alpha1
+  - name: v1alpha1
     schema:
-      description: Account is the Schema for the accounts API
+      description: IdentityProviderConfiguration is the Schema for the identityproviderconfigurations
+        API
       properties:
         apiVersion:
           description: |-
@@ -44,62 +35,52 @@ spec:
         metadata:
           type: object
         spec:
-          description: AccountSpec defines the desired state of Account
+          description: spec defines the desired state of IdentityProviderConfiguration
           properties:
-            creator:
-              description: The initial creator of this account
-              type: string
-            data:
-              description: Additional information that should be stored with the account
-              x-kubernetes-preserve-unknown-fields: true
-            description:
-              description: An optional description for this account
-              type: string
-            displayName:
-              description: The display name for this account
-              maxLength: 255
-              type: string
-            extensions:
+            clients:
               items:
                 properties:
-                  apiVersion:
-                    description: |-
-                      APIVersion defines the versioned schema of this representation of an object.
-                      Servers should convert recognized schemas to the latest internal value, and
-                      may reject unrecognized values.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+                  clientName:
                     type: string
-                  kind:
-                    description: |-
-                      Kind is a string value representing the REST resource this object represents.
-                      Servers may infer this from the endpoint the client submits requests to.
-                      Cannot be updated.
-                      In CamelCase.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                  clientType:
+                    enum:
+                    - confidential
+                    - public
                     type: string
-                  metadataGoTemplate:
-                    x-kubernetes-preserve-unknown-fields: true
-                  readyConditionType:
+                  postLogoutRedirectUris:
+                    items:
+                      type: string
+                    type: array
+                  redirectUris:
+                    items:
+                      type: string
+                    type: array
+                  secretRef:
                     description: |-
-                      The type of a condition that must be set to True on the Extension object
-                      for the extension to be considered reconciled and ready. If this is empty,
-                      the extension is considered ready.
-                    type: string
-                  specGoTemplate:
-                    x-kubernetes-preserve-unknown-fields: true
+                      SecretReference represents a Secret Reference. It has enough information to retrieve secret
+                      in any namespace
+                    properties:
+                      name:
+                        description: name is unique within a namespace to reference
+                          a secret resource.
+                        type: string
+                      namespace:
+                        description: namespace defines the space within which the
+                          secret name must be unique.
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                 required:
-                - specGoTemplate
+                - clientName
+                - clientType
+                - redirectUris
                 type: object
               type: array
-            type:
-              description: Type specifies the intended type for this Account object.
-              type: string
           required:
-          - displayName
-          - type
+          - clients
           type: object
         status:
-          description: AccountStatus defines the observed state of Account
+          description: status defines the observed state of IdentityProviderConfiguration
           properties:
             conditions:
               items:
@@ -157,13 +138,39 @@ spec:
                 - type
                 type: object
               type: array
-            nextReconcileTime:
-              format: date-time
-              type: string
-            observedGeneration:
-              format: int64
-              type: integer
+            managedClients:
+              additionalProperties:
+                description: ManagedClient tracks a client that is managed by the
+                  operator.
+                properties:
+                  clientId:
+                    type: string
+                  registrationClientUri:
+                    type: string
+                  secretRef:
+                    description: |-
+                      SecretReference represents a Secret Reference. It has enough information to retrieve secret
+                      in any namespace
+                    properties:
+                      name:
+                        description: name is unique within a namespace to reference
+                          a secret resource.
+                        type: string
+                      namespace:
+                        description: namespace defines the space within which the
+                          secret name must be unique.
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - clientId
+                - registrationClientUri
+                - secretRef
+                type: object
+              type: object
           type: object
+      required:
+      - spec
       type: object
     served: true
     storage: true

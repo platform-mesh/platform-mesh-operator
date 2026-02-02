@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -13,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -94,9 +94,9 @@ func (r *ProvidersecretSubroutine) Process(
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !MatchesCondition(rootShard, "Available") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
+		log.Info().Msg("RootShard is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -104,9 +104,9 @@ func (r *ProvidersecretSubroutine) Process(
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 
-	if err != nil || !MatchesCondition(frontProxy, "Available") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
+		log.Info().Msg("FrontProxy is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
 	}
 
 	// Determine which provider connections to use based on configuration:
@@ -141,38 +141,10 @@ func (r *ProvidersecretSubroutine) Process(
 			return ctrl.Result{}, opErr
 		}
 	}
-
-	// Determine which initializer connections to use based on configuration:
-	var inits []corev1alpha1.InitializerConnection
-	hasInit := len(instance.Spec.Kcp.InitializerConnections) > 0
-	hasExtraInit := len(instance.Spec.Kcp.ExtraInitializerConnections) > 0
-
-	switch {
-	case !hasInit && !hasExtraInit:
-		// Nothing configured -> use default initializers
-		inits = DefaultInitializerConnection
-	case !hasInit && hasExtraInit:
-		// Only extra initializers configured -> use default + extra initializers
-		inits = append(DefaultInitializerConnection, instance.Spec.Kcp.ExtraInitializerConnections...)
-	case hasInit && !hasExtraInit:
-		// Only initializers configured -> use only specified initializers
-		inits = instance.Spec.Kcp.InitializerConnections
-	default:
-		// Both initializers and extra initializers configured -> use specified + extra initializers
-		inits = append(instance.Spec.Kcp.InitializerConnections, instance.Spec.Kcp.ExtraInitializerConnections...)
-	}
-
-	for _, ic := range inits {
-		if _, opErr := r.HandleInitializerConnection(ctx, instance, ic, cfg); opErr != nil {
-			log.Error().Err(opErr.Err()).Msg("Failed to handle initializer connection")
-			return ctrl.Result{}, opErr
-		}
-	}
-
 	return ctrl.Result{}, nil
 }
 
-func (r *ProvidersecretSubroutine) Finalizers() []string { // coverage-ignore
+func (r *ProvidersecretSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{ProvidersecretSubroutineFinalizer}
 }
 
@@ -188,7 +160,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 
 	var address *url.URL
 
-	if pc.EndpointSliceName != "" {
+	if ptr.Deref(pc.EndpointSliceName, "") != "" {
 		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to create KCP client")
@@ -196,7 +168,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 
 		var slice kcpapiv1alpha.APIExportEndpointSlice
-		err = kcpClient.Get(ctx, client.ObjectKey{Name: pc.EndpointSliceName}, &slice)
+		err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -218,20 +190,25 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			log.Error().Err(err).Msg("Failed to parse KCP URL")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
-		if pc.RawPath != "" {
-			kcpUrl.Path = pc.RawPath
+		if ptr.Deref(pc.RawPath, "") != "" {
+			kcpUrl.Path = *pc.RawPath
 		} else {
-			kcpUrl.Path = path.Join("/clusters", pc.Path)
+			kcpUrl.Path = path.Join("clusters", pc.Path)
 		}
 		address = kcpUrl
 	}
 
 	newConfig := rest.CopyConfig(cfg)
+	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External {
-		newConfig.Host = fmt.Sprintf("https://kcp.api.%s:%d/%s", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port, address.Path)
-	} else {
-		newConfig.Host = fmt.Sprintf("https://%s-front-proxy.%s:%s%s/", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort, address.Path)
+		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
 	}
+	host, err := url.JoinPath(hostPort, address.Path)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to join path for provider connection")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+	newConfig.Host = host
 
 	apiConfig := restConfigToAPIConfig(newConfig)
 	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
@@ -241,8 +218,8 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	namespace := "platform-mesh-system"
-	if pc.Namespace != "" {
-		namespace = pc.Namespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
 	}
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

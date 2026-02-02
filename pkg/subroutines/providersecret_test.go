@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	"github.com/platform-mesh/golang-commons/context/keys"
@@ -26,8 +26,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -72,7 +70,6 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 	_ = corev1.AddToScheme(suite.scheme)
 	_ = corev1alpha1.AddToScheme(suite.scheme)
 	_ = kcpapiv1alpha.AddToScheme(suite.scheme)
-	_ = kcptenancyv1alpha.AddToScheme(suite.scheme)
 
 	suite.clientMock.EXPECT().Scheme().Return(suite.scheme).Maybe()
 
@@ -101,7 +98,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
@@ -257,8 +254,8 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{Requeue: false, RequeueAfter: 5 * time.Second}, res)
+	s.Require().NotNil(opErr)
+	s.Assert().Equal(ctrl.Result{}, res)
 }
 
 func (s *ProvidersecretTestSuite) TestWrongScheme() {
@@ -275,7 +272,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -372,7 +369,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -540,7 +537,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -649,7 +646,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "test-secret",
 					},
@@ -724,7 +721,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 }
 
 func (s *ProvidersecretTestSuite) TestFinalizers() {
-	res := s.testObj.Finalizers()
+	res := s.testObj.Finalizers(s.getBaseInstance())
 	s.Assert().Equal(res, []string{subroutines.ProvidersecretSubroutineFinalizer})
 }
 
@@ -758,7 +755,7 @@ func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
 			Kcp: corev1alpha1.Kcp{
 				ProviderConnections: []corev1alpha1.ProviderConnection{
 					{
-						EndpointSliceName: "test-endpoint",
+						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
 						Secret:            "provider-secret",
 					},
@@ -1593,21 +1590,16 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 }
 
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
-	// Save and restore default connections
-	oldInits := subroutines.DefaultInitializerConnection
-	defer func() { subroutines.DefaultInitializerConnection = oldInits }()
-	subroutines.DefaultInitializerConnection = nil
-
 	// Setup test instance
 	instance := s.getBaseInstance()
 	instance.Spec.Kcp.ProviderConnections = nil
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
-			EndpointSliceName: "",
+			EndpointSliceName: ptr.To(""),
 			Path:              "root:platform-mesh-system",
 			Secret:            "external-kubeconfig",
 			External:          true,
-			Namespace:         "test",
+			Namespace:         ptr.To("test"),
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
@@ -1679,7 +1671,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 						"kubernetes-grapqhl-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"iam-service-kubeconfig",
-						"portal-kubeconfig":
+						"portal-kubeconfig",
+						"security-initializer-kubeconfig":
 						return true
 					}
 				}
@@ -1709,7 +1702,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					} else {
 						for _, c := range cfg.Clusters {
 							if c != nil {
-								if c.Server == "https://kcp.api.example.com:8443//clusters/root:platform-mesh-system" {
+								if c.Server == "https://kcp.api.example.com:8443/clusters/root:platform-mesh-system" {
 									return nil
 								}
 								return fmt.Errorf("unexpected server URL: %s", c.Server)
@@ -1825,442 +1818,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	}
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, res)
-}
-
-func (s *ProvidersecretTestSuite) TestHandleInitializerConnection() {
-	// Save and restore default connections
-	oldProv := subroutines.DefaultProviderConnections
-	defer func() { subroutines.DefaultProviderConnections = oldProv }()
-	subroutines.DefaultProviderConnections = nil
-
-	// Setup test instance
-	instance := s.getBaseInstance()
-	instance.Spec.Kcp.ProviderConnections = nil
-	instance.Spec.Kcp.InitializerConnections = []corev1alpha1.InitializerConnection{
-		{
-			WorkspaceTypeName: "test-workspace",
-			Path:              "root:test-path",
-			Secret:            "test-initializer-secret",
-		},
-	}
-
-	// Setup test secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": secretKubeconfigData,
-		},
-	}
-
-	// Setup mock KCP client
-	mockedKcpClient := new(mocks.Client)
-	// Get the expected path from the instance
-	path := instance.Spec.Kcp.InitializerConnections[0].Path
-	fullURL := fmt.Sprintf("http://example.com/clusters/%s", path)
-	workspaceType := &kcptenancyv1alpha.WorkspaceType{
-		Status: kcptenancyv1alpha.WorkspaceTypeStatus{
-			VirtualWorkspaces: []kcptenancyv1alpha.VirtualWorkspace{
-				{URL: fullURL},
-			},
-		},
-	}
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcptenancyv1alpha.WorkspaceType) = *workspaceType
-			return nil
-		}).Once()
-
-	// Setup mock KCP helper
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
-
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*corev1.Secret) = *secret
-			return nil
-		},
-	).Once()
-
-	// Setup mock expectations for Get and Create
-	s.clientMock.EXPECT().Get(
-		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
-		mock.Anything,
-	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Once()
-
-	// We expect the URL to be rewritten to use the front-proxy, not example.com.
-	// Declare expectedURL here so the matcher can capture it and we set it after operatorCfg is prepared.
-	var expectedURL string
-
-	var createdSecret *corev1.Secret
-	s.clientMock.EXPECT().Create(
-		mock.Anything,
-		mock.MatchedBy(func(obj client.Object) bool {
-			sec := obj.(*corev1.Secret)
-			createdSecret = sec.DeepCopy()
-			cfg, err := clientcmd.Load(sec.Data["kubeconfig"])
-			if err != nil {
-				return false
-			}
-			ctx := cfg.Contexts[cfg.CurrentContext]
-			cluster := cfg.Clusters[ctx.Cluster]
-			// Verify it matches the rewritten virtual workspace URL (front-proxy)
-			return cluster.Server == expectedURL
-		}),
-		// mock.Anything,
-	).
-		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-			return nil
-		}).
-		Once()
-
-	restCfg, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])
-	s.Require().NoError(err)
-
-	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
-	// Use base name; code appends "-front-proxy"
-	operatorCfg.KCP.FrontProxyName = "test"
-	operatorCfg.KCP.FrontProxyPort = "8080"
-
-	// Expected rewritten URL: http://<front-proxy-name>-front-proxy:<port>/clusters/<path>
-	expectedURL = fmt.Sprintf(
-		"http://%s-front-proxy:%s/clusters/%s",
-		operatorCfg.KCP.FrontProxyName,
-		operatorCfg.KCP.FrontProxyPort,
-		path,
-	)
-
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, instance.Spec.Kcp.InitializerConnections[0], restCfg)
-
-	// Assert
-	s.Require().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
-	s.Require().NotNil(createdSecret)
-	s.Require().NotNil(createdSecret.Data)
-	s.Require().Contains(createdSecret.Data, "kubeconfig")
-
-	// Verify kubeconfig is valid and points to virtual workspace
-	kubeconfig, err := clientcmd.Load(createdSecret.Data["kubeconfig"])
-	s.Require().NoError(err)
-	s.Require().NotNil(kubeconfig)
-
-	// Verify current context exists and points to correct cluster
-	s.Require().NotEmpty(kubeconfig.CurrentContext)
-	context := kubeconfig.Contexts[kubeconfig.CurrentContext]
-	s.Require().NotNil(context)
-
-	// Verify cluster exists and points to virtual workspace
-	cluster := kubeconfig.Clusters[context.Cluster]
-	s.Require().NotNil(cluster)
-	s.Require().Equal(expectedURL, cluster.Server)
-}
-
-func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorGettingWorkspaceType() {
-	// Setup test instance and initializer connection
-	instance := s.getBaseInstance()
-	ic := corev1alpha1.InitializerConnection{
-		WorkspaceTypeName: "test-workspace",
-		Path:              "root:test-path",
-		Secret:            "test-initializer-secret",
-	}
-
-	// Setup test secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": secretKubeconfigData,
-		},
-	}
-
-	// Setup mock KCP client
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		Return(errors.New("failed to get workspace type")).Once()
-
-	// Setup mock KCP helper
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
-
-	restCfg, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])
-	s.Require().NoError(err)
-
-	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
-
-	// Assert
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
-	s.Assert().Contains(opErr.Err().Error(), "failed to get workspace type")
-}
-
-func (s *ProvidersecretTestSuite) TestInitializerConnectionNoVirtualWorkspaces() {
-	// Save and restore default connections
-	oldProv := subroutines.DefaultProviderConnections
-	defer func() { subroutines.DefaultProviderConnections = oldProv }()
-	subroutines.DefaultProviderConnections = nil
-
-	// Setup test instance
-	instance := s.getBaseInstance()
-	instance.Spec.Kcp.ProviderConnections = nil
-	instance.Spec.Kcp.InitializerConnections = []corev1alpha1.InitializerConnection{
-		{
-			WorkspaceTypeName: "test-workspace",
-			Path:              "root:test-path",
-			Secret:            "test-initializer-secret",
-		},
-	}
-
-	// Setup test secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
-		},
-	}
-
-	// Setup scheme
-	scheme := runtime.NewScheme()
-	s.Require().NoError(corev1alpha1.AddToScheme(scheme))
-	s.Require().NoError(corev1.AddToScheme(scheme))
-	s.Require().NoError(kcptenancyv1alpha.AddToScheme(scheme))
-	s.clientMock.EXPECT().Scheme().Return(scheme).Maybe()
-
-	// Setup mock expectations for Get
-	s.clientMock.EXPECT().Get(
-		mock.Anything,
-		mock.Anything,
-		// mock.MatchedBy(func(key types.NamespacedName) bool {
-		// 	return key.Name == "test-secret" && key.Namespace == "default"
-		// }),
-		mock.AnythingOfType("*v1.Secret"),
-	).RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-		*obj.(*corev1.Secret) = *secret
-		return nil
-	}).Once()
-	s.clientMock.EXPECT().
-		Get(mock.Anything,
-			mock.Anything,
-			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
-								"type":   "Available",
-								"status": "True",
-							},
-						},
-					},
-				},
-			}
-			*obj.(*unstructured.Unstructured) = *rootShard
-			return nil
-		}).
-		Twice()
-	s.clientMock.EXPECT().
-		Get(mock.Anything,
-			mock.MatchedBy(func(key types.NamespacedName) bool {
-				if key.Namespace == "platform-mesh-system" {
-					switch key.Name {
-					case "account-operator-kubeconfig",
-						"rebac-authz-webhook-kubeconfig",
-						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
-						"extension-manager-operator-kubeconfig",
-						"portal-kubeconfig",
-						"external-kubeconfig":
-						return true
-					}
-				}
-				return false
-			}),
-			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			// *obj.(*corev1.Secret) = *secret
-			return nil
-		})
-
-	// Setup mock KCP client
-	mockedKcpClient := new(mocks.Client)
-	workspaceType := &kcptenancyv1alpha.WorkspaceType{
-		Status: kcptenancyv1alpha.WorkspaceTypeStatus{
-			VirtualWorkspaces: []kcptenancyv1alpha.VirtualWorkspace{},
-		},
-	}
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcptenancyv1alpha.WorkspaceType) = *workspaceType
-			return nil
-		}).Once()
-
-	// Setup mock KCP helper
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*corev1.Secret) = *secret
-			return nil
-		},
-	).Once()
-
-	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
-
-	// Add the missing operator config context
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
-	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
-	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
-
-	res, opErr := s.testObj.Process(ctx, instance)
-
-	// Assert
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
-	s.Assert().Contains(opErr.Err().Error(), "no virtual workspaces found")
-}
-
-func (s *ProvidersecretTestSuite) TestInitializerConnectionErrorCreatingSecret() {
-	// Setup test instance and initializer connection
-	instance := s.getBaseInstance()
-	ic := corev1alpha1.InitializerConnection{
-		WorkspaceTypeName: "test-workspace",
-		Path:              "root:test-path",
-		Secret:            "test-initializer-secret",
-		// Setup test secret
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": secretKubeconfigData,
-		},
-	}
-
-	// Setup mock KCP client
-	mockedKcpClient := new(mocks.Client)
-	// Get the expected path from the instance
-	path := ic.Path
-	fullURL := fmt.Sprintf("http://example.com/clusters/%s", path)
-	workspaceType := &kcptenancyv1alpha.WorkspaceType{
-		Status: kcptenancyv1alpha.WorkspaceTypeStatus{
-			VirtualWorkspaces: []kcptenancyv1alpha.VirtualWorkspace{
-				{URL: fullURL},
-			},
-		},
-	}
-	// Narrow matcher to only WorkspaceType gets to avoid catching Secret gets
-	mockedKcpClient.EXPECT().Get(
-		mock.Anything,
-		mock.Anything,
-		mock.MatchedBy(func(obj client.Object) bool {
-			_, ok := obj.(*kcptenancyv1alpha.WorkspaceType)
-			return ok
-		}),
-	).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcptenancyv1alpha.WorkspaceType) = *workspaceType
-			return nil
-		}).Once()
-
-	// Setup mock KCP helper
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
-
-	// Setup mock expectations for Get and Create on the main k8s client
-	// Pre-check Get, and CreateOrUpdate will call Get again internally: allow 2 calls
-	s.clientMock.EXPECT().Get(
-		mock.Anything,
-		types.NamespacedName{Name: "test-initializer-secret", Namespace: "platform-mesh-system"},
-		mock.Anything,
-	).Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "test-initializer-secret")).Twice()
-
-	// Helm/unstructured lookup
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
-
-	// Expected rewritten URL via front-proxy
-	var expectedURL string
-	s.clientMock.EXPECT().Create(
-		mock.Anything,
-		mock.MatchedBy(func(obj client.Object) bool {
-			sec := obj.(*corev1.Secret)
-			kubeconfigData := sec.Data["kubeconfig"]
-			cfg, err := clientcmd.Load(kubeconfigData)
-			if err != nil {
-				return false
-			}
-			ctx := cfg.Contexts[cfg.CurrentContext]
-			cluster := cfg.Clusters[ctx.Cluster]
-			// Verify it matches the rewritten virtual workspace URL (front-proxy)
-			return cluster.Server == expectedURL
-		}),
-		mock.Anything,
-	).
-		Return(errors.New("failed to create secret")).Once()
-
-	restCfg, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["kubeconfig"])
-	s.Require().NoError(err)
-
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
-	// Ensure URL rewriter has values
-	operatorCfg.KCP.FrontProxyName = "test"
-	operatorCfg.KCP.FrontProxyPort = "8080"
-
-	// Compute expected rewritten URL
-	expectedURL = fmt.Sprintf(
-		"http://%s-front-proxy:%s/clusters/%s",
-		operatorCfg.KCP.FrontProxyName,
-		operatorCfg.KCP.FrontProxyPort,
-		path,
-	)
-
-	// Run
-	// Use the main client mock (not the KCP client) for the subroutine
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	res, opErr := s.testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
-
-	// Assert
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
-	s.Assert().Contains(opErr.Err().Error(), "failed to create secret")
 }

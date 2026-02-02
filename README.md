@@ -151,33 +151,41 @@ spec:
 
 Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
 
-### Feature toggles
+### Feature Toggles
 
-Certain features can be toggled by the user via the API:
-
-#### feature-enable-getting-started
+Certain features can be enabled or disabled using feature toggles in the PlatformMesh resource specification. Feature toggles are configured as follows:
 
 ```yaml
+spec:
+  featureToggles:
+  - name: "<feature-name>"
+```
+
+#### Available Feature Toggles
+
+| Feature Toggle Name | Description |
+|---------------------|-------------|
+| `feature-enable-getting-started` | Applies the ContentConfiguration resources required for the Getting Started UI page |
+| `feature-enable-marketplace-account` | Applies the ContentConfiguration resources for the Marketplace feature at the account level |
+| `feature-enable-marketplace-org` | Applies the ContentConfiguration resources for the Marketplace feature at the organization level |
+| `feature-accounts-in-accounts` | Applies the ContentConfiguration resources for displaying accounts within the account context |
+| `feature-disable-email-verification` | Disables email verification requirement in WorkspaceAuthenticationConfiguration |
+| `feature-disable-contentconfigurations` | Disables loading of all ContentConfiguration manifests during KCP setup |
+
+#### Example Usage
+
+```yaml
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: PlatformMesh
+metadata:
+  name: platform-mesh-sample
+  namespace: platform-mesh-system
 spec:
   featureToggles:
   - name: "feature-enable-getting-started"
-```
-
-This applies the needed ContentConfiguration for the Getting Started UI page.
-
-#### feature-enable-iam
-
-```yaml
-spec:
-  featureToggles:
-  - name: "feature-enable-iam"
-```
-
-#### feature-enable-marketplace
-```yaml
-spec:
-  featureToggles:
-  - name: "feature-enable-marketplace"
+  - name: "feature-enable-marketplace-account"
+  - name: "feature-disable-email-verification"
+  # ... other configuration
 ```
 
 
@@ -247,6 +255,42 @@ The Webhook subroutine handles webhook configurations for the platform-mesh:
 - Sets up and manages webhook configurations for API validation and mutation
 - Configures webhook secrets and references as defined in the configuration
 - Ensures proper webhook functionality for platform-mesh resources
+
+### Wait
+
+The Wait subroutine ensures that specified resources are ready before proceeding with the reconciliation:
+
+- Waits for resources to match specific conditions (e.g., HelmRelease resources with Ready condition)
+- Uses configurable wait criteria defined in the `spec.wait` section of the PlatformMesh resource
+- Falls back to default wait configurations when no custom wait configuration is specified
+- By default, waits for `platform-mesh-operator-components` and `platform-mesh-operator-infra-components` HelmRelease resources to be ready
+- Supports filtering resources by namespace, labels, and API versions
+- Requeues the reconciliation if any monitored resource is not yet ready
+
+#### Wait Configuration
+
+The wait behavior can be customized through the `spec.wait` section:
+
+```yaml
+spec:
+  wait:
+    resourceTypes:
+    - apiVersions:
+        versions: ["v2"]
+      groupKind:
+        group: "helm.toolkit.fluxcd.io"
+        kind: "HelmRelease"
+      namespace: "default"
+      labelSelector:
+        matchExpressions:
+        - key: "helm.toolkit.fluxcd.io/name"
+          operator: In
+          values: ["my-release"]
+      conditionStatus: "True"
+      conditionType: "Ready"
+```
+
+If `spec.wait` is not specified, the subroutine uses default configurations that wait for the core platform-mesh HelmRelease resources.
 
 
 ## Releasing

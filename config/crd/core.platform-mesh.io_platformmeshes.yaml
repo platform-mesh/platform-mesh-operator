@@ -42,6 +42,15 @@ spec:
       name: DEPLOYMENT_REASON
       priority: 1
       type: string
+    - description: Wait status (shows reason if Unknown)
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].status
+      name: WAIT
+      type: string
+    - description: Wait reason if status is Unknown
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].reason
+      name: WAIT_REASON
+      priority: 1
+      type: string
     - description: Shows if resource is ready
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
@@ -110,22 +119,6 @@ spec:
                       - workspaceTypePath
                       type: object
                     type: array
-                  extraInitializerConnections:
-                    items:
-                      properties:
-                        namespace:
-                          type: string
-                        path:
-                          type: string
-                        secret:
-                          type: string
-                        workspaceTypeName:
-                          type: string
-                      required:
-                      - path
-                      - workspaceTypeName
-                      type: object
-                    type: array
                   extraProviderConnections:
                     items:
                       properties:
@@ -142,7 +135,7 @@ spec:
                         secret:
                           type: string
                       required:
-                      - endpointSliceName
+                      - secret
                       type: object
                     type: array
                   extraWorkspaces:
@@ -176,22 +169,6 @@ spec:
                       - type
                       type: object
                     type: array
-                  initializerConnections:
-                    items:
-                      properties:
-                        namespace:
-                          type: string
-                        path:
-                          type: string
-                        secret:
-                          type: string
-                        workspaceTypeName:
-                          type: string
-                      required:
-                      - path
-                      - workspaceTypeName
-                      type: object
-                    type: array
                   providerConnections:
                     items:
                       properties:
@@ -208,7 +185,7 @@ spec:
                         secret:
                           type: string
                       required:
-                      - endpointSliceName
+                      - secret
                       type: object
                     type: array
                 type: object
@@ -238,6 +215,122 @@ spec:
                 type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true
+              wait:
+                properties:
+                  resourceTypes:
+                    items:
+                      properties:
+                        apiVersion:
+                          description: |-
+                            APIVersion defines the versioned schema of this representation of an object.
+                            Servers should convert recognized schemas to the latest internal value, and
+                            may reject unrecognized values.
+                            More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+                          type: string
+                        conditionStatus:
+                          type: string
+                        conditionType:
+                          type: string
+                        group:
+                          type: string
+                        kind:
+                          description: |-
+                            Kind is a string value representing the REST resource this object represents.
+                            Servers may infer this from the endpoint the client submits requests to.
+                            Cannot be updated.
+                            In CamelCase.
+                            More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                          type: string
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        serverAddressByClientCIDRs:
+                          description: |-
+                            a map of client CIDR to server address that is serving this group.
+                            This is to help clients reach servers in the most network-efficient way possible.
+                            Clients can use the appropriate server address as per the CIDR that they match.
+                            In case of multiple matches, clients should use the longest matching CIDR.
+                            The server returns only those CIDRs that it thinks that the client can match.
+                            For example: the master will return an internal IP CIDR only, if the client reaches the server using an internal IP.
+                            Server looks at X-Forwarded-For header or X-Real-Ip header or request.RemoteAddr (in that order) to get the client IP.
+                          items:
+                            description: ServerAddressByClientCIDR helps the client
+                              to determine the server address that they should use,
+                              depending on the clientCIDR that they match.
+                            properties:
+                              clientCIDR:
+                                description: The CIDR with which clients can match
+                                  their IP to figure out the server address that they
+                                  should use.
+                                type: string
+                              serverAddress:
+                                description: |-
+                                  Address of this server, suitable for a client that matches the above CIDR.
+                                  This can be a hostname, hostname:port, IP or IP:port.
+                                type: string
+                            required:
+                            - clientCIDR
+                            - serverAddress
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        versions:
+                          description: versions are the api versions that are available.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - group
+                      - kind
+                      - serverAddressByClientCIDRs
+                      - versions
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    type: array
+                type: object
             type: object
           status:
             description: PlatformMeshStatus defines the observed state of PlatformMesh

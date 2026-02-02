@@ -5,20 +5,20 @@ import (
 	"encoding/base64"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 const FeatureToggleSubroutineName = "FeatureToggleSubroutine"
@@ -59,7 +59,7 @@ func (r *FeatureToggleSubroutine) Finalize(_ context.Context, _ runtimeobject.Ru
 	return ctrl.Result{}, nil
 }
 
-func (r *FeatureToggleSubroutine) Finalizers() []string { // coverage-ignore
+func (r *FeatureToggleSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{}
 }
 
@@ -78,22 +78,29 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Getting started configuration' feature")
-		case "feature-enable-iam":
-			// Implement the logic to enable the IAM feature
-			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-iam")
-			if opErr != nil {
-				log.Error().Err(opErr.Err()).Msg("Failed to apply IAM manifests")
-				return ctrl.Result{}, opErr
-			}
-			log.Info().Msg("Enabled 'IAM configuration' feature")
-		case "feature-enable-marketplace":
+		case "feature-enable-marketplace-account":
 			// Implement the logic to enable the marketplace feature
-			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace")
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-account")
 			if opErr != nil {
 				log.Error().Err(opErr.Err()).Msg("Failed to apply marketplace manifests")
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Marketplace configuration' feature")
+		case "feature-enable-marketplace-org":
+			// Implement the logic to enable the marketplace feature
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-org")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply marketplace manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Marketplace configuration' feature")
+		case "feature-accounts-in-accounts":
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-accounts-in-accounts")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply accounts-in-accounts manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Accounts in accounts' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -123,8 +130,8 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 			log.Info().
 				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
 				Str("namespace", operatorCfg.KCP.Namespace).
-				Msg("KCP admin secret not found yet.. Retry in 5 seconds")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+				Msg("KCP admin secret not found yet..")
+			return ctrl.Result{}, errors.NewOperatorError(errors.New("KCP admin secret not found yet"), true, true)
 		}
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to get secret"), true, true)
 	}

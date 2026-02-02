@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
-	"time"
+	"maps"
+	"strings"
 
 	"github.com/google/go-cmp/cmp"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -21,12 +21,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-
-	"strings"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -71,7 +68,7 @@ func (r *KcpsetupSubroutine) Finalize(
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
-func (r *KcpsetupSubroutine) Finalizers() []string { // coverage-ignore
+func (r *KcpsetupSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
@@ -86,18 +83,18 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
-	if err != nil || !MatchesCondition(rootShard, "Available") {
-		log.Info().Msg("RootShard is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
+		log.Info().Msg("RootShard is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
 	}
 
 	frontProxy := &unstructured.Unstructured{}
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	// Wait for root shard to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
-	if err != nil || !MatchesCondition(frontProxy, "Available") {
-		log.Info().Msg("FrontProxy is not ready.. Retry in 5 seconds")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
+		log.Info().Msg("FrontProxy is not ready..")
+		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
 	}
 
 	// Build kcp kubeonfig
@@ -139,26 +136,6 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 }
 
-// MatchesCondition checks the Ready Condition if it has status true
-func MatchesCondition(release *unstructured.Unstructured, conditionType string) bool {
-	if release == nil {
-		return false
-	}
-	conditions, found, err := unstructured.NestedSlice(release.Object, "status", "conditions")
-	if err != nil || !found {
-		return false
-	}
-
-	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
-		if c["type"] == conditionType && c["status"] == "True" {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
@@ -176,20 +153,42 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	// Merge the api export hashes with the CA bundle data
-	for k, v := range apiExportHashes {
-		templateData[k] = v
-	}
-	templateData["baseDomain"] = getBaseDomainInventory(inst)
+	maps.Copy(templateData, apiExportHashes)
 
-	templateData["port"] = "443"
-	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Port != 0 {
-		templateData["port"] = fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
+	templateData["baseDomain"] = baseDomain
+	templateData["baseDomainPort"] = baseDomainPort
+	templateData["port"] = fmt.Sprintf("%d", port)
+	templateData["protocol"] = protocol
+	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
+	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
+
+	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
+	if err != nil {
+		log.Err(err).Msg("Failed to create kcp client for platform-mesh-system workspace")
+		return errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
 	}
 
-	if templateData["port"] != "443" {
-		templateData["baseDomainWithPort"] = fmt.Sprintf("%s:%s", templateData["baseDomain"], templateData["port"])
-	} else {
-		templateData["baseDomainWithPort"] = templateData["baseDomain"]
+	templateData["welcomeAudience"] = "<placeholder>"
+
+	var ipc unstructured.Unstructured
+	ipc.SetGroupVersionKind(schema.GroupVersionKind{Group: "core.platform-mesh.io", Version: "v1alpha1", Kind: "IdentityProviderConfiguration"})
+
+	err = pmSystemClient.Get(ctx, types.NamespacedName{Name: "welcome"}, &ipc)
+	if err == nil {
+		clientId, found, err := unstructured.NestedString(ipc.Object, "status", "managedClients", "welcome", "clientId")
+		if err != nil {
+			log.Err(err).Msg("Failed to get client ID from IdentityProviderConfiguration 'welcome'")
+			return errors.Wrap(err, "Failed to get client ID from IdentityProviderConfiguration 'welcome'")
+		}
+		if !found {
+			log.Info().Msg("Client ID not found in IdentityProviderConfiguration 'welcome'")
+			clientId = ""
+		}
+
+		if clientId != "" {
+			templateData["welcomeAudience"] = clientId
+		}
 	}
 
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
@@ -199,13 +198,6 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	return nil
-}
-
-func getBaseDomainInventory(inst *corev1alpha1.PlatformMesh) string {
-	if inst.Spec.Exposure == nil || inst.Spec.Exposure.BaseDomain == "" {
-		return "portal.dev.local"
-	}
-	return inst.Spec.Exposure.BaseDomain
 }
 
 func (r *KcpsetupSubroutine) getCABundleInventory(
@@ -244,21 +236,20 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	validatingB64Data := base64.StdEncoding.EncodeToString(validatingCaData)
 	caBundles[validatingKey] = validatingB64Data
 
-	if r.cfg.Subroutines.PatchOIDC.DomainCALookup {
-		domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
-			SecretData: "tls.crt",
-			SecretRef: corev1alpha1.SecretReference{
-				Name:      "domain-certificate-ca",
-				Namespace: "platform-mesh-system",
-			},
-		})
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to get Domain CA bundle")
-			return nil, errors.Wrap(err, "Failed to get Domain CA bundle")
-		}
-
-		caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
+	domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
+		SecretData: "tls.crt",
+		SecretRef: corev1alpha1.SecretReference{
+			Name:      "domain-certificate-ca",
+			Namespace: "platform-mesh-system",
+		},
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get Domain CA bundle")
+		return nil, errors.Wrap(err, "Failed to get Domain CA bundle")
 	}
+
+	caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
+	caBundles["domainCADec"] = string(domainCA)
 
 	// Cache the results
 	r.caBundleCache = caBundles
@@ -450,26 +441,11 @@ func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath str
 	return res
 }
 
-func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
-	manifestBytes, err := os.ReadFile(path)
-	if err != nil {
-		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
+func HasFeatureToggle(inst *corev1alpha1.PlatformMesh, name string) string {
+	for _, ft := range inst.Spec.FeatureToggles {
+		if ft.Name == name {
+			return "true"
+		}
 	}
-
-	res, err := ReplaceTemplate(templateData, manifestBytes)
-	if err != nil {
-		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to replace template with path: %s", path)
-	}
-
-	var objMap map[string]interface{}
-	if err := yaml.Unmarshal(res, &objMap); err != nil {
-		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
-	}
-
-	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
-
-	obj := unstructured.Unstructured{Object: objMap}
-
-	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
-	return obj, err
+	return "false"
 }

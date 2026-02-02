@@ -32,6 +32,7 @@ kcp.log
 .vscode/*
 .idea
 .secret
+.claude
 
 # OS files
 .DS_Store

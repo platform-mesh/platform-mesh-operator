@@ -19,9 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -91,8 +93,16 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 	if cfg.Subroutines.FeatureToggles.Enabled {
 		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, kcpUrl))
 	}
+	if cfg.Subroutines.Wait.Enabled {
+		subs = append(subs, subroutines.NewWaitSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, kcpUrl))
+	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
-			pmReconcilerName, mgr.GetClient(), log).WithConditionManagement(),
+			pmReconcilerName, mgr.GetClient(), log).WithConditionManagement().WithStaticThenExponentialRateLimiter(
+			ratelimiter.WithRequeueDelay(5*time.Second),
+			ratelimiter.WithStaticWindow(10*time.Minute),
+			ratelimiter.WithExponentialInitialBackoff(10*time.Second),
+			ratelimiter.WithExponentialMaxBackoff(120*time.Second),
+		),
 	}
 }

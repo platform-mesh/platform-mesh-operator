@@ -6,5 +6,6 @@ metadata:
 spec:
   interval: 1m0s
   repositorySpec:
-    baseUrl: ghcr.io/platform-mesh
+    baseUrl: ghcr.io
+    subPath: platform-mesh
     type: OCIRegistry

@@ -11,12 +11,15 @@ import (
 	"time"
 
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	"github.com/creasty/defaults"
 	"github.com/platform-mesh/golang-commons/context/keys"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -29,7 +32,6 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
-	helmv2beta "github.com/fluxcd/helm-controller/api/v2beta1"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/client-go/rest"
@@ -156,12 +158,13 @@ func (s *KindTestSuite) createKindCluster() error {
 	// register scheme
 	s.scheme = runtime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
-	utilruntime.Must(helmv2beta.AddToScheme(s.scheme))
+	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(corev1.AddToScheme(s.scheme))
 	utilruntime.Must(appsv1.AddToScheme(s.scheme))
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(s.scheme))
 
 	gvk := fluxcdv2.GroupVersion.WithKind("HelmRelease")
 	s.logger.Info().Msgf("Registering GVK: %s", gvk.String())
@@ -196,7 +199,7 @@ func (s *KindTestSuite) createCerts() ([]byte, error) {
 	// mkcert
 	_, err := runCommand("mkdir", "-p", "certs")
 	s.Require().NoError(err, "Error creating certs directory")
-	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "*.dev.local", "*.portal.dev.local"); err != nil {
+	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
 		return nil, err
 	}
 	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
@@ -360,10 +363,6 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 
 	s.logger.Info().Msg("helm resources ready")
 
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
-
 	time.Sleep(25 * time.Second)
 	return nil
 }
@@ -405,6 +404,15 @@ func (s *KindTestSuite) SetupSuite() {
 	if err = s.applyKustomize(ctx); err != nil {
 		s.FailNow("Failed to apply kustomize manifests")
 	}
+	if err = s.waitForCRDEstablished(ctx, "repositories.delivery.ocm.software", 2*time.Minute); err != nil {
+		s.FailNow("OCM Repository CRD not established in time")
+	}
+	s.logger.Info().Msg("repositories.delivery.ocm.software CRD established")
+	if err = s.waitForCRDEstablished(ctx, "components.delivery.ocm.software", 2*time.Minute); err != nil {
+		s.FailNow("OCM Component CRD not established in time")
+	}
+	s.logger.Info().Msg("components.delivery.ocm.software CRD established")
+
 	if err = s.applyOCM(ctx); err != nil {
 		s.FailNow("Failed to apply OCM manifests")
 	}
@@ -436,6 +444,27 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("starting operator...")
 	s.runOperator(ctx)
 
+}
+
+func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {
+	return wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err := s.client.Get(ctx, client.ObjectKey{Name: crdName}, crd)
+		if err != nil {
+			return false, nil
+		}
+
+		for _, condition := range crd.Status.Conditions {
+			if condition.Type == apiextensionsv1.Established {
+				if condition.Status == apiextensionsv1.ConditionTrue {
+					s.logger.Info().Msgf("CRD %s is established", crdName)
+					return true, nil
+				}
+			}
+		}
+		s.logger.Debug().Msgf("CRD %s not established yet", crdName)
+		return false, nil
+	})
 }
 
 // applyOCM applies the OCM component and repository to the cluster.
@@ -490,12 +519,20 @@ func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
 func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	appConfig := config.OperatorConfig{}
+
+	err := defaults.Set(&appConfig)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to set default operator config")
+		return
+	}
+
 	appConfig.Subroutines.Deployment.Enabled = true
+	appConfig.Subroutines.Deployment.EnableIstio = false
 	appConfig.Subroutines.KcpSetup.Enabled = true
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
-	appConfig.KCP.Url = "https://kcp.api.portal.dev.local:8443"
+	appConfig.KCP.Url = "https://localhost:8443"
 	appConfig.KCP.RootShardName = "root"
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"

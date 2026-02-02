@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 	"time"
 
@@ -86,7 +87,20 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 }
 
 func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
-	tmpl, err := template.New("manifest").Parse(string(templateBytes))
+	funcMap := template.FuncMap{
+		"indent": func(spaces int, s string) string {
+			pad := strings.Repeat(" ", spaces)
+			lines := strings.Split(s, "\n")
+			for i, line := range lines {
+				if line != "" {
+					lines[i] = pad + line
+				}
+			}
+			return strings.Join(lines, "\n")
+		},
+	}
+
+	tmpl, err := template.New("manifest").Funcs(funcMap).Parse(string(templateBytes))
 	if err != nil {
 		return []byte{}, errors.Wrap(err, "Failed to parse template")
 	}
@@ -290,7 +304,7 @@ func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiexte
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
 	port := 8443
-	baseDomain := "portal.dev.local"
+	baseDomain := "portal.localhost"
 	protocol := "https"
 	baseDomainPort := ""
 
@@ -342,6 +356,10 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 
 func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
+}
+
+func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
@@ -432,6 +450,14 @@ func ApplyManifestFromFile(
 	}
 	if obj.Object == nil {
 		return nil
+	}
+
+	if obj.GetKind() == "ContentConfiguration" && obj.GetAPIVersion() == "ui.platform-mesh.io/v1alpha1" {
+		if templateData["featureDisableContentConfigurations"] == "true" {
+			log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
+				Msg("Skipping ContentConfiguration due to feature-disable-contentconfigurations toggle")
+			return nil
+		}
 	}
 
 	if obj.GetKind() == "WorkspaceType" && obj.GetAPIVersion() == "tenancy.kcp.io/v1alpha1" {
@@ -526,4 +552,47 @@ func ApplyDirStructure(
 	}
 
 	return nil
+}
+
+func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionType string, conditionStatus string) bool {
+	if resource == nil {
+		return false
+	}
+	conditions, found, err := unstructured.NestedSlice(resource.Object, "status", "conditions")
+	if err != nil || !found {
+		return false
+	}
+
+	for _, condition := range conditions {
+		c := condition.(map[string]interface{})
+		if c["type"] == conditionType && c["status"] == conditionStatus {
+			return true
+		}
+	}
+
+	return false
+}
+
+func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
+	manifestBytes, err := os.ReadFile(path)
+	if err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
+	}
+
+	res, err := ReplaceTemplate(templateData, manifestBytes)
+	if err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to replace template with path: %s", path)
+	}
+
+	var objMap map[string]interface{}
+	if err := yaml.Unmarshal(res, &objMap); err != nil {
+		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
+	}
+
+	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
+
+	obj := unstructured.Unstructured{Object: objMap}
+
+	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
+	return obj, err
 }

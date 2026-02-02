@@ -2,8 +2,8 @@ apiVersion: ui.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:
   labels:
-    ui.platform-mesh.io/entity: core_platform-mesh_io_account
-  name: account-marketplace
+    ui.platform-mesh.io/entity: main
+  name: main-marketplace
 spec:
   inlineConfiguration:
     content: |-
@@ -14,32 +14,45 @@ spec:
             "nodes": [
               {
                 "pathSegment": "marketplace",
-                "entityType": "main.core_platform-mesh_io_account",
-                "order": 700,
+                "entityType": "main",
                 "label": "Marketplace",
+                "order": 700,
                 "icon": "retail-store",
-                "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/:accountId/marketplace",
+                "hideFromNav": false,
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
                 "viewGroup": "marketplace",
                 "context": {
-                  "accountId": ":core_platform-mesh_io_accountId"
+                  "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},
+                  "entityContext": {
+                    "account": {
+                      "policies": ["providerAdmin", "projectAdmin", "projectMember"]
+                    }
+                  }
                 }
               },
               {
                 "pathSegment": "provider",
-                "entityType": "main.core_platform-mesh_io_account",
+                "entityType": "main",
                 "hideFromNav": true,
                 "viewGroup": "marketplace",
                 "children": [
                   {
                     "pathSegment": ":providerName",
                     "hideFromNav": true,
-                    "url": "https://{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
+                    "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/provider/:providerName",
                     "context": {
-                      "providerName": ":providerName",
-                      "accountId": ":core_platform-mesh_io_accountId"
+                      "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},
+                      "providerName": ":providerName"
                     }
                   }
-                ]
+                ],
+                "context": {
+                  "entityContext": {
+                    "account": {
+                      "policies": ["providerAdmin", "projectAdmin", "projectMember"]
+                    }
+                  }
+                }
               }
             ],
             "texts": [
