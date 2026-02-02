@@ -232,10 +232,10 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	// Use Server-Side Apply with field manager to update only the specific field
-	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
+	// Use Server-Side Apply with a unique field manager per Resource to update only the specific field
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
 	err = r.client.Patch(ctx, patchObj, client.Apply,
-		client.FieldOwner(resourceFieldManager),
+		client.FieldOwner(fieldManager),
 		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
@@ -569,10 +569,12 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	// Use Server-Side Apply with field manager to update only the specific field
-	// This allows Kubernetes to merge with fields managed by other subroutines (e.g., Deployment subroutine)
+	// Use Server-Side Apply with a unique field manager per Resource to update only the specific field
+	// Each Resource needs its own field manager to avoid SSA conflicts when multiple Resources
+	// patch different fields on the same HelmRelease
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
 	err = r.client.Patch(ctx, patchObj, client.Apply,
-		client.FieldOwner(resourceFieldManager),
+		client.FieldOwner(fieldManager),
 		client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")

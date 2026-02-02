@@ -143,7 +143,7 @@ func (s *KindTestSuite) createKindCluster() error {
 		}
 
 		s.logger.Info().Msg("Creating Kind cluster...")
-		if _, err = runCommand("kind", "create", "cluster", "--config", "../../../kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
+		if _, err = runCommand("kind", "create", "cluster", "--config", "kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
 			return err
 		}
 	}
@@ -566,6 +566,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
+	appConfig.KCP.Url = "https://localhost:8443"
 	appConfig.KCP.RootShardName = "root"
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"

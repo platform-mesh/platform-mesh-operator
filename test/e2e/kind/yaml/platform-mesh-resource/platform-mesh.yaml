@@ -18,7 +18,11 @@ spec:
       name: platform-mesh
     referencePath: []
   featureToggles:
-   - name: "feature-enable-getting-started"
+   - name: feature-enable-getting-started
+   - name: feature-disable-email-verification
+   - name: feature-accounts-in-accounts
+   - name: feature-enable-marketplace-account
+   - name: feature-enable-marketplace-org
   values:
     keycloak:
       enabled: true
@@ -70,7 +74,7 @@ spec:
                   - "https://*"
     security-operator:
       values:
-        baseDomain: "portal.localhost:8443"
+        baseDomain: "{{ .baseDomainPort }}"
         initializer:
           extraArgs:
             - --domain-ca-lookup
@@ -78,11 +82,17 @@ spec:
             - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
             - --idp-smtp-port=1025
             - --idp-from-address=keycloak@portal.localhost
-            - --domain-ca-lookup
-            - --idp-additional-redirect-urls="https://default.portal.localhost:3000/callback*"
+            - --development-allow-unverified-emails
         caSecret: domain-certificate-ca
         hostAliases:
           enabled: true
+        fga:
+          extraArgs:
+          - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
+          - --idp-smtp-port=1025
+          - --idp-from-address=keycloak@portal.localhost
+          - --set-default-password
+          - --idp-registration-allowed
     portal:
       enabled: true
       values:
