@@ -169,6 +169,7 @@ spec:
 | `feature-enable-marketplace-account` | Applies the ContentConfiguration resources for the Marketplace feature at the account level |
 | `feature-enable-marketplace-org` | Applies the ContentConfiguration resources for the Marketplace feature at the organization level |
 | `feature-accounts-in-accounts` | Applies the ContentConfiguration resources for displaying accounts within the account context |
+| `feature-enable-account-iam-ui` | Applies the ContentConfiguration resources for the IAM UI Members section at the account level |
 | `feature-disable-email-verification` | Disables email verification requirement in WorkspaceAuthenticationConfiguration |
 | `feature-disable-contentconfigurations` | Disables loading of all ContentConfiguration manifests during KCP setup |
 
