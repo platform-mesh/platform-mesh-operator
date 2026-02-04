@@ -6,8 +6,7 @@ spec:
   jwt:
     - issuer:
         url: https://{{ .baseDomainPort }}/keycloak/realms/welcome
-        audiences:
-        - {{ .welcomeAudience }}
+        audiences: {{ .welcomeAudiences }}
         audienceMatchPolicy: MatchAny
         {{- with .domainCADec }}
         certificateAuthority: |
