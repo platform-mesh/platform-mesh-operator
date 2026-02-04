@@ -7,7 +7,7 @@ spec:
   - clientType: confidential
     clientName: welcome
     redirectUris:
-    - https://portal.localhost:8443/callback*
+    - https://{{ .baseDomainPort }}/callback*
     secretRef:
       name: portal-client-secret-welcome
       namespace: default
