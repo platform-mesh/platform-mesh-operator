@@ -1,0 +1,54 @@
+{{- if .traefikCRDs.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .traefikCRDs.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ .traefikCRDs.syncWave | default 0 }}"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  {{- if .traefikCRDs.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml .traefikCRDs.ignoreDifferences | nindent 4 }}
+  {{- end }}
+  source:
+    {{- if .traefikCRDs.repoURL }}
+    repoURL: {{ .traefikCRDs.repoURL }}
+    {{- else }}
+    repoURL: https://traefik.github.io/charts
+    {{- end }}
+    chart: traefik-crds
+    {{- if .traefikCRDs.targetRevision }}
+    targetRevision: "{{ .traefikCRDs.targetRevision }}"
+    {{- else }}
+    targetRevision: "*"
+    {{- end }}
+    {{- if .traefikCRDs.values }}
+    helm:
+      values: |
+{{ toYaml .traefikCRDs.values | nindent 8 }}
+    {{- end }}
+  destination:
+    server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ .releaseNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    {{- if .traefikCRDs.syncOptions }}
+    syncOptions:
+{{ toYaml .traefikCRDs.syncOptions | nindent 4 }}
+    {{- else }}
+    syncOptions:
+    - CreateNamespace=true
+    {{- if .traefikCRDs.ignoreDifferences }}
+    - RespectIgnoreDifferences=true
+    {{- end }}
+    {{- end }}
+{{- end }}
+

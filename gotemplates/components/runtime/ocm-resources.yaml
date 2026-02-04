@@ -1,0 +1,53 @@
+{{ $values := .values }}
+{{- range $service, $config := .values.services }}
+{{- if $config.enabled }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: {{ $service }}
+  namespace: {{ $.releaseNamespace }}
+  labels:
+    artifact: chart
+    {{- if $config.helmRepo }}
+    repo: helm
+    {{- end }}
+    {{- if $config.gitRepo }}
+    repo: git
+    {{- end }}
+    {{- if not (or $config.gitRepo $config.helmRepo) }}
+    repo: oci
+    {{- end }}
+spec:
+  skipVerify: {{ $values.ocm.skipVerify }}
+  componentRef:
+    {{- if (($config.ocm).component).name }}
+    name: {{ $config.ocm.component.name }}
+    {{- else }}
+    name: {{ $values.ocm.component.name }}
+    {{- end }}
+  resource:
+    byReference:
+      resource:
+        name: chart
+      referencePath:
+{{- if $config.referencePath }}
+{{ toYaml $config.referencePath | nindent 8 }}
+{{- else }}
+{{- with $values.ocm.referencePath }}
+{{ toYaml . | nindent 8 }}
+{{- end }}
+        - name: {{ $service }}
+{{- end }}
+  interval: {{ $values.ocm.interval }}
+  ocmConfig:
+    - kind: Repository
+      apiVersion: delivery.ocm.software/v1alpha1
+      {{- if (($config.ocm).repo).name }}
+      name: {{ $config.ocm.repo.name }}
+      {{- else }}
+      name: {{ $values.ocm.repo.name }}
+      {{- end }}
+      namespace: {{ $.releaseNamespace }}
+---
+{{ end -}}
+{{ end -}}

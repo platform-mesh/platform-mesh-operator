@@ -33,7 +33,6 @@ import (
 type KcpsetupSubroutine struct {
 	client       client.Client
 	kcpHelper    KcpHelper
-	kcpUrl       string
 	helm         HelmGetter
 	kcpDirectory string
 	// Cache for CA bundles to avoid redundant secret lookups
@@ -44,13 +43,13 @@ type KcpsetupSubroutine struct {
 const (
 	KcpsetupSubroutineName      = "KcpsetupSubroutine"
 	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
+	fieldManagerKcpSetup        = "platform-mesh-kcp-setup"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string) *KcpsetupSubroutine {
 	return &KcpsetupSubroutine{
 		client:        client,
 		kcpDirectory:  kcpdir,
-		kcpUrl:        kcpUrl,
 		kcpHelper:     helper,
 		helm:          DefaultHelmGetter{},
 		caBundleCache: make(map[string]string),
@@ -98,7 +97,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	}
 
 	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
@@ -355,7 +354,7 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerKcpSetup))
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}

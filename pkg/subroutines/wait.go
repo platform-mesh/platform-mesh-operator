@@ -21,23 +21,20 @@ import (
 
 func NewWaitSubroutine(
 	client client.Client,
-	kcpHelper KcpHelper,
 	cfg *config.OperatorConfig,
-	kcpUrl string,
+	helper KcpHelper,
 ) *WaitSubroutine {
 	return &WaitSubroutine{
 		client:    client,
-		kcpHelper: kcpHelper,
 		cfg:       cfg,
-		kcpUrl:    kcpUrl,
+		kcpHelper: helper,
 	}
 }
 
 type WaitSubroutine struct {
 	client    client.Client
-	kcpHelper KcpHelper
 	cfg       *config.OperatorConfig
-	kcpUrl    string
+	kcpHelper KcpHelper
 }
 
 const (
@@ -71,6 +68,10 @@ func (r *WaitSubroutine) Process(
 			waitList := &unstructured.UnstructuredList{}
 
 			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
+
+			// Determine which status checking method to use
+			useStatusFieldPath := len(resourceType.StatusFieldPath) > 0
+
 			if resourceType.Name != "" {
 				res := &unstructured.Unstructured{}
 				res.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
@@ -79,7 +80,7 @@ func (r *WaitSubroutine) Process(
 					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
 					return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 				}
-				if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				if !checkResourceStatus(res, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
 					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind()), true, false)
 				}
@@ -102,7 +103,7 @@ func (r *WaitSubroutine) Process(
 			}
 
 			for _, item := range waitList.Items {
-				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				if !checkResourceStatus(&item, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
 					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind()), true, false)
 				}
@@ -112,15 +113,15 @@ func (r *WaitSubroutine) Process(
 
 	// Check if WorkspaceAuthenticationConfiguration audience is still a placeholder
 	// If so, trigger a reconcile to ensure all logic is finished
-	if err := r.checkWorkspaceAuthConfigAudience(ctx, log); err != nil {
+	if err := r.checkWorkspaceAuthConfigAudience(ctx, log, instance); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger) error {
-	kubeCfg, err := buildKubeconfigFromConfig(r.client, r.cfg, r.kcpUrl)
+func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
+	kubeCfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
 		return nil
@@ -175,4 +176,14 @@ func (r *WaitSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []stri
 
 func (r *WaitSubroutine) GetName() string {
 	return WaitSubroutineName
+}
+
+// checkResourceStatus checks if a resource matches the expected status.
+// If useStatusFieldPath is true, it checks the value at statusFieldPath equals statusValue.
+// Otherwise, it checks the conditions array for a matching conditionType and conditionStatus.
+func checkResourceStatus(res *unstructured.Unstructured, useStatusFieldPath bool, statusFieldPath []string, statusValue string, conditionType string, conditionStatus string) bool {
+	if useStatusFieldPath {
+		return matchesStatusFieldValue(res, statusFieldPath, statusValue)
+	}
+	return matchesConditionWithStatus(res, conditionType, conditionStatus)
 }

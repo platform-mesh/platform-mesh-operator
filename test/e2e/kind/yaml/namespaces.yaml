@@ -8,13 +8,6 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: crossplane-system
-  labels:
-    istio-injection: disabled
----
-apiVersion: v1
-kind: Namespace
-metadata:
   name: ocm-system
   labels:
     istio-injection: disabled

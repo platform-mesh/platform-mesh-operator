@@ -11,7 +11,7 @@ kind: PlatformMesh
 metadata:
   name: platform-mesh-sample
   namespace: platform-mesh-system
-spec:iam-service
+spec:
   exposure:
     baseDomain: example.com
     port: 443
@@ -49,6 +49,104 @@ spec:iam-service
     service2:
       enabled: false
 ```
+
+## platform-mesh-operator Configuration
+
+The platform-mesh-operator can be configured using environment variables or command-line parameters to control its behavior, cluster interactions, and subroutine execution. Command-line parameters use kebab-case format (e.g., `--workspace-dir`, `--kcp-url`) corresponding to the mapstructure tags in the configuration.
+
+
+### General Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `KUBECONFIG` | Path to the kubeconfig file for the cluster where the `PlatformMesh` resource is reconciled | In-cluster configuration |
+| `WORKSPACE_DIR` | Working directory for operator files and temporary data | `/operator/` |
+| `PATCH_OIDC_CONTROLLER_ENABLED` | Enable the OIDC controller patching functionality | `false` |
+| `LEADER_ELECTION_ID` | Leader election ID for the main manager instance | `81924e50.platform-mesh.org` |
+
+### KCP Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `KCP_URL` | URL of the KCP API server | (required) |
+| `KCP_NAMESPACE` | Namespace where KCP components are deployed | `platform-mesh-system` |
+| `KCP_ROOT_SHARD_NAME` | Name of the KCP root shard | `root` |
+| `KCP_FRONT_PROXY_NAME` | Name of the KCP front proxy component | `frontproxy` |
+| `KCP_FRONT_PROXY_PORT` | Port for the KCP front proxy | `6443` |
+| `KCP_CLUSTER_ADMIN_SECRET_NAME` | Name of the secret containing KCP cluster admin client certificate | `kcp-cluster-admin-client-cert` |
+
+### Subroutines Configuration
+
+#### Deployment Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_DEPLOYMENT_ENABLED` | Enable the deployment subroutine | `true` |
+| `AUTHORIZATION_WEBHOOK_SECRET_NAME` | Name of the authorization webhook secret | `kcp-webhook-secret` |
+| `AUTHORIZATION_WEBHOOK_SECRET_CA_NAME` | Name of the authorization webhook CA certificate | `rebac-authz-webhook-cert` |
+| `SUBROUTINES_DEPLOYMENT_ENABLE_ISTIO` | Enable Istio integration in deployment subroutine | `true` |
+
+#### KCP Setup Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_KCP_SETUP_ENABLED` | Enable the KCP setup subroutine | `true` |
+
+#### Provider Secret Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_PROVIDER_SECRET_ENABLED` | Enable the provider secret subroutine | `true` |
+
+#### Patch OIDC Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_PATCH_OIDC_CONFIGMAP_NAME` | Name of the OIDC authentication ConfigMap | `oidc-authentication-config` |
+| `SUBROUTINES_PATCH_OIDC_NAMESPACE` | Namespace for OIDC configuration | `platform-mesh-system` |
+| `SUBROUTINES_PATCH_OIDC_BASEDOMAIN` | Base domain for OIDC configuration | `portal.dev.local:8443` |
+| `SUBROUTINES_PATCH_OIDC_DOMAIN_CA_LOOKUP` | Enable domain CA lookup for OIDC | `false` |
+
+#### Feature Toggles Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_FEATURE_TOGGLES_ENABLED` | Enable the feature toggles subroutine | `false` |
+
+#### Resource Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_RESOURCE_ENABLED` | Enable the resource subroutine | `true` |
+
+#### Wait Subroutine
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUBROUTINES_WAIT_ENABLED` | Enable the wait subroutine | `true` |
+
+### Remote Infrastructure Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REMOTE_INFRA_ENABLED` | Enable reconciliation of infrastructure resources on a remote cluster | `false` |
+| `REMOTE_INFRA_KUBECONFIG` | Path to the kubeconfig for remote infrastructure cluster | `/operator/infra-kubeconfig` |
+
+### Remote Runtime Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REMOTE_RUNTIME_ENABLED` | Enable reconciliation of PlatformMesh resource on a remote runtime cluster | `false` |
+| `REMOTE_RUNTIME_KUBECONFIG` | Path to the kubeconfig for remote runtime cluster | `/operator/runtime-kubeconfig` |
+| `REMOTE_RUNTIME_INFRA_SECRET_NAME` | Name of the secret containing infra kubeconfig in the remote runtime cluster | `infra-kubeconfig` |
+| `REMOTE_RUNTIME_INFRA_SECRET_KEY` | Key in the secret containing infra kubeconfig in the remote runtime cluster | `kubeconfig` |
+
+### Configuration Notes
+
+- **Configuration methods**: All parameters can be set via environment variables (using underscore-separated uppercase names) or command-line flags (using kebab-case format, e.g., `--kcp-url`, `--workspace-dir`).
+- **In-cluster behavior**: When running the operator inside a Kubernetes cluster without `KUBECONFIG` or `DEPLOYMENT_KUBECONFIG` set, it will use the in-cluster service account credentials.
+- **Remote deployment**: Setting `DEPLOYMENT_KUBECONFIG` enables scenarios where the control plane (operator) runs in one cluster while deploying components to another cluster.
+- **Subroutine control**: Individual subroutines can be disabled by setting their respective `_ENABLED` variables to `false`, allowing fine-grained control over operator behavior.
 
 ## PlatformMesh Resource Configuration
 
@@ -149,7 +247,58 @@ spec:
       key2: value2
 ```
 
-Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
+Those values are passed 1-1 to the chart deployed by the "Deployment" subroutine.
+
+### Profile Configuration
+
+The deployment profile controls the configuration of infrastructure and component deployments. The profile is stored in a ConfigMap and can be customized per PlatformMesh instance.
+
+#### Default Profile
+
+If no custom profile is specified, the operator automatically creates a default ConfigMap named `<platform-mesh-name>-profile` in the same namespace as the PlatformMesh resource. This default ConfigMap contains a unified profile with two sections:
+
+- **infra**: Infrastructure components configuration (gateway-api, traefik, cert-manager, etc.)
+- **components**: Runtime components configuration (account-operator, security-operator, keycloak, etc.)
+
+#### Custom Profile
+
+You can specify a custom profile ConfigMap by referencing it in the PlatformMesh spec:
+
+```yaml
+spec:
+  profileConfigMap:
+    name: my-custom-profile
+    namespace: platform-mesh-system  # Optional, defaults to PlatformMesh namespace
+```
+
+The ConfigMap must contain a key `profile.yaml` with the unified profile structure:
+
+```yaml
+infra:
+  ocm:
+    skipVerify: true
+    interval: 3m
+  gatewayApi:
+    enabled: true
+    name: gateway-api
+  traefik:
+    enabled: true
+    targetNamespace: default
+  # ... other infra configuration
+
+components:
+  targetNamespace: platform-mesh-system
+  protocol: https
+  port: 443
+  services:
+    account-operator:
+      enabled: true
+      values:
+        # ... service configuration
+    # ... other services
+```
+
+The profile structure matches the original `profile-infra.yaml` and `profile-components.yaml` files, now unified into a single structure with `infra` and `components` sections.
 
 ### Feature Toggles
 
@@ -198,9 +347,10 @@ The platform-mesh-operator processes the PlatformMesh resource through several s
 
 The Deployment subroutine manages the deployment of platform-mesh components across the cluster:
 
-- Merges custom values from the `PlatformMesh` resource with default configurations.
-- Applies templated manifests for `platform-mesh-operator-infra-components` and waits for the HelmRelease to become ready and also for `cert-manager` to become ready.
-- Applies templated Kubernetes manifests for `platform-mesh-operator-components`, including `Resource` and `HelmRelease` objects.
+- Loads deployment profiles from ConfigMap (or creates a default one if not specified).
+- Merges custom values from the `PlatformMesh` resource with profile configurations.
+- Applies templated manifests and waits for the HelmRelease to become ready and also for `cert-manager` to become ready.
+- Applies templated Kubernetes manifests, including `Resource` and `HelmRelease` objects.
 - Manages OCM (Open Component Model) integration by configuring resources based on repository, component, and reference path settings.
 - Manages authorization webhook secrets by creating an issuer, a certificate, and a KCP webhook secret, and keeps the secret updated with the correct CA bundle.
 - Waits for the `istio-istiod` Helm release to become ready.
@@ -209,13 +359,10 @@ The Deployment subroutine manages the deployment of platform-mesh components acr
 
 #### Merging of custom values in `DeploymentSubroutine`
 
-When creating the `platform-mesh-operator-infra-components` and `platform-mesh-operator-components` helmreleases, their configuration is derived the from **PlatformMesh** resource as follows:
+When creating helmreleases, their configuration is derived from the **PlatformMesh** resource as follows:
 
-- HelmRelease `platform-mesh-operator-infra-components` has `spec.values` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
-- Resource `platform-mesh-operator-infra-components` `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
-
-- HelmRelease `platform-mesh-operator-components` has `spec.values.services` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
-- Resource `platform-mesh-operator-components` `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
+- HelmRelease has `spec.values` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
+- Resource `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
 
 For both HelmReleases the spec.values are populated with these templated fields:
 - baseDomain
@@ -264,7 +411,7 @@ The Wait subroutine ensures that specified resources are ready before proceeding
 - Waits for resources to match specific conditions (e.g., HelmRelease resources with Ready condition)
 - Uses configurable wait criteria defined in the `spec.wait` section of the PlatformMesh resource
 - Falls back to default wait configurations when no custom wait configuration is specified
-- By default, waits for `platform-mesh-operator-components` and `platform-mesh-operator-infra-components` HelmRelease resources to be ready
+- By default, waits for HelmRelease resources to be ready
 - Supports filtering resources by namespace, labels, and API versions
 - Requeues the reconciliation if any monitored resource is not yet ready
 

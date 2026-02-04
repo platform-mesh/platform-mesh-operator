@@ -2,8 +2,9 @@ package config
 
 // OperatorConfig struct to hold the app config
 type OperatorConfig struct {
-	WorkspaceDir string `mapstructure:"workspace-dir" default:"/operator/"`
-	KCP          struct {
+	WorkspaceDir               string `mapstructure:"workspace-dir" default:"/operator/"`
+	PatchOIDCControllerEnabled bool   `mapstructure:"patch-oidc-controller-enabled" default:"false"`
+	KCP                        struct {
 		Url                    string `mapstructure:"kcp-url"`
 		Namespace              string `mapstructure:"kcp-namespace" default:"platform-mesh-system"`
 		RootShardName          string `mapstructure:"kcp-root-shard-name" default:"root"`
@@ -28,7 +29,20 @@ type OperatorConfig struct {
 			Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
 		} `mapstructure:",squash"`
 		Wait struct {
-			Enabled bool `mapstructure:"subroutines-wait-enabled" default:"true"`
+			Enabled  bool `mapstructure:"subroutines-wait-enabled" default:"true"`
+			Resource struct {
+				Enabled bool `mapstructure:"subroutines-resource-enabled" default:"true"`
+			} `mapstructure:",squash"`
 		} `mapstructure:",squash"`
+	} `mapstructure:",squash"`
+	RemoteInfra struct {
+		Enabled    bool   `mapstructure:"remote-infra-enabled" default:"false"`
+		Kubeconfig string `mapstructure:"remote-infra-kubeconfig" default:"/operator/infra-kubeconfig"`
+	} `mapstructure:",squash"`
+	RemoteRuntime struct {
+		Enabled         bool   `mapstructure:"remote-runtime-enabled" default:"false"`
+		Kubeconfig      string `mapstructure:"remote-runtime-kubeconfig" default:"/operator/runtime-kubeconfig"`
+		InfraSecretName string `mapstructure:"remote-runtime-infra-secret-name" default:"infra-kubeconfig"`
+		InfraSecretKey  string `mapstructure:"remote-runtime-infra-secret-key" default:"kubeconfig"`
 	} `mapstructure:",squash"`
 }
