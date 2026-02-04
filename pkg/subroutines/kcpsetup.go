@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
@@ -146,14 +145,20 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	// Get CA bundle data
-	templateData, err := r.getCABundleInventory(ctx)
+	caBundles, err := r.getCABundleInventory(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to get CA bundle inventory")
 		return errors.Wrap(err, "Failed to get CA bundle inventory")
 	}
 
-	// Merge the api export hashes with the CA bundle data
-	maps.Copy(templateData, apiExportHashes)
+	// Build templateData as map[string]any to support both strings and arrays
+	templateData := make(map[string]any)
+	for k, v := range caBundles {
+		templateData[k] = v
+	}
+	for k, v := range apiExportHashes {
+		templateData[k] = v
+	}
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 	templateData["baseDomain"] = baseDomain
@@ -169,7 +174,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		return errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
 	}
 
-	templateData["welcomeAudiences"] = "[]"
+	templateData["welcomeAudiences"] = []string{}
 
 	var ipc unstructured.Unstructured
 	ipc.SetGroupVersionKind(schema.GroupVersionKind{Group: "core.platform-mesh.io", Version: "v1alpha1", Kind: "IdentityProviderConfiguration"})
@@ -185,7 +190,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		if found && len(managedClients) > 0 {
 			var clientIds []string
 			for clientName, clientData := range managedClients {
-				clientMap, ok := clientData.(map[string]interface{})
+				clientMap, ok := clientData.(map[string]any)
 				if !ok {
 					log.Warn().Str("client", clientName).Msg("Invalid client data structure, skipping")
 					continue
@@ -199,7 +204,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 			}
 
 			if len(clientIds) > 0 {
-				templateData["welcomeAudiences"] = formatAsYAMLArray(clientIds)
+				templateData["welcomeAudiences"] = clientIds
 			}
 		}
 	}
@@ -461,11 +466,4 @@ func HasFeatureToggle(inst *corev1alpha1.PlatformMesh, name string) string {
 		}
 	}
 	return "false"
-}
-
-func formatAsYAMLArray(items []string) string {
-	if len(items) == 0 {
-		return "[]"
-	}
-	return "[" + strings.Join(items, ", ") + "]"
 }

@@ -30,7 +30,7 @@ func (r *KcpsetupSubroutine) GetAPIExportHashInventory(ctx context.Context, conf
 	return r.getAPIExportHashInventory(ctx, config)
 }
 
-func (s *DeploymentSubroutine) ApplyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]string) error {
+func (s *DeploymentSubroutine) ApplyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]any) error {
 	return applyManifestFromFileWithMergedValues(ctx, path, k8sClient, templateData)
 }
 
@@ -38,7 +38,7 @@ func (s *DeploymentSubroutine) ApplyReleaseWithValues(ctx context.Context, path 
 	return applyReleaseWithValues(ctx, path, k8sClient, values)
 }
 
-func (s *KcpsetupSubroutine) UnstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
+func (s *KcpsetupSubroutine) UnstructuredFromFile(path string, templateData map[string]any, log *logger.Logger) (unstructured.Unstructured, error) {
 	return unstructuredFromFile(path, templateData, log)
 }
 

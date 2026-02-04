@@ -155,7 +155,7 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 	dir := r.workspaceDirectory + kcpDir
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
-	tplValues := map[string]string{
+	tplValues := map[string]any{
 		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"baseDomain":     baseDomain,
 		"protocol":       protocol,
