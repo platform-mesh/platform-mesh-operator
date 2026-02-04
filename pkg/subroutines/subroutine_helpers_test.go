@@ -209,7 +209,7 @@ func strPtr(s string) *string {
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_ParseError() {
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"Name": "World",
 	}
 	// Invalid template syntax {{ .Name
@@ -222,7 +222,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_ParseError() {
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_ExecuteError() {
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"Name": "World",
 	}
 	// Template tries to access a non-existent field in a struct (if data were a struct)
@@ -244,7 +244,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_ExecuteError() {
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_EmptyData() {
-	templateData := map[string]string{}
+	templateData := map[string]any{}
 	templateBytes := []byte("Hello, {{ .Name }}!")
 	expected := []byte("Hello, <no value>!") // Default behavior for missing keys
 
@@ -254,7 +254,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_EmptyData() {
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_EmptyTemplate() {
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"Name": "World",
 	}
 	templateBytes := []byte{}
@@ -266,7 +266,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_EmptyTemplate() {
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_Success() {
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"Name": "World",
 		"Age":  "30",
 	}
@@ -303,31 +303,31 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err := subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = subroutines.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = subroutines.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]string), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]string), "root:orgs", &corev1alpha1.PlatformMesh{})
+	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(&apierrors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}}).Once()
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	templateData := map[string]string{
+	templateData := map[string]any{
 		".account-operator.webhooks.platform-mesh.io.ca-bundle": "CABundle",
 	}
 
