@@ -11,8 +11,7 @@ spec:
         {{- range .welcomeAudiences }}
         - {{ . }}
         {{- end }}
-        {{- else }}
-        - placeholder
+        {{- else }} []
         {{- end }}
         audienceMatchPolicy: MatchAny
         {{- with .domainCADec }}
