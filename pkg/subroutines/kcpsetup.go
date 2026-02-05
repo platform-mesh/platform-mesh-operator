@@ -96,7 +96,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
 	}
 
-	// Build kcp kubeonfig
+	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
@@ -241,6 +241,16 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	key := fmt.Sprintf("%s.ca-bundle", webhookConfig.WebhookRef.Name)
 	b64Data := base64.StdEncoding.EncodeToString(caData)
 	caBundles[key] = b64Data
+
+	// Get Identity Provider validating webhook CA bundle (security-operator webhook)
+	ipdValidatingWebhookConfig := DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION
+	ipdCaData, err := r.getCaBundle(ctx, &ipdValidatingWebhookConfig)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get Identity Provider ValidatingWebhook CA bundle")
+		return nil, errors.Wrap(err, "Failed to get Identity Provider ValidatingWebhook CA bundle")
+	}
+	ipdKey := fmt.Sprintf("%s.ca-bundle", ipdValidatingWebhookConfig.WebhookRef.Name)
+	caBundles[ipdKey] = base64.StdEncoding.EncodeToString(ipdCaData)
 
 	// Get validating webhook CA bundle
 	validatingWebhookConfig := DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION
