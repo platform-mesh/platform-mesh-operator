@@ -7,7 +7,12 @@ spec:
     - issuer:
         url: https://{{ .baseDomainPort }}/keycloak/realms/welcome
         audiences:
-        - {{ .welcomeAudience }}
+        {{- if .welcomeAudiences }}
+        {{- range .welcomeAudiences }}
+        - {{ . }}
+        {{- end }}
+        {{- else }} []
+        {{- end }}
         audienceMatchPolicy: MatchAny
         {{- with .domainCADec }}
         certificateAuthority: |

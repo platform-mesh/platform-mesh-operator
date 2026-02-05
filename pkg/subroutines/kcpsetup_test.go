@@ -80,7 +80,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 	kcpClientMock := new(mocks.Client)
 	// Expect NewKcpClient to be called multiple times for different workspaces (flexible count)
 	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil).Maybe()
-	inventory := map[string]string{
+	inventory := map[string]any{
 		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
 		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
 		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
@@ -752,7 +752,7 @@ func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
 
 	// Resource
 	path := "../../manifests/k8s/platform-mesh-operator-components/resource.yaml"
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"componentName": "component1",
 		"repoName":      "repo1",
 		"referencePath": "\n        - ref1\n        - ref2",
@@ -983,10 +983,11 @@ func (s *KcpsetupTestSuite) Test_WorkspaceAuthConfigTemplate_FeatureDisableEmail
 
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			templateData := map[string]string{
+			templateData := map[string]any{
 				"baseDomainPort":                  "example.com:443",
 				"domainCADec":                     "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
 				"featureDisableEmailVerification": tc.featureToggleValue,
+				"welcomeAudiences":                []string{"test-audience"},
 			}
 
 			result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
@@ -1039,7 +1040,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration
 
 			kcpClientMock := new(mocks.Client)
 
-			templateData := map[string]string{
+			templateData := map[string]any{
 				"featureDisableContentConfigurations": tc.featureToggleValue,
 			}
 
@@ -1067,7 +1068,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConf
 
 	kcpClientMock := new(mocks.Client)
 
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"featureDisableContentConfigurations": "true",
 	}
 

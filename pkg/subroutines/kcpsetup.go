@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
@@ -146,14 +145,20 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	// Get CA bundle data
-	templateData, err := r.getCABundleInventory(ctx)
+	caBundles, err := r.getCABundleInventory(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to get CA bundle inventory")
 		return errors.Wrap(err, "Failed to get CA bundle inventory")
 	}
 
-	// Merge the api export hashes with the CA bundle data
-	maps.Copy(templateData, apiExportHashes)
+	// Build templateData as map[string]any to support both strings and arrays
+	templateData := make(map[string]any)
+	for k, v := range caBundles {
+		templateData[k] = v
+	}
+	for k, v := range apiExportHashes {
+		templateData[k] = v
+	}
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 	templateData["baseDomain"] = baseDomain
@@ -169,25 +174,38 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		return errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
 	}
 
-	templateData["welcomeAudience"] = "<placeholder>"
+	templateData["welcomeAudiences"] = []string{}
 
 	var ipc unstructured.Unstructured
 	ipc.SetGroupVersionKind(schema.GroupVersionKind{Group: "core.platform-mesh.io", Version: "v1alpha1", Kind: "IdentityProviderConfiguration"})
 
 	err = pmSystemClient.Get(ctx, types.NamespacedName{Name: "welcome"}, &ipc)
 	if err == nil {
-		clientId, found, err := unstructured.NestedString(ipc.Object, "status", "managedClients", "welcome", "clientId")
+		managedClients, found, err := unstructured.NestedMap(ipc.Object, "status", "managedClients")
 		if err != nil {
-			log.Err(err).Msg("Failed to get client ID from IdentityProviderConfiguration 'welcome'")
-			return errors.Wrap(err, "Failed to get client ID from IdentityProviderConfiguration 'welcome'")
-		}
-		if !found {
-			log.Info().Msg("Client ID not found in IdentityProviderConfiguration 'welcome'")
-			clientId = ""
+			log.Err(err).Msg("Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
+			return errors.Wrap(err, "Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
 		}
 
-		if clientId != "" {
-			templateData["welcomeAudience"] = clientId
+		if found && len(managedClients) > 0 {
+			var clientIds []string
+			for clientName, clientData := range managedClients {
+				clientMap, ok := clientData.(map[string]any)
+				if !ok {
+					log.Warn().Str("client", clientName).Msg("Invalid client data structure, skipping")
+					continue
+				}
+				clientId, ok := clientMap["clientId"].(string)
+				if !ok || clientId == "" {
+					log.Debug().Str("client", clientName).Msg("No clientId found for client, skipping")
+					continue
+				}
+				clientIds = append(clientIds, clientId)
+			}
+
+			if len(clientIds) > 0 {
+				templateData["welcomeAudiences"] = clientIds
+			}
 		}
 	}
 
