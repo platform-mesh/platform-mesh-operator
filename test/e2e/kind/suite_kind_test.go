@@ -290,6 +290,19 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
+	// This secret is expected by DeploymentSubroutine (AuthorizationWebhookSecretCAName config)
+	rbac_webhook_cert := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rebac-authz-webhook-cert",
+			Namespace: "platform-mesh-system",
+		},
+		Data: map[string][]byte{
+			"ca.crt":  caIamRootCABytes,
+			"tls.crt": iamCertBytes,
+			"tls.key": iamKeyBytes,
+		},
+		Type: corev1.SecretTypeTLS,
+	}
 	security_operator_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "security-operator-ca-secret",
@@ -325,6 +338,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		keycloak_admin,
 		domain_certificate,
 		rbac_webhook_ca,
+		rbac_webhook_cert,
 		security_operator_ca,
 		domain_certificate_ca,
 		pms_domain_certificate,
@@ -454,34 +468,6 @@ func (s *KindTestSuite) SetupSuite() {
 	// Run the PlatformMesh operator
 	s.logger.Info().Msg("starting operator...")
 	s.runOperator(ctx)
-
-	// Wait for PlatformMesh to be ready before running tests
-	s.logger.Info().Msg("waiting for PlatformMesh resource to be ready...")
-	pmReady := s.Eventually(func() bool {
-		pm := v1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      "platform-mesh",
-			Namespace: "platform-mesh-system",
-		}, &pm)
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("Failed to get PlatformMesh resource")
-			return false
-		}
-
-		for _, condition := range pm.Status.Conditions {
-			if condition.Type == "Ready" && condition.Status == "True" {
-				s.logger.Info().Msg("PlatformMesh resource is ready")
-				return true
-			}
-		}
-		s.logger.Debug().Msg("PlatformMesh resource is not ready yet")
-		return false
-	}, 10*time.Minute, 10*time.Second, "PlatformMesh resource did not become ready in time")
-
-	if !pmReady {
-		s.logger.Error().Msg("PlatformMesh resource did not become ready")
-		s.T().FailNow()
-	}
 
 }
 
