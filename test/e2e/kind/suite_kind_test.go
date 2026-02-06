@@ -455,6 +455,34 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("starting operator...")
 	s.runOperator(ctx)
 
+	// Wait for PlatformMesh to be ready before running tests
+	s.logger.Info().Msg("waiting for PlatformMesh resource to be ready...")
+	pmReady := s.Eventually(func() bool {
+		pm := v1alpha1.PlatformMesh{}
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name:      "platform-mesh",
+			Namespace: "platform-mesh-system",
+		}, &pm)
+		if err != nil {
+			s.logger.Warn().Err(err).Msg("Failed to get PlatformMesh resource")
+			return false
+		}
+
+		for _, condition := range pm.Status.Conditions {
+			if condition.Type == "Ready" && condition.Status == "True" {
+				s.logger.Info().Msg("PlatformMesh resource is ready")
+				return true
+			}
+		}
+		s.logger.Debug().Msg("PlatformMesh resource is not ready yet")
+		return false
+	}, 10*time.Minute, 10*time.Second, "PlatformMesh resource did not become ready in time")
+
+	if !pmReady {
+		s.logger.Error().Msg("PlatformMesh resource did not become ready")
+		s.T().FailNow()
+	}
+
 }
 
 func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {

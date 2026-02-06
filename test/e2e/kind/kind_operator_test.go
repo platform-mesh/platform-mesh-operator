@@ -21,26 +21,24 @@ func TestKindSuite(t *testing.T) {
 func (s *KindTestSuite) TestResourceReady() {
 	ctx := context.TODO()
 
-	s.Eventually(func() bool {
-		pm := corev1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      "platform-mesh",
-			Namespace: "platform-mesh-system",
-		}, &pm)
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("Failed to get Platform Mesh resource")
-			return false
-		}
+	// This test now just validates the resource is ready
+	// The wait-for-ready logic is handled in SetupSuite
+	pm := corev1alpha1.PlatformMesh{}
+	err := s.client.Get(ctx, client.ObjectKey{
+		Name:      "platform-mesh",
+		Namespace: "platform-mesh-system",
+	}, &pm)
+	s.Assert().NoError(err, "Failed to get Platform Mesh resource")
 
-		for _, condition := range pm.Status.Conditions {
-			if condition.Type == "Ready" && condition.Status == "True" {
-				s.logger.Info().Msg("PlatformMesh resource is ready")
-				return true
-			}
+	ready := false
+	for _, condition := range pm.Status.Conditions {
+		if condition.Type == "Ready" && condition.Status == "True" {
+			ready = true
+			break
 		}
-		return false
-	}, 25*time.Minute, 10*time.Second)
-
+	}
+	s.Assert().True(ready, "PlatformMesh resource should be ready (ensured by SetupSuite)")
+	s.logger.Info().Msg("TestResourceReady: PlatformMesh resource is ready")
 }
 
 func (s *KindTestSuite) TestExtraWorkspaces() {

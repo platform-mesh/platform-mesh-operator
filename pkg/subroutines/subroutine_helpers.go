@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -522,26 +521,6 @@ func ApplyDirStructure(
 	if err != nil {
 		return errors.Wrap(err, "Failed to list files in workspace")
 	}
-	// Apply manifest files in a deterministic, dependency-friendly order.
-	manifestPriority := func(file string) int {
-		if strings.HasPrefix(file, "workspace-authentication-configuration") {
-			return 0
-		}
-		if strings.HasPrefix(file, "workspace-type-") {
-			return 1
-		}
-		if strings.HasPrefix(file, "workspace-") {
-			return 2
-		}
-		return 3
-	}
-	sort.SliceStable(files, func(i, j int) bool {
-		pi, pj := manifestPriority(files[i]), manifestPriority(files[j])
-		if pi != pj {
-			return pi < pj
-		}
-		return files[i] < files[j]
-	})
 	var errApplyManifests error = nil
 	for _, file := range files {
 		log.Debug().Str("file", file).Msg("Applying file")
