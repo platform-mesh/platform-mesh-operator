@@ -290,19 +290,6 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
-	// This secret is expected by DeploymentSubroutine (AuthorizationWebhookSecretCAName config)
-	rbac_webhook_cert := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rebac-authz-webhook-cert",
-			Namespace: "platform-mesh-system",
-		},
-		Data: map[string][]byte{
-			"ca.crt":  caIamRootCABytes,
-			"tls.crt": iamCertBytes,
-			"tls.key": iamKeyBytes,
-		},
-		Type: corev1.SecretTypeTLS,
-	}
 	security_operator_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "security-operator-ca-secret",
