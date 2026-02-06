@@ -325,7 +325,6 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		keycloak_admin,
 		domain_certificate,
 		rbac_webhook_ca,
-		rbac_webhook_cert,
 		security_operator_ca,
 		domain_certificate_ca,
 		pms_domain_certificate,
