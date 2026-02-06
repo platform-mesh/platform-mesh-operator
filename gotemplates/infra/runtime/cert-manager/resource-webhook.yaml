@@ -13,7 +13,7 @@ metadata:
 spec:
   componentRef:
     name: {{ .ocm.component.name }}
-  interval: {{ .ocm.interval }}
+  interval: {{ default "5m" .ocm.interval }}
   ocmConfig:
     - apiVersion: delivery.ocm.software/v1alpha1
       kind: Repository
@@ -28,5 +28,5 @@ spec:
         - name: {{ .certManager.name }}
       resource:
         name: webhook-image
-  skipVerify: {{ .ocm.skipVerify }}
+  skipVerify: {{ default false .ocm.skipVerify }}
 {{- end }}

@@ -35,14 +35,28 @@ type OperatorConfig struct {
 			} `mapstructure:",squash"`
 		} `mapstructure:",squash"`
 	} `mapstructure:",squash"`
-	RemoteInfra struct {
-		Enabled    bool   `mapstructure:"remote-infra-enabled" default:"false"`
-		Kubeconfig string `mapstructure:"remote-infra-kubeconfig" default:"/operator/infra-kubeconfig"`
-	} `mapstructure:",squash"`
-	RemoteRuntime struct {
-		Enabled         bool   `mapstructure:"remote-runtime-enabled" default:"false"`
-		Kubeconfig      string `mapstructure:"remote-runtime-kubeconfig" default:"/operator/runtime-kubeconfig"`
-		InfraSecretName string `mapstructure:"remote-runtime-infra-secret-name" default:"infra-kubeconfig"`
-		InfraSecretKey  string `mapstructure:"remote-runtime-infra-secret-key" default:"kubeconfig"`
-	} `mapstructure:",squash"`
+	RemoteInfra   RemoteInfraConfig   `mapstructure:",squash"`
+	RemoteRuntime RemoteRuntimeConfig `mapstructure:",squash"`
+}
+
+// RemoteInfraConfig holds configuration for remote infrastructure cluster
+type RemoteInfraConfig struct {
+	Kubeconfig string `mapstructure:"remote-infra-kubeconfig"`
+}
+
+// IsEnabled returns true if remote infra is enabled (kubeconfig is set)
+func (c *RemoteInfraConfig) IsEnabled() bool {
+	return c.Kubeconfig != ""
+}
+
+// RemoteRuntimeConfig holds configuration for remote runtime cluster
+type RemoteRuntimeConfig struct {
+	Kubeconfig      string `mapstructure:"remote-runtime-kubeconfig"`
+	InfraSecretName string `mapstructure:"remote-runtime-infra-secret-name" default:"infra-kubeconfig"`
+	InfraSecretKey  string `mapstructure:"remote-runtime-infra-secret-key" default:"kubeconfig"`
+}
+
+// IsEnabled returns true if remote runtime is enabled (kubeconfig is set)
+func (c *RemoteRuntimeConfig) IsEnabled() bool {
+	return c.Kubeconfig != ""
 }

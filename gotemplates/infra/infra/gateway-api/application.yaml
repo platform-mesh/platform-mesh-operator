@@ -22,7 +22,11 @@ spec:
     {{- else }}
     repoURL: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
     {{- end }}
+    {{- if and .gatewayApi.kustomization .gatewayApi.kustomization.path }}
     path: {{ .gatewayApi.kustomization.path }}
+    {{- else }}
+    path: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
+    {{- end }}
     {{- if and .gatewayApi.targetRevision (ne .gatewayApi.targetRevision "") }}
     targetRevision: {{ .gatewayApi.targetRevision }}
     {{- else }}
@@ -45,7 +49,7 @@ spec:
     {{- if .gatewayApi.ignoreDifferences }}
     - RespectIgnoreDifferences=true
     {{- end }}
-    {{- if and .gatewayApi.kustomization.install.crds (eq .gatewayApi.kustomization.install.crds "Skip") }}
+    {{- if and .gatewayApi.kustomization .gatewayApi.kustomization.install .gatewayApi.kustomization.install.crds (eq .gatewayApi.kustomization.install.crds "Skip") }}
     - SkipDryRunOnMissingResource=true
     {{- end }}
     {{- end }}

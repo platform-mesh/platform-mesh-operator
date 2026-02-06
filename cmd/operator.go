@@ -87,7 +87,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	log.Info().Msg("Starting manager")
 
 	restCfg := ctrl.GetConfigOrDie()
-	if operatorCfg.RemoteRuntime.Enabled {
+	if operatorCfg.RemoteRuntime.IsEnabled() {
 		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
 		_, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
 	}
@@ -127,7 +127,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		setupLog.Error(err, "unable to create Infra client")
 		os.Exit(1)
 	}
-	if operatorCfg.RemoteInfra.Enabled {
+	if operatorCfg.RemoteInfra.IsEnabled() {
 		clientInfra, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
 		if err != nil {
 			setupLog.Error(err, "unable to create Infra client")
@@ -142,7 +142,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, clientInfra)
 	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
+		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

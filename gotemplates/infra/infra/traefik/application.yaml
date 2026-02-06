@@ -1,4 +1,4 @@
-{{- if .traefik.enabled }}
+{{- if and .traefik.enabled (eq .deploymentTechnology "argocd") }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

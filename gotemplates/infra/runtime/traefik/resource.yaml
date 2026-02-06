@@ -19,9 +19,9 @@ spec:
   resource:
     byReference:
       referencePath:
-      {{- range .ocm.referencePath }}
+      {{ range .ocm.referencePath }}
         - name: {{ .name }}
-      {{- end }}
+      {{ end }}
         - name: {{ .traefik.name }}
       resource:
         name: {{ .traefik.ocmResourceName }}

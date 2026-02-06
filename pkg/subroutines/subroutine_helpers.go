@@ -227,8 +227,8 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 	mergeOCMConfig(mapValues, inst)
 
-	mapValues["kubeConfigEnabled"] = config.RemoteRuntime.Enabled
-	if config.RemoteRuntime.Enabled {
+	mapValues["kubeConfigEnabled"] = config.RemoteRuntime.IsEnabled()
+	if config.RemoteRuntime.IsEnabled() {
 		mapValues["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
 		mapValues["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}

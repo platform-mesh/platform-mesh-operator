@@ -23,8 +23,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: {{ $service }}
-  {{- end }}
-  {{- if $config.gitRepo }}
+  {{- else if $config.gitRepo }}
   chart:
     spec:
       chart: {{ $config.path | default $service }}
@@ -32,8 +31,7 @@ spec:
       sourceRef:
         kind: GitRepository
         name: {{ $service }}
-  {{- end }}
-  {{- if not (or $config.helmRepo $config.gitRepo) }}
+  {{- else }}
   chartRef:
     kind: OCIRepository
     name: {{ $service }}

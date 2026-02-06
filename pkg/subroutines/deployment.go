@@ -351,8 +351,8 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 
 	// Add instance-specific fields
 	infraProfileMap["releaseNamespace"] = inst.Namespace
-	infraProfileMap["kubeConfigEnabled"] = config.RemoteRuntime.Enabled
-	if config.RemoteRuntime.Enabled {
+	infraProfileMap["kubeConfigEnabled"] = config.RemoteRuntime.IsEnabled()
+	if config.RemoteRuntime.IsEnabled() {
 		infraProfileMap["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
 		infraProfileMap["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}
@@ -511,8 +511,8 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 	// Add instance-specific fields
 	baseVars["releaseNamespace"] = inst.Namespace
 	baseVars["helmReleaseNamespace"] = inst.Namespace // Some templates use this
-	baseVars["kubeConfigEnabled"] = r.cfgOperator.RemoteRuntime.Enabled
-	if r.cfgOperator.RemoteRuntime.Enabled {
+	baseVars["kubeConfigEnabled"] = r.cfgOperator.RemoteRuntime.IsEnabled()
+	if r.cfgOperator.RemoteRuntime.IsEnabled() {
 		baseVars["kubeConfigSecretName"] = r.cfgOperator.RemoteRuntime.InfraSecretName
 		baseVars["kubeConfigSecretKey"] = r.cfgOperator.RemoteRuntime.InfraSecretKey
 	}
@@ -644,8 +644,8 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 	}
 
 	// Add kubeConfig fields for remote PlatformMesh support
-	data["kubeConfigEnabled"] = r.cfgOperator.RemoteRuntime.Enabled
-	if r.cfgOperator.RemoteRuntime.Enabled {
+	data["kubeConfigEnabled"] = r.cfgOperator.RemoteRuntime.IsEnabled()
+	if r.cfgOperator.RemoteRuntime.IsEnabled() {
 		data["kubeConfigSecretName"] = r.cfgOperator.RemoteRuntime.InfraSecretName
 		data["kubeConfigSecretKey"] = r.cfgOperator.RemoteRuntime.InfraSecretKey
 	}

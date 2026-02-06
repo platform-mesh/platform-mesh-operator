@@ -112,15 +112,13 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 	// Get deploymentTechnology from profile (defaults to fluxcd if not found)
 	deploymentTech := r.getDeploymentTechnologyFromProfile(ctx, inst.GetNamespace(), log)
-	deploymentTech = strings.ToLower(deploymentTech)
-	log.Info().Str("deploymentTechnology", deploymentTech).Str("resource", inst.GetName()).Str("namespace", inst.GetNamespace()).Msg("Checking deployment technology for Resource")
+	log.Debug().Str("deploymentTechnology", deploymentTech).Str("resource", inst.GetName()).Str("namespace", inst.GetNamespace()).Msg("Checking deployment technology for Resource")
 
 	repo := getMetadataValue(inst, "repo")
 	artifact := getMetadataValue(inst, "artifact")
 
 	if deploymentTech == "argocd" {
-		log.Info().Str("deploymentTechnology", deploymentTech).Str("resource", inst.GetName()).Msg("ArgoCD is enabled, updating ArgoCD Application")
-		// For ArgoCD, update the Application based on artifact type
+		// argocd logic
 		if artifact == "chart" {
 			log.Debug().Msg("Update ArgoCD Application targetRevision and repoURL for chart artifact")
 			result, err := r.updateArgoCDApplication(ctx, inst, log)
@@ -134,13 +132,12 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 				return result, err
 			}
 		} else {
-			log.Info().Str("artifact", artifact).Msg("ArgoCD is enabled but artifact is not 'chart' or 'image', skipping")
+			log.Warn().Str("artifact", artifact).Msg("ArgoCD is enabled but artifact is not 'chart' or 'image', skipping")
 		}
 		return ctrl.Result{}, nil
 	}
 
-	log.Info().Str("deploymentTechnology", deploymentTech).Str("resource", inst.GetName()).Msg("FluxCD is enabled, proceeding with FluxCD resource creation")
-
+	// fluxcd logic
 	if repo == "oci" && artifact == "chart" {
 		log.Debug().Msg("Create/Update OCI Repo")
 		result, err := r.updateOciRepo(ctx, inst, log)
@@ -740,7 +737,7 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Cont
 	// Use the shared helper function to get deploymentTechnology from profile (using runtime client)
 	deploymentTech := subroutines.GetDeploymentTechnologyFromProfile(ctx, r.clientRuntime, &pm)
 	log.Info().Str("deploymentTechnology", deploymentTech).Str("platformMesh", pm.Name).Str("configMap", pm.Name+"-profile").Msg("Read deploymentTechnology from profile")
-	return deploymentTech
+	return strings.ToLower(deploymentTech)
 }
 
 // getDeploymentTechnologyFromConfigMapDirect tries to read deploymentTechnology directly from profile ConfigMap
