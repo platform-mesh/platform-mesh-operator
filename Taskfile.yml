@@ -47,11 +47,6 @@ tasks:
     internal: true
     cmds:
       - test -s {{.LOCAL_BIN}}/ocm || (curl -o {{.LOCAL_BIN}}/ocm.tar.gz -sSL https://github.com/open-component-model/ocm/releases/download/v{{ .OCM_VERSION }}/ocm-{{ .OCM_VERSION }}-{{ .GOOS }}-{{ .GOARCH }}.tar.gz && tar -xzf {{ .LOCAL_BIN }}/ocm.tar.gz -C {{ .LOCAL_BIN }} && rm {{ .LOCAL_BIN }}/ocm.tar.gz && chmod +x {{.LOCAL_BIN}}/ocm && chmod 755 {{.LOCAL_BIN}}/ocm)
-  setup:mkcert:
-    internal: true
-    cmds:
-      - test -s {{.LOCAL_BIN}}/mkcert || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install filippo.io/mkcert@latest
-      - export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
   setup:kind:
     internal: true
     cmds:
@@ -65,7 +60,7 @@ tasks:
       - "{{.LOCAL_BIN}}/mockery"
   
   kindtest:
-    deps: [setup:mkcert, setup:kind]
+    deps: [setup:kind]
     env:
       GO111MODULE: on
     cmds:
@@ -75,7 +70,7 @@ tasks:
 
 
   test:
-    deps: [mockery, setup:kind, setup:mkcert]
+    deps: [mockery, setup:kind]
     env:
       GO111MODULE: on
     cmds:

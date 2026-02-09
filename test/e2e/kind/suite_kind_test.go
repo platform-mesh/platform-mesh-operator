@@ -195,51 +195,16 @@ func (s *KindTestSuite) createKindCluster() error {
 	return nil
 }
 
-func (s *KindTestSuite) createCerts() ([]byte, error) {
-	// mkcert
-	_, err := runCommand("mkdir", "-p", "certs")
-	s.Require().NoError(err, "Error creating certs directory")
-	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
-		return nil, err
-	}
-	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to get mkcert CAROOT")
-		return nil, err
-	}
-
-	// generate webhook certificates
-	if _, err := runCommand("scripts/gen-certs.sh"); err != nil {
-		return nil, err
-	}
-
-	return dirRootPath, nil
-}
-
-func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) error {
-	carootPath := fmt.Sprintf("%s/rootCA.pem", strings.TrimSuffix(string(dirRootPath), "\n"))
-	var caRootBytes []byte
-	var err error
-	if caRootBytes, err = os.ReadFile(carootPath); err != nil {
-		return err
-	}
-	certBytes, err := os.ReadFile("certs/cert.crt")
+func (s *KindTestSuite) createSecrets(ctx context.Context) error {
+	caBytes, err := os.ReadFile("webhook-config/ca.crt")
 	if err != nil {
 		return err
 	}
-	keyBytes, err := os.ReadFile("certs/cert.key")
+	certBytes, err := os.ReadFile("webhook-config/tls.crt")
 	if err != nil {
 		return err
 	}
-	caIamRootCABytes, err := os.ReadFile("webhook-config/ca.crt")
-	if err != nil {
-		return err
-	}
-	iamCertBytes, err := os.ReadFile("webhook-config/tls.crt")
-	if err != nil {
-		return err
-	}
-	iamKeyBytes, err := os.ReadFile("webhook-config/tls.key")
+	keyBytes, err := os.ReadFile("webhook-config/tls.key")
 	if err != nil {
 		return err
 	}
@@ -260,7 +225,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 			Namespace: "istio-system",
 		},
 		Data: map[string][]byte{
-			"ca.crt":  caRootBytes,
+			"ca.crt":  caBytes,
 			"tls.crt": certBytes,
 			"tls.key": keyBytes,
 		},
@@ -272,7 +237,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
-			"ca.crt":  caRootBytes,
+			"ca.crt":  caBytes,
 			"tls.crt": certBytes,
 			"tls.key": keyBytes,
 		},
@@ -284,9 +249,9 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
-			"ca.crt":  caIamRootCABytes,
-			"tls.crt": iamCertBytes,
-			"tls.key": iamKeyBytes,
+			"ca.crt":  caBytes,
+			"tls.crt": certBytes,
+			"tls.key": keyBytes,
 		},
 		Type: corev1.SecretTypeTLS,
 	}
@@ -296,7 +261,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
-			"ca.crt": caRootBytes,
+			"ca.crt": caBytes,
 		},
 		Type: corev1.SecretTypeOpaque,
 	}
@@ -306,7 +271,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 			Namespace: "platform-mesh-system",
 		},
 		Data: map[string][]byte{
-			"tls.crt": caRootBytes,
+			"tls.crt": caBytes,
 			"tls.key": keyBytes,
 		},
 		Type: corev1.SecretTypeTLS,
@@ -395,16 +360,16 @@ func (s *KindTestSuite) SetupSuite() {
 		s.logger.Error().Err(err).Msg("Failed to install CRDs")
 		s.T().FailNow()
 	}
-	var dirRootPath []byte
-	if dirRootPath, err = s.createCerts(); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to create certificates")
+	// Generate webhook certificates (single source of truth for CA + certs)
+	if _, err = runCommand("scripts/gen-certs.sh"); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to generate webhook certificates")
 		s.T().FailNow()
 	}
 	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/namespaces.yaml", s.client, make(map[string]string)); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply namespaces.yaml manifest")
 		s.T().FailNow()
 	}
-	if err = s.createSecrets(ctx, dirRootPath); err != nil {
+	if err = s.createSecrets(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create secrets")
 		s.T().FailNow()
 	}
