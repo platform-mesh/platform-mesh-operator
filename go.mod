@@ -22,7 +22,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/google/go-cmp v0.7.0
 	github.com/kcp-dev/kcp/sdk v0.28.3
-	github.com/mandelsoft/goutils v0.0.0-20251225170327-b32fc0dd2706
+	github.com/mandelsoft/goutils v0.0.0-20260209132453-cd86279dc63b
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/otiai10/copy v1.14.1
