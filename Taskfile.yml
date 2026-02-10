@@ -75,7 +75,7 @@ tasks:
 
 
   test:
-    deps: [mockery, setup:kind]
+    deps: [mockery, setup:kind, setup:mkcert]
     env:
       GO111MODULE: on
     cmds:
