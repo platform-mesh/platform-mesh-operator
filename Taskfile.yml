@@ -65,7 +65,7 @@ tasks:
       - "{{.LOCAL_BIN}}/mockery"
 
   kindtest:
-    deps: [setup:kind]
+    deps: [setup:mkcert, setup:kind]
     env:
       GO111MODULE: on
     cmds:
