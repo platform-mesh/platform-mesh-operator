@@ -421,25 +421,16 @@ func WaitForWorkspace(
 	}
 
 	err = wait.PollUntilContextTimeout(
-		ctx, time.Second, 2*time.Minute, true,
+		ctx, time.Second, time.Second*15, true,
 		func(ctx context.Context) (bool, error) {
 			ws := &kcptenancyv1alpha.Workspace{}
 			if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
-				log.Warn().Err(err).Str("workspace", name).Msg("workspace get failed (not ready yet)")
 				return false, nil //nolint:nilerr
 			}
-
 			ready := ws.Status.Phase == "Ready"
-			log.Info().
-				Str("workspace", name).
-				Str("phase", string(ws.Status.Phase)).
-				Interface("conditions", ws.Status.Conditions).
-				Bool("ready", ready).
-				Msg("waiting for workspace to be ready")
-
+			log.Info().Str("workspace", name).Bool("ready", ready).Msg("waiting for workspace to be ready")
 			return ready, nil
-		},
-	)
+		})
 
 	if err != nil {
 		return fmt.Errorf("workspace %s did not become ready: %w", name, err)

@@ -13,7 +13,7 @@ openssl req -newkey rsa:2048 -nodes -keyout webhook-config/tls.key \
   # -extfile <(printf "subjectAltName=DNS:host.containers.internal") \
 openssl x509 -req \
   -days 365 \
-  -extfile <(printf "subjectAltName=DNS:security-operator-webhook.platform-mesh-system.svc,DNS:security-operator-webhook.platform-mesh-system.svc.cluster.local,DNS:account-operator-webhook.platform-mesh-system.svc,DNS:account-operator-webhook.platform-mesh-system.svc.cluster.local") \
+  -extfile <(printf "subjectAltName=IP:10.96.86.219") \
   -in webhook-config/tls.csr \
   -CA webhook-config/ca.crt -CAkey webhook-config/ca.key -CAcreateserial \
   -out webhook-config/tls.crt
