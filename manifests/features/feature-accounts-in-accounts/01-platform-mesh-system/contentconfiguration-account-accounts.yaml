@@ -35,6 +35,7 @@ spec:
                                   "keepSelectedForChildren": false,
                                   "defineEntity": {
                                       "id": "core_platform-mesh_io_account",
+                                      "type": "account",
                                       "contextKey": "core_platform-mesh_io_accountId",
                                       "dynamicFetchId": "core_platform-mesh_io_account",
                                       "additionalContextKeys": ["accountPath"],
