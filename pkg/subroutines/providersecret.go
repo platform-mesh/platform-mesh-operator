@@ -178,6 +178,67 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
 		}
 
+		// Use scoped kubeconfig when useAdminKubeconfig is false and FrontProxy is set. Also support legacy:
+		// extension-manager-operator with FrontProxyName set and no useAdminKubeconfig uses scoped.
+		useScoped := !ptr.Deref(pc.UseAdminKubeconfig, false) && operatorCfg.KCP.FrontProxyName != ""
+		legacyScoped := pc.Secret == "extension-manager-operator-kubeconfig" && operatorCfg.KCP.FrontProxyName != "" && pc.UseAdminKubeconfig == nil
+		if (useScoped || legacyScoped) && (ptr.Deref(pc.EndpointSliceName, "") != "" || pc.APIExportName != "") {
+			apiExportName := pc.APIExportName
+			if apiExportName == "" {
+				apiExportName = *pc.EndpointSliceName
+			}
+			apiExportPath := pc.APIExportPath
+			if apiExportPath == "" {
+				apiExportPath = pc.Path
+			}
+			hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+			if pc.External {
+				hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
+			}
+			hostPath := pc.Path
+			if apiExportPath != "" {
+				hostPath = apiExportPath
+			}
+			hostURL, err := url.JoinPath(hostPort, "clusters", hostPath)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to build host URL for scoped kubeconfig")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
+			namespace := "platform-mesh-system"
+			if ptr.Deref(pc.Namespace, "") != "" {
+				namespace = *pc.Namespace
+			}
+			caData := cfg.TLSClientConfig.CAData
+			if caData == nil {
+				caData = []byte{}
+			}
+			writeSecret := func(ctx context.Context, name, ns string, kubeconfigBytes []byte) error {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+				}
+				_, createErr := controllerutil.CreateOrUpdate(ctx, r.client, secret, func() error {
+					secret.Data = map[string][]byte{"kubeconfig": kubeconfigBytes}
+					return nil
+				})
+				return createErr
+			}
+			err = HandleProviderConnectionScoped(ctx, cfg, ProviderConnectionSpec{
+				Path:          pc.Path,
+				Secret:        pc.Secret,
+				APIExportName: apiExportName,
+				APIExportPath: apiExportPath,
+			}, ScopedKubeconfigConfig{}, hostURL, caData,
+				func() string { return namespace },
+				writeSecret,
+			)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (scoped kubeconfig)")
+			return ctrl.Result{}, nil
+		}
+
 		endpointURL := slice.Status.APIExportEndpoints[0].URL
 		address, err = url.Parse(endpointURL)
 		if err != nil {
