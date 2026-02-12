@@ -255,7 +255,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
 		SecretData: "tls.crt",
 		SecretRef: corev1alpha1.SecretReference{
-			Name:      "domain-certificate-ca",
+			Name:      r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretName,
 			Namespace: "platform-mesh-system",
 		},
 	})
