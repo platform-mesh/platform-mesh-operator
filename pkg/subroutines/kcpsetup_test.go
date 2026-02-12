@@ -35,7 +35,8 @@ var ManifestStructureTest = "../../manifests/kcp"
 
 func defaultTestOperatorConfig() *config.OperatorConfig {
 	cfg := &config.OperatorConfig{}
-	cfg.Subroutines.KcpSetup.DomainCertificateCASecretName = "domain-certificate-ca"
+	cfg.Subroutines.KcpSetup.DomainCertificateCASecretName = "domain-certificate"
+	cfg.Subroutines.KcpSetup.DomainCertificateCASecretKey = "tls.crt"
 	return cfg
 }
 
@@ -157,7 +158,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      "domain-certificate-ca",
+			Name:      "domain-certificate",
 			Namespace: "platform-mesh-system",
 		}, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
@@ -217,12 +218,14 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	s.clientMock.AssertExpectations(s.T())
 }
 
-func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretName() {
+func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
 	customSecretName := "my-custom-ca-secret"
+	customSecretKey := "ca.pem"
 	customCfg := defaultTestOperatorConfig()
 	customCfg.Subroutines.KcpSetup.DomainCertificateCASecretName = customSecretName
+	customCfg.Subroutines.KcpSetup.DomainCertificateCASecretKey = customSecretKey
 
 	clientMock := new(mocks.Client)
 	s.testObj = subroutines.NewKcpsetupSubroutine(clientMock, s.helperMock, customCfg, ManifestStructureTest, "")
@@ -255,7 +258,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretName() {
 			return nil
 		}).Once()
 
-	// Mock the custom-named domain CA secret lookup
+	// Mock the custom-named domain CA secret lookup with custom key
 	clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
 			Name:      customSecretName,
@@ -264,7 +267,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretName() {
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"tls.crt": []byte("custom-tls-crt"),
+				customSecretKey: []byte("custom-ca-data"),
 			}
 			return nil
 		}).Once()
@@ -274,7 +277,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretName() {
 	s.Assert().NotNil(inventory)
 	s.Assert().Contains(inventory, "domainCA")
 	s.Assert().Contains(inventory, "domainCADec")
-	s.Assert().Equal("custom-tls-crt", inventory["domainCADec"])
+	s.Assert().Equal("custom-ca-data", inventory["domainCADec"])
 
 	clientMock.AssertExpectations(s.T())
 }
@@ -409,7 +412,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		})
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      "domain-certificate-ca",
+			Name:      "domain-certificate",
 			Namespace: "platform-mesh-system",
 		}, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
@@ -672,7 +675,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 		// Mock the mutating webhook secret lookup (called once due to caching)
 	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
-		Name:      "domain-certificate-ca",
+		Name:      "domain-certificate",
 		Namespace: webhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
 		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
