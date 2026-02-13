@@ -79,14 +79,8 @@ spec:
                                 "defineEntity": {
                                     "id": "namespace",
                                     "contextKey": "namespaceId",
-                                    "graphqlEntity": {
-                                        "version": "v1",
-                                        "kind": "Namespace",
-                                        "query": "{ metadata { name deletionTimestamp} }"
-                                    }
                                 },
                                 "context": {
-                                    "accountId": ":accountId",
                                     "namespaceId": ":namespaceId",
                                     "resourceId": ":namespaceId"
                                 }

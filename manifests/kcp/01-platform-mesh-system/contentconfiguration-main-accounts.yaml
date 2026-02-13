@@ -110,12 +110,6 @@ spec:
                                       "contextKey": "core_platform-mesh_io_accountId",
                                       "dynamicFetchId": "core_platform-mesh_io_account",
                                       "additionalContextKeys": ["accountPath"],
-                                      "graphqlEntity": {
-                                          "group": "core.platform-mesh.io",
-                                          "kind": "Account",
-                                          "query": "{ metadata { name annotations deletionTimestamp } }",
-                                          "version": "v1alpha1"
-                                      }
                                   },
                                   "context": {
                                       "accountId": ":core_platform-mesh_io_accountId:1",
