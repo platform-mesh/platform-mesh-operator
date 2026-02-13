@@ -7,6 +7,8 @@ spec:
     with:
     - name: security
       path: root
+    - name: search
+      path: root
   defaultAPIBindings:
     - export: core.platform-mesh.io
       path: root:platform-mesh-system
