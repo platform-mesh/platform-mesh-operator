@@ -78,7 +78,7 @@ spec:
                                 "keepSelectedForChildren": false,
                                 "defineEntity": {
                                     "id": "namespace",
-                                    "contextKey": "namespaceId",
+                                    "contextKey": "namespaceId"
                                 },
                                 "context": {
                                     "namespaceId": ":namespaceId",

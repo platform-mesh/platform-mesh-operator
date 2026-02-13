@@ -8,7 +8,6 @@ spec:
     clientName: welcome
     redirectUris:
     - https://{{ .baseDomainPort }}/callback*
-    - http://localhost:4300/callback*
     secretRef:
       name: portal-client-secret-welcome
       namespace: default
