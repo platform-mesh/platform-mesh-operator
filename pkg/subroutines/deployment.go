@@ -454,7 +454,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
@@ -470,7 +470,7 @@ func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.C
 	}
 	obj.Object["spec"].(map[string]interface{})["values"] = values
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}

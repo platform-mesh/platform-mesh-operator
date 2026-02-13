@@ -64,7 +64,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 
 	// mocks
 	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).Return(nil).Twice()
-	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			// Simulate a successful patch operation
 			hr := obj.(*unstructured.Unstructured)
@@ -118,7 +118,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	templateVars, err = subroutines.TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
-	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			// Simulate a successful patch operation
 			hr := obj.(*unstructured.Unstructured)
