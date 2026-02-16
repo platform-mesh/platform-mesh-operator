@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v260212-65a62b6.invites.core.platform-mesh.io
+  name: v260213-fbdf981.invites.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
@@ -38,7 +38,7 @@ spec:
           properties:
             email:
               format: email
-              pattern: ^[^@[:space:]]+@[^@[:space:]]+$
+              pattern: '[a-zA-Z0-9!#$%&''*+/=?^_`{|}~.-]+@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*'
               type: string
           required:
           - email
