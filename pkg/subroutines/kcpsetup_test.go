@@ -84,6 +84,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
 		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
 		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
+		"registrationAllowed":                    true,
 	}
 
 	// Expect multiple Patch calls for applying manifests (flexible count)
