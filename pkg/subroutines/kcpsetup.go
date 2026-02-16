@@ -4,17 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"maps"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -146,14 +142,20 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	// Get CA bundle data
-	templateData, err := r.getCABundleInventory(ctx)
+	caBundles, err := r.getCABundleInventory(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to get CA bundle inventory")
 		return errors.Wrap(err, "Failed to get CA bundle inventory")
 	}
 
-	// Merge the api export hashes with the CA bundle data
-	maps.Copy(templateData, apiExportHashes)
+	// Build templateData as map[string]any to support both strings and arrays
+	templateData := make(map[string]any)
+	for k, v := range caBundles {
+		templateData[k] = v
+	}
+	for k, v := range apiExportHashes {
+		templateData[k] = v
+	}
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 	templateData["baseDomain"] = baseDomain
@@ -169,25 +171,38 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		return errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
 	}
 
-	templateData["welcomeAudience"] = "<placeholder>"
+	templateData["welcomeAudiences"] = []string{}
 
 	var ipc unstructured.Unstructured
 	ipc.SetGroupVersionKind(schema.GroupVersionKind{Group: "core.platform-mesh.io", Version: "v1alpha1", Kind: "IdentityProviderConfiguration"})
 
 	err = pmSystemClient.Get(ctx, types.NamespacedName{Name: "welcome"}, &ipc)
 	if err == nil {
-		clientId, found, err := unstructured.NestedString(ipc.Object, "status", "managedClients", "welcome", "clientId")
+		managedClients, found, err := unstructured.NestedMap(ipc.Object, "status", "managedClients")
 		if err != nil {
-			log.Err(err).Msg("Failed to get client ID from IdentityProviderConfiguration 'welcome'")
-			return errors.Wrap(err, "Failed to get client ID from IdentityProviderConfiguration 'welcome'")
-		}
-		if !found {
-			log.Info().Msg("Client ID not found in IdentityProviderConfiguration 'welcome'")
-			clientId = ""
+			log.Err(err).Msg("Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
+			return errors.Wrap(err, "Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
 		}
 
-		if clientId != "" {
-			templateData["welcomeAudience"] = clientId
+		if found && len(managedClients) > 0 {
+			var clientIds []string
+			for clientName, clientData := range managedClients {
+				clientMap, ok := clientData.(map[string]any)
+				if !ok {
+					log.Warn().Str("client", clientName).Msg("Invalid client data structure, skipping")
+					continue
+				}
+				clientId, ok := clientMap["clientId"].(string)
+				if !ok || clientId == "" {
+					log.Debug().Str("client", clientName).Msg("No clientId found for client, skipping")
+					continue
+				}
+				clientIds = append(clientIds, clientId)
+			}
+
+			if len(clientIds) > 0 {
+				templateData["welcomeAudiences"] = clientIds
+			}
 		}
 	}
 
@@ -355,7 +370,7 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 		if err != nil {
 			return errors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}
@@ -363,66 +378,6 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 
 	}
 	return nil
-}
-
-func needsPatch(existingObj, obj unstructured.Unstructured, log *logger.Logger) bool {
-	sanitize := func(u *unstructured.Unstructured, expected *unstructured.Unstructured) {
-		if u == nil {
-			return
-		}
-		// Remove system-generated fields
-		meta, ok := u.Object["metadata"].(map[string]interface{})
-		if ok {
-			delete(meta, "resourceVersion")
-			delete(meta, "generation")
-			delete(meta, "creationTimestamp")
-			delete(meta, "uid")
-			delete(meta, "managedFields")
-			delete(meta, "selfLink")
-			delete(meta, "finalizers")
-			delete(meta, "ownerReferences")
-
-			// Remove extra labels/annotations not present in expected
-			if expected != nil {
-				expectedMeta, ok2 := expected.Object["metadata"].(map[string]interface{})
-				if ok2 {
-					for _, field := range []string{"labels", "annotations"} {
-						existingField, _ := meta[field].(map[string]interface{})
-						expectedField, _ := expectedMeta[field].(map[string]interface{})
-						if existingField != nil && expectedField != nil {
-							for k := range existingField {
-								if _, found := expectedField[k]; !found {
-									delete(existingField, k)
-								}
-							}
-							meta[field] = existingField
-						}
-						if existingField != nil && expectedField == nil {
-							// Remove all if expected has none
-							delete(meta, field)
-						}
-					}
-				}
-			}
-			u.Object["metadata"] = meta
-		}
-		delete(u.Object, "status")
-	}
-
-	existingCopy := existingObj.DeepCopy()
-	desiredCopy := obj.DeepCopy()
-	sanitize(existingCopy, desiredCopy)
-	sanitize(desiredCopy, desiredCopy)
-
-	if !equality.Semantic.DeepEqual(existingCopy.Object, desiredCopy.Object) {
-		// Log the diff if there is a difference and debug is enabled
-		if log.GetLevel() <= zerolog.DebugLevel {
-			diff := cmp.Diff(desiredCopy.Object, existingCopy.Object)
-			log.Debug().Msgf("Resource difference detected:\n%s", diff)
-		}
-		return true
-	}
-	return false
 }
 
 func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.PlatformMesh) []corev1alpha1.DefaultAPIBindingConfiguration {

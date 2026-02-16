@@ -3,7 +3,6 @@ package subroutines
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -161,9 +160,9 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 		return nil
 	}
 
-	if slices.Contains(audiences, "<placeholder>") {
-		log.Info().Msg("WorkspaceAuthenticationConfiguration audience is still set to <placeholder>, triggering reconcile")
-		return errors.New("WorkspaceAuthenticationConfiguration audience is still <placeholder>")
+	if len(audiences) == 0 {
+		log.Info().Msg("WorkspaceAuthenticationConfiguration audiences is not yet set, triggering reconcile")
+		return errors.New("WorkspaceAuthenticationConfiguration audience is not yet set")
 	}
 
 	return nil

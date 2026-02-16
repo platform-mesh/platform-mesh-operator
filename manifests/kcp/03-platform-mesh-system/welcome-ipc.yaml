@@ -11,3 +11,11 @@ spec:
     secretRef:
       name: portal-client-secret-welcome
       namespace: default
+  - clientType: public
+    clientName: welcome-kubectl
+    redirectUris:
+      - http://localhost:8000/*
+      - http://localhost:18000/*
+    secretRef:
+      name: welcome-kubectl-client-secret
+      namespace: default

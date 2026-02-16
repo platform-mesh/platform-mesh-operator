@@ -75,7 +75,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 	// apply infra resource
 	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-infra-components/resource.yaml")
-	tplValues := map[string]string{
+	tplValues := map[string]any{
 		"componentName": inst.Spec.OCM.Component.Name,
 		"repoName":      inst.Spec.OCM.Repo.Name,
 		"referencePath": func() string {
@@ -258,7 +258,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	}
 
 	// Continue to create the secret
-	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-auth-webhook/kcp-webhook-secret.yaml", r.workspaceDirectory), map[string]string{}, log)
+	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-auth-webhook/kcp-webhook-secret.yaml", r.workspaceDirectory), map[string]any{}, log)
 	if err != nil {
 		return errors.NewOperatorError(err, true, true)
 	}
@@ -424,14 +424,14 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
 	// Create Issuer
 	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
-	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.client, map[string]string{})
+	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.client, map[string]any{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
 
 	// Create Certificate
 	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
-	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.client, map[string]string{})
+	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.client, map[string]any{})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
 	}
@@ -446,7 +446,7 @@ func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Con
 	return r.udpateKcpWebhookSecret(ctx, inst)
 }
 
-func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]string) error {
+func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]any) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
 	obj, err := unstructuredFromFile(path, templateData, log)
@@ -454,7 +454,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
@@ -464,13 +464,13 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 func applyReleaseWithValues(ctx context.Context, path string, k8sClient client.Client, values apiextensionsv1.JSON) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
-	obj, err := unstructuredFromFile(path, map[string]string{}, log)
+	obj, err := unstructuredFromFile(path, map[string]any{}, log)
 	if err != nil {
 		return errors.Wrap(err, "Failed to get unstructuredFromFile")
 	}
 	obj.Object["spec"].(map[string]interface{})["values"] = values
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
