@@ -3,6 +3,7 @@ kind: IdentityProviderConfiguration
 metadata:
   name: welcome
 spec:
+  registrationAllowed: {{ .registrationAllowed }}
   clients:
   - clientType: confidential
     clientName: welcome

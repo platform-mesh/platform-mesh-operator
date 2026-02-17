@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v260123-dbda1fc.identityproviderconfigurations.core.platform-mesh.io
+  name: v260217-2c67392.identityproviderconfigurations.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
@@ -76,6 +76,8 @@ spec:
                 - redirectUris
                 type: object
               type: array
+            registrationAllowed:
+              type: boolean
           required:
           - clients
           type: object
