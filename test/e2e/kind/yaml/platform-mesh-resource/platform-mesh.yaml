@@ -14,6 +14,12 @@ spec:
     referencePath: []
   featureToggles:
    - name: "feature-enable-getting-started"
+  kcp:
+    # Old-style connection for extension-manager-operator (0.2.0 component expects secret with virtual workspace URL).
+    extraProviderConnections:
+      - endpointSliceName: core.platform-mesh.io
+        path: root:platform-mesh-system
+        secret: extension-manager-operator-kubeconfig
   values:
     keycloak:
       enabled: true
