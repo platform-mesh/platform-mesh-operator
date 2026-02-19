@@ -22,7 +22,9 @@ type OperatorConfig struct {
 			EnableIstio                      bool   `mapstructure:"subroutines-deployment-enable-istio" default:"true"`
 		} `mapstructure:",squash"`
 		KcpSetup struct {
-			Enabled bool `mapstructure:"subroutines-kcp-setup-enabled" default:"true"`
+			Enabled                       bool   `mapstructure:"subroutines-kcp-setup-enabled" default:"true"`
+			DomainCertificateCASecretName string `mapstructure:"domain-certificate-ca-secret-name" default:"domain-certificate"`
+			DomainCertificateCASecretKey  string `mapstructure:"domain-certificate-ca-secret-key" default:"tls.crt"`
 		} `mapstructure:",squash"`
 		ProviderSecret struct {
 			Enabled bool `mapstructure:"subroutines-provider-secret-enabled" default:"true"`
