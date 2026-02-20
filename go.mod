@@ -25,7 +25,7 @@ require (
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.10.0
+	github.com/platform-mesh/golang-commons v0.11.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -145,6 +145,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	sigs.k8s.io/gateway-api v1.4.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
+	sigs.k8s.io/multicluster-runtime v0.20.4-alpha.7 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2-0.20260122202528-d9cc6641c482 // indirect
 )
