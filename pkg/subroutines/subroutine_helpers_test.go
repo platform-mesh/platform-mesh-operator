@@ -325,6 +325,6 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 		KCP: config.OperatorConfig{}.KCP,
 	}
 	ctx := context.WithValue(context.TODO(), keys.ConfigCtxKey, operatorCfg)
-	err = subroutines.ApplyManifestFromFile(ctx, "../../manifests/kcp/03-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = subroutines.ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 }
