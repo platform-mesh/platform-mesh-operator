@@ -44,6 +44,7 @@ type DeploymentSubroutine struct {
 	gotemplatesInfraDir      string
 	gotemplatesComponentsDir string
 	cfgOperator              *config.OperatorConfig
+	imageVersionStore        *ImageVersionStore
 }
 
 const (
@@ -68,6 +69,12 @@ func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Cli
 	}
 
 	return sub
+}
+
+// SetImageVersionStore sets the shared ImageVersionStore used to merge
+// Resource-managed image versions into ArgoCD Application helm values.
+func (r *DeploymentSubroutine) SetImageVersionStore(store *ImageVersionStore) {
+	r.imageVersionStore = store
 }
 
 // getProfileConfigMap ensures the profile ConfigMap exists, creating a default one if needed.
@@ -619,7 +626,15 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 		}
 
 		// Render any template syntax in specServices before merging
-		renderedServices, err := renderTemplatesInValue(specServices, templateData)
+		// Wrap templateData in Values key to support {{ .Values.* }} syntax in spec.Values
+		wrappedTemplateData := map[string]interface{}{
+			"Values": templateData,
+		}
+		// Also add top-level keys for backward compatibility with {{ .baseDomain }} syntax
+		for k, v := range templateData {
+			wrappedTemplateData[k] = v
+		}
+		renderedServices, err := renderTemplatesInValue(specServices, wrappedTemplateData)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to render templates in PlatformMesh.spec.Values services")
 		}
@@ -915,6 +930,65 @@ func renderTemplatesInValue(v interface{}, templateData map[string]interface{}) 
 	}
 }
 
+// mergeImageVersionsIntoHelmValues reads the ImageVersionStore for the given Application and
+// merges any Resource-managed image versions into the object's spec.source.helm.values YAML string.
+func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmValues(obj map[string]interface{}, appName, namespace string, log *logger.Logger) {
+	if r.imageVersionStore == nil {
+		return
+	}
+	versions := r.imageVersionStore.Get(namespace, appName)
+	if len(versions) == 0 {
+		return
+	}
+
+	spec, ok := obj["spec"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	source, ok := spec["source"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	helm, ok := source["helm"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	valuesStr, _ := helm["values"].(string)
+
+	updatedYAML, err := SetHelmValues(valuesStr, versions)
+	if err != nil {
+		log.Warn().Err(err).Str("application", appName).Msg("Failed to merge image versions into helm values")
+		return
+	}
+
+	for _, iv := range versions {
+		log.Debug().Str("application", appName).Str("path", iv.Path).Str("version", iv.Version).Msg("Merged Resource image version into helm values")
+	}
+	helm["values"] = updatedYAML
+}
+
+// mergeImageVersionsIntoHelmReleaseValues reads the ImageVersionStore for the given HelmRelease and
+// merges any Resource-managed image versions into the object's spec.values structured field.
+func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmReleaseValues(obj *unstructured.Unstructured, releaseName, namespace string, log *logger.Logger) {
+	if r.imageVersionStore == nil {
+		return
+	}
+	versions := r.imageVersionStore.Get(namespace, releaseName)
+	if len(versions) == 0 {
+		return
+	}
+
+	for _, iv := range versions {
+		pathElems := SplitPath(iv.Path)
+		fullPath := append([]string{"spec", "values"}, pathElems...)
+		if err := unstructured.SetNestedField(obj.Object, iv.Version, fullPath...); err != nil {
+			log.Warn().Err(err).Str("helmRelease", releaseName).Str("path", iv.Path).Msg("Failed to merge image version into HelmRelease spec.values")
+			continue
+		}
+		log.Debug().Str("helmRelease", releaseName).Str("path", iv.Path).Str("version", iv.Version).Msg("Merged Resource image version into HelmRelease spec.values")
+	}
+}
+
 // renderAndApplyInfraTemplates renders all templates in gotemplates/infra/infra and applies them.
 func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
@@ -1009,6 +1083,14 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 					}
 				}
 			}
+
+			// Merge Resource-managed image versions into helm values
+			r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
+		}
+
+		// For FluxCD HelmReleases, merge Resource-managed image versions into spec.values
+		if obj.GetKind() == "HelmRelease" && obj.GetAPIVersion() == "helm.toolkit.fluxcd.io/v2" {
+			r.mergeImageVersionsIntoHelmReleaseValues(obj, obj.GetName(), obj.GetNamespace(), log)
 		}
 
 		// Apply the rendered manifest
@@ -1159,7 +1241,15 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 					}
 					// Update the unstructured object with the modified map
 					obj = unstructured.Unstructured{Object: objMap}
+
+					// Merge Resource-managed image versions into helm values
+					r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
 				}
+			}
+
+			// For FluxCD HelmReleases, merge Resource-managed image versions into spec.values
+			if obj.GetKind() == "HelmRelease" && obj.GetAPIVersion() == "helm.toolkit.fluxcd.io/v2" {
+				r.mergeImageVersionsIntoHelmReleaseValues(&obj, obj.GetName(), obj.GetNamespace(), log)
 			}
 
 			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client

@@ -191,12 +191,12 @@ type KcpWorkspace struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",name="DEPLOYMENT",type=string,description="Deployment status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",name="KCP",type=string,description="KCP status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",name="SECRET",type=string,description="Provider Secret status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='FeatureToggleSubroutine_Ready')].status",name="FEATURES",type=string,description="Feature toggles' status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",name="WAIT",type=string,description="Wait status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='Ready')].status",name="Ready",type=string,description="Shows if resource is ready",priority=0
+// +kubebuilder:printcolumn:name="DEPLOYMENT",type=string,jsonPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",description="Deployment status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="KCP",type=string,jsonPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",description="KCP status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="SECRET",type=string,jsonPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",description="Provider Secret status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="FEATURES",type=string,jsonPath=".status.conditions[?(@.type=='FeatureToggleSubroutine_Ready')].status",description="Feature toggles' status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="WAIT",type=string,jsonPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",description="Wait status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="Ready",type=string,jsonPath=".status.conditions[?(@.type=='Ready')].status",description="Shows if resource is ready",priority=0
 
 // PlatformMesh is the Schema for the platform-mesh API
 type PlatformMesh struct {

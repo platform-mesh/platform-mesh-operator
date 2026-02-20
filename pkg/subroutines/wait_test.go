@@ -3,6 +3,7 @@ package subroutines_test
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/context/keys"
@@ -14,8 +15,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,12 +26,13 @@ import (
 
 type WaitTestSuite struct {
 	suite.Suite
-	clientMock    *mocks.Client
-	kcpClientMock *mocks.Client
-	kcpHelperMock *mocks.KcpHelper
-	testObj       *subroutines.WaitSubroutine
-	log           *logger.Logger
-	cfg           config.OperatorConfig
+	clientMock        *mocks.Client // infra cluster — resource readiness checks
+	runtimeClientMock *mocks.Client // runtime cluster — KCP secret access
+	kcpClientMock     *mocks.Client
+	kcpHelperMock     *mocks.KcpHelper
+	testObj           *subroutines.WaitSubroutine
+	log               *logger.Logger
+	cfg               config.OperatorConfig
 }
 
 func TestWaitTestSuite(t *testing.T) {
@@ -37,6 +41,7 @@ func TestWaitTestSuite(t *testing.T) {
 
 func (s *WaitTestSuite) SetupTest() {
 	s.clientMock = new(mocks.Client)
+	s.runtimeClientMock = new(mocks.Client)
 	s.kcpClientMock = new(mocks.Client)
 	s.kcpHelperMock = new(mocks.KcpHelper)
 	s.cfg = config.OperatorConfig{}
@@ -48,18 +53,19 @@ func (s *WaitTestSuite) SetupTest() {
 	logCfg.NoJSON = true
 	logCfg.Name = "WaitTestSuite"
 	s.log, _ = logger.New(logCfg)
-	s.testObj = subroutines.NewWaitSubroutine(s.clientMock, &s.cfg, s.kcpHelperMock)
+	s.testObj = subroutines.NewWaitSubroutine(s.clientMock, s.runtimeClientMock, &s.cfg, s.kcpHelperMock)
 }
 
 func (s *WaitTestSuite) TearDownTest() {
 	s.clientMock = nil
+	s.runtimeClientMock = nil
 	s.kcpClientMock = nil
 	s.kcpHelperMock = nil
 	s.testObj = nil
 }
 
 func (s *WaitTestSuite) mockWorkspaceAuthConfigCheck(audience string) {
-	s.clientMock.EXPECT().
+	s.runtimeClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
@@ -354,6 +360,159 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 
 	s.Assert().Nil(err)
 	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+// emptyWaitInstance returns a PlatformMesh with an empty WaitConfig so the resource
+// loop is skipped and only the audience check is exercised.
+func (s *WaitTestSuite) emptyWaitInstance() *corev1alpha1.PlatformMesh {
+	return &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-mesh", Namespace: "default"},
+		Spec:       corev1alpha1.PlatformMeshSpec{Wait: &corev1alpha1.WaitConfig{}},
+	}
+}
+
+// mockSecretGet sets up the admin secret Get call to succeed with dummy TLS data.
+func (s *WaitTestSuite) mockSecretGet() {
+	s.runtimeClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			obj.(*corev1.Secret).Data = map[string][]byte{
+				"ca.crt":  []byte("fake-ca"),
+				"tls.crt": []byte("fake-cert"),
+				"tls.key": []byte("fake-key"),
+			}
+			return nil
+		})
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_SecretNotFound() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.runtimeClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
+		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, "kcp-admin-secret"))
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "failed to build kubeconfig")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_BuildKubeconfigError() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.runtimeClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
+		Return(errors.New("internal server error"))
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "failed to build kubeconfig")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_NewKcpClientError() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.mockSecretGet()
+	s.kcpHelperMock.EXPECT().
+		NewKcpClient(mock.Anything, "root").
+		Return(nil, errors.New("invalid kubeconfig"))
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "failed to create KCP client")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_WACNotFound() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.mockSecretGet()
+	s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root").Return(s.kcpClientMock, nil)
+	s.kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "orgs-authentication"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaceauthenticationconfigurations"}, "orgs-authentication"))
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "failed to get WorkspaceAuthenticationConfiguration")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_WACConnectivityError() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.mockSecretGet()
+	s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root").Return(s.kcpClientMock, nil)
+	s.kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "orgs-authentication"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(&url.Error{Op: "Get", URL: "https://kcp", Err: errors.New("connection refused")})
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "failed to get WorkspaceAuthenticationConfiguration")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_WACGetError() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.mockSecretGet()
+	s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root").Return(s.kcpClientMock, nil)
+	s.kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "orgs-authentication"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(kerrors.NewInternalError(errors.New("etcd unavailable")))
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "failed to get WorkspaceAuthenticationConfiguration")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_WACMissingJWT() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.mockSecretGet()
+	s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root").Return(s.kcpClientMock, nil)
+	s.kcpClientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "orgs-authentication"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			obj.(*unstructured.Unstructured).Object = map[string]any{"spec": map[string]any{}}
+			return nil
+		})
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "no spec.jwt entries")
+}
+
+func (s *WaitTestSuite) TestCheckWorkspaceAuthConfigAudience_WACPlaceholder() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, s.cfg)
+
+	s.mockWorkspaceAuthConfigCheck("<placeholder>")
+
+	result, err := s.testObj.Process(ctx, s.emptyWaitInstance())
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "<placeholder>")
 }
 
 func (s *WaitTestSuite) TestFinalize() {

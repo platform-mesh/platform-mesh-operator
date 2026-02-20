@@ -21,20 +21,23 @@ import (
 
 func NewWaitSubroutine(
 	client client.Client,
+	clientRuntime client.Client,
 	cfg *config.OperatorConfig,
 	helper KcpHelper,
 ) *WaitSubroutine {
 	return &WaitSubroutine{
-		client:    client,
-		cfg:       cfg,
-		kcpHelper: helper,
+		client:        client,
+		clientRuntime: clientRuntime,
+		cfg:           cfg,
+		kcpHelper:     helper,
 	}
 }
 
 type WaitSubroutine struct {
-	client    client.Client
-	cfg       *config.OperatorConfig
-	kcpHelper KcpHelper
+	client        client.Client // infra cluster — resource readiness checks
+	clientRuntime client.Client // runtime cluster — KCP secret access
+	cfg           *config.OperatorConfig
+	kcpHelper     KcpHelper
 }
 
 const (
@@ -121,16 +124,14 @@ func (r *WaitSubroutine) Process(
 }
 
 func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
-	kubeCfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(inst, r.cfg))
+	kubeCfg, err := buildKubeconfig(ctx, r.clientRuntime, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
-		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
-		return nil
+		return fmt.Errorf("failed to build kubeconfig: %w", err)
 	}
 
 	orgsClient, err := r.kcpHelper.NewKcpClient(kubeCfg, "root")
 	if err != nil {
-		log.Debug().Err(err).Msg("Failed to create KCP client for root workspace, skipping")
-		return nil
+		return fmt.Errorf("failed to create KCP client for root workspace: %w", err)
 	}
 
 	wac := &unstructured.Unstructured{}
@@ -141,25 +142,27 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 	})
 
 	if err = orgsClient.Get(ctx, types.NamespacedName{Name: "orgs-authentication"}, wac); err != nil {
-		log.Debug().Err(err).Msg("Failed to get WorkspaceAuthenticationConfiguration, skipping")
-		return nil
+		return fmt.Errorf("failed to get WorkspaceAuthenticationConfiguration: %w", err)
 	}
 
 	jwtConfigs, found, err := unstructured.NestedSlice(wac.Object, "spec", "jwt")
-	if err != nil || !found || len(jwtConfigs) == 0 {
-		return nil
+	if err != nil {
+		return fmt.Errorf("failed to read spec.jwt from WorkspaceAuthenticationConfiguration: %w", err)
+	}
+	if !found || len(jwtConfigs) == 0 {
+		return fmt.Errorf("WorkspaceAuthenticationConfiguration has no spec.jwt entries")
 	}
 	jwt, ok := jwtConfigs[0].(map[string]any)
 	if !ok {
-		return nil
+		return fmt.Errorf("WorkspaceAuthenticationConfiguration spec.jwt[0] has unexpected type")
 	}
 	issuer, ok := jwt["issuer"].(map[string]any)
 	if !ok {
-		return nil
+		return fmt.Errorf("WorkspaceAuthenticationConfiguration spec.jwt[0].issuer has unexpected type")
 	}
 	audiences, ok, _ := unstructured.NestedStringSlice(issuer, "audiences")
 	if !ok {
-		return nil
+		return fmt.Errorf("WorkspaceAuthenticationConfiguration spec.jwt[0].issuer.audiences not found")
 	}
 
 	if slices.Contains(audiences, "<placeholder>") {

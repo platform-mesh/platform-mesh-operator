@@ -129,11 +129,12 @@ func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context,
 	return requests
 }
 
-func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client) *PlatformMeshReconciler {
+func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client, imageVersionStore *subroutines.ImageVersionStore) *PlatformMeshReconciler {
 
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
 		deploymentSub := subroutines.NewDeploymentSubroutine(mgr.GetClient(), clientInfra, commonCfg, cfg)
+		deploymentSub.SetImageVersionStore(imageVersionStore)
 		subs = append(subs, deploymentSub)
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
@@ -146,7 +147,7 @@ func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config
 		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg))
 	}
 	if cfg.Subroutines.Wait.Enabled {
-		subs = append(subs, subroutines.NewWaitSubroutine(clientInfra, cfg, &subroutines.Helper{}))
+		subs = append(subs, subroutines.NewWaitSubroutine(clientInfra, mgr.GetClient(), cfg, &subroutines.Helper{}))
 	}
 	return &PlatformMeshReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

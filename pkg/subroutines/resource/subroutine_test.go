@@ -30,7 +30,7 @@ func TestResourceTestSuite(t *testing.T) {
 
 func (s *ResourceTestSuite) SetupTest() {
 	s.managerMock = new(mocks.Manager)
-	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client), &config.OperatorConfig{})
+	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client), &config.OperatorConfig{}, nil)
 }
 
 // setupDeploymentTechMocks sets up mock expectations for getDeploymentTechnologyFromProfile
@@ -240,7 +240,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 
 			managerMock.On("GetClient").Return(clientMock)
 			setupDeploymentTechMocks(clientMock)
-			subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+			subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
 			// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
 			// Patch is called with: ctx, obj, patch, fieldOwner, forceOwnership (5 args total)
@@ -319,7 +319,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 		},
 	)
 
-	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := sub.Process(ctx, inst)
 
 	s.Nil(err)
@@ -361,7 +361,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 	// updateGitRepo uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
-	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := sub.Process(ctx, inst)
 
 	s.NotNil(err)
@@ -443,7 +443,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 		},
 	)
 
-	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := sub.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -481,7 +481,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
 	s.managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
@@ -519,7 +519,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
@@ -582,7 +582,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
 	// updateHelmRelease uses Patch directly, so test Patch error
@@ -626,7 +626,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
 	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // HelmRepository
@@ -666,7 +666,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
 	// updateHelmReleaseWithImageTag uses Patch directly, so test Patch error
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
@@ -704,7 +704,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
 	// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
@@ -746,7 +746,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_ParseRefError() {
 	s.managerMock.On("GetClient").Return(clientMock)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
@@ -786,7 +786,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	// updateOciRepo uses Patch (Server-Side Apply) directly without Get
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
@@ -810,7 +810,7 @@ func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
 	clientMock := new(mocks.Client)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -821,7 +821,7 @@ func (s *ResourceTestSuite) Test_SetRuntimeClient() {
 	clientMock := new(mocks.Client)
 	runtimeClientMock := new(mocks.Client)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	subroutine.SetRuntimeClient(runtimeClientMock)
 
 	// Verify by running a process that uses the runtime client
@@ -882,7 +882,7 @@ func (s *ResourceTestSuite) Test_Process_WithLabelsOnly() {
 	setupDeploymentTechMocks(clientMock)
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -941,7 +941,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_Success() {
 		},
 	)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -976,7 +976,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_MissingImageReference() {
 	clientMock := new(mocks.Client)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
@@ -1014,7 +1014,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo_MissingRepoUrl() {
 	clientMock := new(mocks.Client)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
@@ -1063,7 +1063,7 @@ func (s *ResourceTestSuite) Test_FluxCD_HelmChart_FullPath() {
 	// FluxCD path: HelmRepository Patch + HelmRelease Patch
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1100,7 +1100,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_ApplicationNotFound() {
 	// For FluxCD path (default), updateHelmReleaseWithImageTag is called
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1129,7 +1129,7 @@ func (s *ResourceTestSuite) Test_Process_ArgoCD_UnsupportedArtifact() {
 	clientMock := new(mocks.Client)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	// Should succeed with no action taken (no matching conditions)
 	s.Nil(err)
@@ -1172,7 +1172,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository_PatchError() {
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("patch error")).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
@@ -1198,7 +1198,7 @@ func (s *ResourceTestSuite) Test_Process_NilLabelsAndAnnotations() {
 	clientMock := new(mocks.Client)
 	setupDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1240,7 +1240,7 @@ func (s *ResourceTestSuite) Test_Process_EmptyAnnotationValues() {
 	setupDeploymentTechMocks(clientMock)
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1325,7 +1325,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_HelmRepository() {
 	// ArgoCD Application Patch
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1383,7 +1383,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_AlreadyUpToDate() {
 
 	// No Patch expected since values are already up to date
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1424,9 +1424,11 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_AppNotFound() {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(apierrors.NewNotFound(schema.GroupResource{}, "test-argocd-resource")).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
-	s.Nil(err) // Should succeed - skipping update is not an error
+	// When Application is not found, the subroutine should return an error to trigger requeue
+	// so it can retry after DeploymentSubroutine creates the Application
+	s.NotNil(err)
 	s.NotNil(result)
 }
 
@@ -1480,7 +1482,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_HelmValuesUpdate() {
 	// ArgoCD Application Patch for Helm values
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1518,9 +1520,11 @@ func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_AppNotFound() {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(apierrors.NewNotFound(schema.GroupResource{}, "test-argocd-image")).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
-	s.Nil(err) // Should succeed - skipping update is not an error
+	// When Application is not found, the subroutine should return an error to trigger requeue
+	// so it can retry after DeploymentSubroutine creates the Application
+	s.NotNil(err)
 	s.NotNil(result)
 }
 
@@ -1547,7 +1551,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_UnsupportedArtifact() {
 	clientMock := new(mocks.Client)
 	setupArgoCDDeploymentTechMocks(clientMock)
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err) // Should succeed - unsupported artifact is just skipped
 	s.NotNil(result)
@@ -1606,7 +1610,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIImageReference() {
 	// ArgoCD Application Patch
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1666,7 +1670,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo() {
 	// ArgoCD Application Patch
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
@@ -1729,8 +1733,10 @@ components:
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(apierrors.NewNotFound(schema.GroupResource{}, "test-resource")).Once()
 
-	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{})
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
-	s.Nil(err)
+	// When Application is not found, the subroutine should return an error to trigger requeue
+	// so it can retry after DeploymentSubroutine creates the Application
+	s.NotNil(err)
 	s.NotNil(result)
 }

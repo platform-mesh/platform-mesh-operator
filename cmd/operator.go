@@ -134,13 +134,15 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 			os.Exit(1)
 		}
 	}
-	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra)
+	imageVersionStore := subroutines.NewImageVersionStore()
+
+	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
 	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "PlatformMesh")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, clientInfra)
+	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, clientInfra, imageVersionStore)
 	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)

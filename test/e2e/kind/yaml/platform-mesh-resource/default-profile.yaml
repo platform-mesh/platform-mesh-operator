@@ -319,6 +319,8 @@ data:
             global:
               imagePullSecrets:
               - name: github
+            image:
+              tag: v1.11.2
             log:
               level: info
             migrate:
@@ -332,6 +334,7 @@ data:
               image:
                 registry: ghcr.io/platform-mesh
                 repository: images/postgresql
+                tag: 17.6.0-debian-12-r4
               nameOverride: postgres
             replicaCount: 1
             telemetry:
@@ -419,6 +422,7 @@ data:
                 - --idp-from-address=keycloak@portal.localhost
                 - --development-allow-unverified-emails
                 - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
+                - --idp-registration-allowed
             kubeconfigSecret: security-operator-kubeconfig
             log:
               level: debug

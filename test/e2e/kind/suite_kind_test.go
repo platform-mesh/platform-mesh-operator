@@ -38,6 +38,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 type KindTestSuite struct {
@@ -593,14 +594,16 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	s.kubernetesManager = mgr
 
-	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetClient())
+	imageVersionStore := subroutines.NewImageVersionStore()
+
+	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetClient(), imageVersionStore)
 	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig, mgr.GetClient())
+	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig, mgr.GetClient(), imageVersionStore)
 	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return

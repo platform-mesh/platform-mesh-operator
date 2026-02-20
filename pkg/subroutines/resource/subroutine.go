@@ -56,13 +56,14 @@ var argocdApplicationGvk = schema.GroupVersionKind{
 var resourceFieldManager = "platform-mesh-resource"
 
 type ResourceSubroutine struct {
-	client        client.Client // infra client for creating FluxCD resources
-	clientRuntime client.Client // runtime client for reading profile ConfigMaps
-	cfg           *config.OperatorConfig
+	client            client.Client // infra client for creating FluxCD resources
+	clientRuntime     client.Client // runtime client for reading profile ConfigMaps
+	cfg               *config.OperatorConfig
+	imageVersionStore *subroutines.ImageVersionStore
 }
 
-func NewResourceSubroutine(client client.Client, cfg *config.OperatorConfig) *ResourceSubroutine {
-	return &ResourceSubroutine{client: client, clientRuntime: client, cfg: cfg}
+func NewResourceSubroutine(client client.Client, cfg *config.OperatorConfig, imageVersionStore *subroutines.ImageVersionStore) *ResourceSubroutine {
+	return &ResourceSubroutine{client: client, clientRuntime: client, cfg: cfg, imageVersionStore: imageVersionStore}
 }
 
 // SetRuntimeClient sets the runtime client for reading profile ConfigMaps
@@ -238,6 +239,15 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+
+	// Store the version in the shared ImageVersionStore so the DeploymentSubroutine
+	// can merge it into HelmRelease spec.values before applying, preventing overwrites
+	if r.imageVersionStore != nil {
+		// Store path without "spec.values." prefix (just the helm values path, e.g. "kcp.image.tag")
+		helmValuesPath := strings.Join(updatePath[2:], ".") // strip "spec" and "values"
+		r.imageVersionStore.Set(obj.GetNamespace(), obj.GetName(), helmValuesPath, version)
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -346,10 +356,8 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	existingApp.SetGroupVersionKind(argocdApplicationGvk)
 	err = r.client.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existingApp)
 	if err != nil {
-		log.Debug().Err(err).Msg("Application not found, it may not exist yet - skipping update")
-		// If Application doesn't exist, we can't update it - this is expected if it hasn't been created by DeploymentSubroutine yet
-		// Return success (no error) so we don't retry unnecessarily
-		return ctrl.Result{}, nil
+		log.Info().Err(err).Msg("Application not found, it may not exist yet - will requeue to retry after DeploymentSubroutine creates it")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("application %s/%s not found yet, waiting for DeploymentSubroutine to create it", obj.GetNamespace(), obj.GetName()), true, false)
 	}
 
 	// Check if we need to update (compare current values with desired values)
@@ -422,9 +430,8 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 	existingApp.SetGroupVersionKind(argocdApplicationGvk)
 	err = r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp)
 	if err != nil {
-		log.Debug().Err(err).Str("application", appName).Str("namespace", appNamespace).Msg("Application not found, it may not exist yet - skipping update")
-		// If Application doesn't exist, we can't update it - this is expected if it hasn't been created by DeploymentSubroutine yet
-		return ctrl.Result{}, nil
+		log.Info().Err(err).Str("application", appName).Str("namespace", appNamespace).Msg("Application not found, it may not exist yet - will requeue to retry after DeploymentSubroutine creates it")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("application %s/%s not found yet, waiting for DeploymentSubroutine to create it", appNamespace, appName), true, false)
 	}
 
 	// Get the path annotation to determine where to set the image tag (default: image.tag)
@@ -436,52 +443,32 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 	}
 
 	// Get existing Helm values
-	existingHelmValuesStr, found, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "helm", "values")
-	var helmValues map[string]interface{}
-	if found && existingHelmValuesStr != "" {
-		// Parse existing Helm values YAML
-		if err := yaml.Unmarshal([]byte(existingHelmValuesStr), &helmValues); err != nil {
-			log.Warn().Err(err).Msg("Failed to parse existing Helm values, creating new values map")
-			helmValues = make(map[string]interface{})
-		}
-	} else {
-		helmValues = make(map[string]interface{})
-	}
+	existingHelmValuesStr, _, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "helm", "values")
+	pathStr := strings.Join(updatePath, ".")
 
 	// Check if we need to update (compare current image tag with desired version)
-	currentImageTag, _ := getNestedString(helmValues, updatePath...)
+	currentImageTag, _ := getNestedString(func() map[string]interface{} {
+		var m map[string]interface{}
+		if existingHelmValuesStr != "" {
+			_ = yaml.Unmarshal([]byte(existingHelmValuesStr), &m)
+		}
+		return m
+	}(), updatePath...)
 	if currentImageTag == version {
-		log.Debug().Str("version", version).Str("application", appName).Str("path", strings.Join(updatePath, ".")).Msg("ArgoCD Application Helm values image tag is already up to date")
+		log.Debug().Str("version", version).Str("application", appName).Str("path", pathStr).Msg("ArgoCD Application Helm values image tag is already up to date")
+		// Always store the version so the DeploymentSubroutine can use it after operator restarts
+		if r.imageVersionStore != nil {
+			r.imageVersionStore.Set(appNamespace, appName, pathStr, version)
+		}
 		return ctrl.Result{}, nil
 	}
 
-	// Navigate/create the nested structure for the image tag path
-	current := helmValues
-	for i := 0; i < len(updatePath)-1; i++ {
-		key := updatePath[i]
-		if val, ok := current[key]; ok {
-			if valMap, ok := val.(map[string]interface{}); ok {
-				current = valMap
-			} else {
-				// Path conflict - overwrite with new map
-				current[key] = make(map[string]interface{})
-				current = current[key].(map[string]interface{})
-			}
-		} else {
-			// Create nested map
-			current[key] = make(map[string]interface{})
-			current = current[key].(map[string]interface{})
-		}
-	}
-
-	// Set the image tag value
-	lastKey := updatePath[len(updatePath)-1]
-	current[lastKey] = version
-
-	// Marshal Helm values back to YAML
-	helmValuesYAML, err := yaml.Marshal(helmValues)
+	// Use shared SetHelmValues to update the helm values YAML
+	updatedValuesYAML, err := subroutines.SetHelmValues(existingHelmValuesStr, []subroutines.ImageVersion{
+		{Path: pathStr, Version: version},
+	})
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to marshal Helm values")
+		log.Error().Err(err).Msg("Failed to update Helm values")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
@@ -490,7 +477,7 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 		"spec": map[string]interface{}{
 			"source": map[string]interface{}{
 				"helm": map[string]interface{}{
-					"values": string(helmValuesYAML),
+					"values": updatedValuesYAML,
 				},
 			},
 		},
@@ -509,7 +496,14 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 		log.Error().Err(err).Msg("Failed to update ArgoCD Application")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	log.Info().Str("version", version).Str("application", appName).Str("path", strings.Join(updatePath, ".")).Str("previousImageTag", currentImageTag).Msg("Updated ArgoCD Application Helm values image tag for image artifact")
+	log.Info().Str("version", version).Str("application", appName).Str("path", pathStr).Str("previousImageTag", currentImageTag).Msg("Updated ArgoCD Application Helm values image tag for image artifact")
+
+	// Store the version in the shared ImageVersionStore so the DeploymentSubroutine
+	// can merge it into helm values before applying, preventing overwrites
+	if r.imageVersionStore != nil {
+		r.imageVersionStore.Set(appNamespace, appName, pathStr, version)
+	}
+
 	return ctrl.Result{}, nil
 }
 
