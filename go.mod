@@ -17,7 +17,7 @@ replace (
 require (
 	github.com/cert-manager/cert-manager v1.19.3
 	github.com/creasty/defaults v1.8.0
-	github.com/fluxcd/helm-controller/api v1.4.5
+	github.com/fluxcd/helm-controller/api v1.5.0
 	github.com/fluxcd/source-controller/api v1.8.0
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.28.3
@@ -56,7 +56,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fluxcd/pkg/apis/acl v0.9.0 // indirect
-	github.com/fluxcd/pkg/apis/kustomize v1.14.0 // indirect
+	github.com/fluxcd/pkg/apis/kustomize v1.15.0 // indirect
 	github.com/fluxcd/pkg/apis/meta v1.25.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
