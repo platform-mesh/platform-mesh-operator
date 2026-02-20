@@ -48,6 +48,10 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Path:   "root",
 		Secret: "security-initializer-kubeconfig",
 	},
+	{
+		Path:   "root",
+		Secret: "security-terminator-kubeconfig",
+	},
 }
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
