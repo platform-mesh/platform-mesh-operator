@@ -145,7 +145,6 @@ type ProviderConnection struct {
 	Namespace          *string `json:"namespace,omitempty"`
 	UseAdminKubeconfig *bool   `json:"useAdminKubeconfig,omitempty"`
 	APIExportName      string  `json:"apiExportName,omitempty"`
-	APIExportPath      string  `json:"apiExportPath,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh
