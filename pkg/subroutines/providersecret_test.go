@@ -44,6 +44,24 @@ func (f fakeHelm) GetRelease(ctx context.Context, cli client.Client, name, ns st
 	return u, nil
 }
 
+type fakeSubResourceClient struct{}
+
+func (f fakeSubResourceClient) Get(_ context.Context, _ client.Object, _ client.Object, _ ...client.SubResourceGetOption) error {
+	return nil
+}
+
+func (f fakeSubResourceClient) Create(_ context.Context, _ client.Object, _ client.Object, _ ...client.SubResourceCreateOption) error {
+	return nil
+}
+
+func (f fakeSubResourceClient) Update(_ context.Context, _ client.Object, _ ...client.SubResourceUpdateOption) error {
+	return nil
+}
+
+func (f fakeSubResourceClient) Patch(_ context.Context, _ client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
+	return nil
+}
+
 type ProvidersecretTestSuite struct {
 	suite.Suite
 	testObj *subroutines.ProvidersecretSubroutine
@@ -1732,6 +1750,12 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			return nil
 		}).
 		Times(len(subroutines.DefaultProviderConnections))
+
+	mockedKcpClient.
+		EXPECT().
+		SubResource("token").
+		Return(fakeSubResourceClient{}).
+		Maybe()
 
 	// Setup mock KCP helper
 	mockedKcpHelper := new(mocks.KcpHelper)
