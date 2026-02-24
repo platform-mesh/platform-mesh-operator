@@ -36,7 +36,6 @@ import (
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -372,42 +371,33 @@ func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.Operato
 		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
 	}
 
-	caData, ok := secret.Data["ca.crt"]
-	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
+	kubeconfigData, ok := secret.Data["kubeconfig"]
+	if !ok || len(kubeconfigData) == 0 {
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"kubeconfig\"", secretName)
 	}
 
-	tlsCrt, ok := secret.Data["tls.crt"]
-	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
+	kubeconfig, err := clientcmd.Load(kubeconfigData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load kubeconfig from secret %s/platform-mesh-system: %w", secretName, err)
 	}
 
-	tlsKey, ok := secret.Data["tls.key"]
-	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
+	return clientcmd.NewDefaultClientConfig(*kubeconfig, nil).ClientConfig()
+}
+
+func getKcpRootCA(client client.Client, operatorCfg config.OperatorConfig) ([]byte, error) {
+	rootCaSecret, err := GetSecret(client, "root-ca", operatorCfg.KCP.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("getting root-ca secret: %w", err)
+	}
+	if rootCaSecret == nil {
+		return nil, fmt.Errorf("root-ca secret is nil")
 	}
 
-	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters = map[string]*clientcmdapi.Cluster{
-		"kcp": {
-			Server:                   kcpUrl,
-			CertificateAuthorityData: secret.Data["ca.crt"],
-		},
+	rootCaData, ok := rootCaSecret.Data["ca.crt"]
+	if !ok || len(rootCaData) == 0 {
+		return nil, fmt.Errorf("root-ca secret missing or empty key \"ca.crt\"")
 	}
-	cfg.Contexts = map[string]*clientcmdapi.Context{
-		"admin": {
-			Cluster:  "kcp",
-			AuthInfo: "admin",
-		},
-	}
-	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
-		"admin": {
-			ClientCertificateData: secret.Data["tls.crt"],
-			ClientKeyData:         secret.Data["tls.key"],
-		},
-	}
-	cfg.CurrentContext = "admin"
-	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
+	return rootCaData, nil
 }
 
 func WaitForWorkspace(

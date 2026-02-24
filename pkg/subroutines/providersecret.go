@@ -8,6 +8,7 @@ import (
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
@@ -132,11 +133,18 @@ func (r *ProvidersecretSubroutine) Process(
 	// Build kcp kubeonfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
+		log.Error().Err(err).Msg("Failed to retrieve kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to retrieve kubeconfig"), true, false)
 	}
+
+	kcpRootCaData, err := getKcpRootCA(r.client, operatorCfg)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to retrieve KCP root CA data")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to retrieve KCP root CA data"), true, false)
+	}
+
 	for _, pc := range providers {
-		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg); opErr != nil {
+		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg, kcpRootCaData); opErr != nil {
 			log.Error().Err(opErr.Err()).Msg("Failed to handle provider connection")
 			return ctrl.Result{}, opErr
 		}
@@ -153,49 +161,138 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config, kcpRootCaData []byte,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	var address *url.URL
-
 	if ptr.Deref(pc.EndpointSliceName, "") != "" {
-		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to create KCP client")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
+		// TODO this is legacy support for configuring providers for a single VW.
+		// The only provider connection that still works like that is the
+		// kubernetes-graphql-gateway which is undergoing a rewrite:
+		// https://github.com/platform-mesh/kubernetes-graphql-gateway/pull/132
+		// Once that rewrite lands this can be removed and the EndpointSliceName field can be deleted.
+		return r.handleEndpointSlice(ctx, instance, pc, cfg, operatorCfg)
+	}
 
-		var slice kcpapiv1alpha.APIExportEndpointSlice
-		err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
+	// The config being passed in is valid and authorized for the front proxy.
+	frontProxyClient, err := r.kcpHelper.NewKcpClient(cfg, "root")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create kcp client for root workspace")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
 
-		if len(slice.Status.APIExportEndpoints) == 0 {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
-		}
+	// TODO: This is a temporary fix to get a token to build kubeconfigs
+	// for the provider connections. The providers should get correctly
+	// scoped service accounts and tokens.
+	serviceAccount := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "kcp-system",
+			Namespace: "default",
+		},
+	}
+	token := &authenticationv1.TokenRequest{
+		Spec: authenticationv1.TokenRequestSpec{
+			ExpirationSeconds: ptr.To[int64](360 * 24 * 3600), // 360 days
+		},
+	}
+	if err := frontProxyClient.SubResource("token").Create(ctx, serviceAccount, token); err != nil {
+		log.Error().Err(err).Msg("Failed to create token for service account")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
 
-		endpointURL := slice.Status.APIExportEndpoints[0].URL
-		address, err = url.Parse(endpointURL)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse endpoint URL")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
+	address, err := url.Parse(cfg.Host)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to parse KCP URL")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+	if ptr.Deref(pc.RawPath, "") != "" {
+		address.Path = *pc.RawPath
 	} else {
-		kcpUrl, err := url.Parse(cfg.Host)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse KCP URL")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		address.Path = path.Join("clusters", pc.Path)
+	}
+
+	newConfig := rest.CopyConfig(cfg)
+	// The TLS client config must be overwritten to a) prevent
+	// accidentally re-using client certs and to ensure the client
+	// trusts both front proxy and shard certificates.
+	newConfig.TLSClientConfig = rest.TLSClientConfig{
+		CAData: kcpRootCaData,
+	}
+	newConfig.BearerToken = token.Status.Token
+
+	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	if pc.External {
+		// TODO kcp.api.(...) has been deprecated.
+		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
+	}
+	host, err := url.JoinPath(hostPort, address.Path)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to join path for provider connection")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+	newConfig.Host = host
+
+	apiConfig := restConfigToAPIConfig(newConfig)
+	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to write kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	namespace := "platform-mesh-system"
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	providerSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pc.Secret,
+			Namespace: namespace,
+		},
+	}
+
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
+		providerSecret.Data = map[string][]byte{
+			"kubeconfig": kcpConfigBytes,
 		}
-		if ptr.Deref(pc.RawPath, "") != "" {
-			kcpUrl.Path = *pc.RawPath
-		} else {
-			kcpUrl.Path = path.Join("clusters", pc.Path)
-		}
-		address = kcpUrl
+		return err
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create or update secret")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	log.Debug().Str("secret", pc.Secret).Msg("Created or updated provider secret")
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ProvidersecretSubroutine) handleEndpointSlice(
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config, operatorCfg config.OperatorConfig,
+) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx)
+	kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create KCP client")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	var slice kcpapiv1alpha.APIExportEndpointSlice
+	err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+	}
+
+	if len(slice.Status.APIExportEndpoints) == 0 {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
+	}
+
+	endpointURL := slice.Status.APIExportEndpoints[0].URL
+	address, err := url.Parse(endpointURL)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to parse endpoint URL")
+		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
 	newConfig := rest.CopyConfig(cfg)
@@ -240,7 +337,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	log.Debug().Str("secret", pc.Secret).Msg("Created or updated provider secret")
-
 	return ctrl.Result{}, nil
 }
 
