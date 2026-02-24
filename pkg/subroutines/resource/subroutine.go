@@ -111,8 +111,15 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	inst := runtimeObj.(*unstructured.Unstructured)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("name", r.GetName())
 
-	// Get deploymentTechnology from profile (defaults to fluxcd if not found)
-	deploymentTech := r.getDeploymentTechnologyFromProfile(ctx, inst.GetNamespace(), log)
+	deploymentTech, err := r.getDeploymentTechnologyFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		log.Error().Err(err).Str("namespace", inst.GetNamespace()).Msg("Failed to determine deploymentTechnology from profile")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	if deploymentTech == "" {
+		log.Warn().Str("namespace", inst.GetNamespace()).Msg("deploymentTechnology not configured in profile, defaulting to fluxcd")
+		deploymentTech = "fluxcd"
+	}
 	log.Debug().Str("deploymentTechnology", deploymentTech).Str("resource", inst.GetName()).Str("namespace", inst.GetNamespace()).Msg("Checking deployment technology for Resource")
 
 	repo := getMetadataValue(inst, "repo")
@@ -707,42 +714,35 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	return ctrl.Result{}, nil
 }
 
-// getDeploymentTechnologyFromProfile looks up the PlatformMesh instance in the namespace and reads deploymentTechnology from the profile
-func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Context, namespace string, log *logger.Logger) string {
-	// Use runtime client for reading PlatformMesh and ConfigMaps (they're in the runtime cluster)
-	// Look up PlatformMesh instances in the namespace
+func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
 	platformMeshList := &v1alpha1.PlatformMeshList{}
 	if err := r.clientRuntime.List(ctx, platformMeshList, client.InNamespace(namespace)); err != nil {
 		log.Warn().Err(err).Str("namespace", namespace).Msg("Failed to list PlatformMesh instances, trying direct ConfigMap lookup")
-		// Fallback: try to read profile ConfigMap directly using common naming pattern
 		return r.getDeploymentTechnologyFromConfigMapDirect(ctx, namespace, log)
 	}
 
 	if len(platformMeshList.Items) == 0 {
 		log.Warn().Str("namespace", namespace).Msg("No PlatformMesh instances found in namespace, trying direct ConfigMap lookup")
-		// Fallback: try to read profile ConfigMap directly using common naming pattern
 		return r.getDeploymentTechnologyFromConfigMapDirect(ctx, namespace, log)
 	}
 
-	// Use the first PlatformMesh instance (typically there's only one per namespace)
 	pm := platformMeshList.Items[0]
 	log.Info().Str("namespace", namespace).Str("platformMesh", pm.Name).Msg("Found PlatformMesh instance, reading deploymentTechnology from profile")
 
-	// Use the shared helper function to get deploymentTechnology from profile (using runtime client)
-	deploymentTech := subroutines.GetDeploymentTechnologyFromProfile(ctx, r.clientRuntime, &pm)
+	deploymentTech, err := subroutines.GetDeploymentTechnologyFromProfile(ctx, r.clientRuntime, &pm)
+	if err != nil {
+		log.Error().Err(err).Str("platformMesh", pm.Name).Msg("Failed to read deploymentTechnology from profile")
+		return "", err
+	}
 	log.Info().Str("deploymentTechnology", deploymentTech).Str("platformMesh", pm.Name).Str("configMap", pm.Name+"-profile").Msg("Read deploymentTechnology from profile")
-	return strings.ToLower(deploymentTech)
+	return deploymentTech, nil
 }
 
-// getDeploymentTechnologyFromConfigMapDirect tries to read deploymentTechnology directly from profile ConfigMap
-// This is a fallback when PlatformMesh lookup fails
-func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx context.Context, namespace string, log *logger.Logger) string {
-	// Try common ConfigMap name patterns
+func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
 	configMapNames := []string{"platform-mesh-profile", "platform-mesh-system-profile"}
 
 	for _, cmName := range configMapNames {
 		configMap := &corev1.ConfigMap{}
-		// Use runtime client for reading ConfigMaps (they're in the runtime cluster)
 		if err := r.clientRuntime.Get(ctx, types.NamespacedName{Name: cmName, Namespace: namespace}, configMap); err != nil {
 			log.Debug().Err(err).Str("configMap", cmName).Str("namespace", namespace).Msg("ConfigMap not found, trying next")
 			continue
@@ -758,37 +758,28 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx cont
 
 		var profile map[string]interface{}
 		if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
-			log.Warn().Err(err).Str("configMap", cmName).Msg("Failed to parse profile YAML")
-			continue
+			return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", namespace, cmName, err)
 		}
-
-		log.Debug().Str("configMap", cmName).Msg("Successfully parsed profile YAML, checking for deploymentTechnology")
 
 		// Check infra section first
 		if infra, ok := profile["infra"].(map[string]interface{}); ok {
-			log.Debug().Str("configMap", cmName).Msg("Found infra section in profile")
 			if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
 				log.Info().Str("deploymentTechnology", strings.ToLower(dt)).Str("configMap", cmName).Str("section", "infra").Msg("Read deploymentTechnology from profile ConfigMap (direct lookup)")
-				return strings.ToLower(dt)
+				return strings.ToLower(dt), nil
 			}
-			log.Debug().Str("configMap", cmName).Msg("infra section found but deploymentTechnology not found or empty")
-		} else {
-			log.Debug().Str("configMap", cmName).Msg("infra section not found in profile")
 		}
 
 		// Check components section
 		if components, ok := profile["components"].(map[string]interface{}); ok {
-			log.Debug().Str("configMap", cmName).Msg("Found components section in profile")
 			if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
 				log.Info().Str("deploymentTechnology", strings.ToLower(dt)).Str("configMap", cmName).Str("section", "components").Msg("Read deploymentTechnology from profile ConfigMap (direct lookup)")
-				return strings.ToLower(dt)
+				return strings.ToLower(dt), nil
 			}
-			log.Debug().Str("configMap", cmName).Msg("components section found but deploymentTechnology not found or empty")
-		} else {
-			log.Debug().Str("configMap", cmName).Msg("components section not found in profile")
 		}
+
+		log.Debug().Str("configMap", cmName).Msg("Profile ConfigMap found but deploymentTechnology not configured")
+		return "", nil
 	}
 
-	log.Warn().Str("namespace", namespace).Msg("Could not find deploymentTechnology in profile ConfigMaps, defaulting to fluxcd")
-	return "fluxcd"
+	return "", fmt.Errorf("no profile ConfigMap found in namespace %s (tried: %v)", namespace, configMapNames)
 }

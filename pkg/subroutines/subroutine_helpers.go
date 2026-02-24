@@ -608,10 +608,7 @@ func GetClientScheme() *runtime.Scheme {
 	return scheme
 }
 
-// GetDeploymentTechnologyFromProfile extracts deploymentTechnology from the profile ConfigMap for a PlatformMesh instance.
-// Returns "fluxcd" as default if not found or on error.
-func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, inst *v1alpha1.PlatformMesh) string {
-	// Get the profile ConfigMap
+func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, inst *v1alpha1.PlatformMesh) (string, error) {
 	var configMapName, configMapNamespace string
 	if inst.Spec.ProfileConfigMap != nil {
 		configMapName = inst.Spec.ProfileConfigMap.Name
@@ -620,44 +617,38 @@ func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, i
 			configMapNamespace = inst.Namespace
 		}
 	} else {
-		// Use default ConfigMap name
 		configMapName = inst.Name + "-profile"
 		configMapNamespace = inst.Namespace
 	}
 
 	configMap := &corev1.ConfigMap{}
 	if err := cl.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: configMapNamespace}, configMap); err != nil {
-		// Log error but return default - this is expected in some cases
-		return "fluxcd" // default to fluxcd if ConfigMap not found
+		return "", fmt.Errorf("failed to get profile ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
 	}
 
-	// Parse profile YAML
 	profileYAML, ok := configMap.Data["profile.yaml"]
 	if !ok {
-		return "fluxcd" // default to fluxcd if profile key not found
+		return "", fmt.Errorf("profile ConfigMap %s/%s does not contain key 'profile.yaml'", configMapNamespace, configMapName)
 	}
 
 	var profile map[string]interface{}
 	if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
-		return "fluxcd" // default to fluxcd if parsing fails
+		return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
 	}
 
-	// Check infra section first
 	if infra, ok := profile["infra"].(map[string]interface{}); ok {
 		if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
-			return strings.ToLower(dt)
+			return strings.ToLower(dt), nil
 		}
 	}
 
-	// Check components section
 	if components, ok := profile["components"].(map[string]interface{}); ok {
 		if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
-			return strings.ToLower(dt)
+			return strings.ToLower(dt), nil
 		}
 	}
 
-	// Default to fluxcd if not found
-	return "fluxcd"
+	return "fluxcd", nil
 }
 
 func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {

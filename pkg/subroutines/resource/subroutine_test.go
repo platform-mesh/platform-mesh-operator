@@ -33,18 +33,23 @@ func (s *ResourceTestSuite) SetupTest() {
 	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client), &config.OperatorConfig{}, nil)
 }
 
-// setupDeploymentTechMocks sets up mock expectations for getDeploymentTechnologyFromProfile
-// which is called by Process to determine deployment technology (fluxcd/argocd)
 func setupDeploymentTechMocks(clientMock *mocks.Client) {
-	// Mock List for PlatformMeshList - returns empty list
+	setupDeploymentTechMocksWithTech(clientMock, "fluxcd")
+}
+
+func setupDeploymentTechMocksWithTech(clientMock *mocks.Client, deploymentTech string) {
 	clientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).
 		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-			// Return empty list, triggering ConfigMap fallback
 			return nil
 		}).Maybe()
-	// Mock Get for ConfigMap lookups - returns not found, defaulting to "fluxcd"
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
-		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "configmaps"}, "")).Maybe()
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{
+				"profile.yaml": "infra:\n  deploymentTechnology: " + deploymentTech + "\ncomponents: {}\n",
+			}
+			return nil
+		}).Maybe()
 }
 
 func (s *ResourceTestSuite) Test_GetName() {
@@ -838,10 +843,15 @@ func (s *ResourceTestSuite) Test_SetRuntimeClient() {
 		},
 	}
 
-	// Setup mocks on the runtime client (used for deployment tech lookup)
 	runtimeClientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).Return(nil).Maybe()
 	runtimeClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
-		Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Maybe()
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{
+				"profile.yaml": "infra:\n  deploymentTechnology: fluxcd\ncomponents: {}\n",
+			}
+			return nil
+		}).Maybe()
 
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
@@ -1056,11 +1066,15 @@ func (s *ResourceTestSuite) Test_FluxCD_HelmChart_FullPath() {
 			return errors.New("list error")
 		}).Maybe()
 
-	// ConfigMap lookups return not found, defaulting to fluxcd
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
-		Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Maybe()
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{
+				"profile.yaml": "infra:\n  deploymentTechnology: fluxcd\ncomponents: {}\n",
+			}
+			return nil
+		}).Maybe()
 
-	// FluxCD path: HelmRepository Patch + HelmRelease Patch
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)

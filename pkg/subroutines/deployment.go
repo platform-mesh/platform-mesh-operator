@@ -1447,11 +1447,10 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// Update the certificate-authority-data in all clusters
+	// Update the certificate-authority-data in all clusters only if it actually changed
 	updated := false
 	for clusterName, cluster := range kubeconfig.Clusters {
-		if cluster != nil {
-			// Update the certificate-authority-data with the new ca.crt
+		if cluster != nil && !bytes.Equal(cluster.CertificateAuthorityData, caCrt) {
 			cluster.CertificateAuthorityData = caCrt
 			kubeconfig.Clusters[clusterName] = cluster
 			updated = true
@@ -1460,7 +1459,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	}
 
 	if !updated {
-		log.Info().Msg("No clusters found in kubeconfig to update")
+		log.Debug().Msg("certificate-authority-data is already up to date in kcp-webhook-secret, skipping update")
 		return ctrl.Result{}, nil
 	}
 
@@ -1486,7 +1485,43 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 
 	log.Info().Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Successfully updated kcp webhook secret with new certificate-authority-data")
 
+	// Delete all kcp pods so they pick up the new webhook secret
+	log.Info().Msg("kcp-webhook-secret was updated, deleting kcp pods to pick up new certificate-authority-data")
+	if oErr := r.deleteKcpPods(ctx, operatorCfg.KCP.Namespace); oErr != nil {
+		return ctrl.Result{}, oErr
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// deleteKcpPods deletes all pods with label app.kubernetes.io/name=kcp in the given namespace
+// so they restart and pick up updated secrets.
+func (r *DeploymentSubroutine) deleteKcpPods(ctx context.Context, namespace string) errors.OperatorError {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+
+	podList := &corev1.PodList{}
+	labelSelector := labels.SelectorFromSet(labels.Set{"app.kubernetes.io/name": "kcp"})
+	if err := r.clientRuntime.List(ctx, podList, &client.ListOptions{
+		LabelSelector: labelSelector,
+		Namespace:     namespace,
+	}); err != nil {
+		log.Error().Err(err).Str("namespace", namespace).Msg("Failed to list kcp pods")
+		return errors.NewOperatorError(err, true, true)
+	}
+
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		log.Info().Str("pod", pod.Name).Str("namespace", pod.Namespace).Msg("Deleting kcp pod")
+		if err := r.clientRuntime.Delete(ctx, pod); err != nil {
+			if !kerrors.IsNotFound(err) {
+				log.Error().Err(err).Str("pod", pod.Name).Msg("Failed to delete kcp pod")
+				return errors.NewOperatorError(err, true, true)
+			}
+		}
+	}
+
+	log.Info().Int("count", len(podList.Items)).Str("namespace", namespace).Msg("Deleted kcp pods")
+	return nil
 }
 
 func getHelmRelease(ctx context.Context, client client.Client, releaseName string, releaseNamespace string) (*unstructured.Unstructured, error) {

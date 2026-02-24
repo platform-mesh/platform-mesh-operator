@@ -33,9 +33,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret:            "kubernetes-graphql-gateway-kubeconfig",
 	},
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "extension-manager-operator-kubeconfig",
+		// EndpointSliceName: ptr.To("core.platform-mesh.io"),
+		Path:   "root:platform-mesh-system",
+		Secret: "extension-manager-operator-kubeconfig",
 	},
 	{
 		Path:   "root:platform-mesh-system",
