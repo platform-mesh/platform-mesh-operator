@@ -72,9 +72,19 @@ func (s *FeaturesTestSuite) TestProcess() {
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"ca.crt":  []byte("test-ca-data"),
-				"tls.crt": []byte("test-tls-crt"),
-				"tls.key": []byte("test-tls-key"),
+				"kubeconfig": secretKubeconfigData,
+			}
+			return nil
+		})
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{
+			Name:      "root-ca",
+			Namespace: "kcp-system",
+		}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				"ca.crt": []byte("test-ca-data"),
 			}
 			return nil
 		})

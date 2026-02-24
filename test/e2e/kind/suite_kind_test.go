@@ -301,6 +301,23 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
+
+	// Get kubeconfig for the Kind cluster to create kcp-cluster-admin-client-cert secret
+	var kubeconfigBytes []byte
+	if kubeconfigBytes, err = runCommand("kind", "get", "kubeconfig", "--name", "platform-mesh"); err != nil {
+		return err
+	}
+
+	kcp_cluster_admin_client_cert := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "kcp-cluster-admin-client-cert",
+			Namespace: "platform-mesh-system",
+		},
+		Data: map[string][]byte{
+			"kubeconfig": kubeconfigBytes,
+		},
+		Type: corev1.SecretTypeOpaque,
+	}
 	createIfNotExists := func(obj client.Object) error {
 		if err := s.client.Create(ctx, obj); err != nil {
 			if k8serrors.IsAlreadyExists(err) {
@@ -317,6 +334,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		rbac_webhook_ca,
 		domain_certificate_ca,
 		pms_domain_certificate,
+		kcp_cluster_admin_client_cert,
 	}
 
 	for _, sec := range secrets {
