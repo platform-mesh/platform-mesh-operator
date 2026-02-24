@@ -78,14 +78,15 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 	kcpClientMock := new(mocks.Client)
 	// Expect NewKcpClient to be called multiple times for different workspaces (flexible count)
 	s.helperMock.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(kcpClientMock, nil).Maybe()
-	inventory := map[string]string{
+	inventory := map[string]any{
 		"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
 		"apiExportRootShardsKcpIoIdentityHash":   "hash2",
 		"apiExportRootTopologyKcpIoIdentityHash": "hash3",
+		"registrationAllowed":                    true,
 	}
 
 	// Expect multiple Patch calls for applying manifests (flexible count)
-	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	// Mock unstructured object lookups (for general manifest objects - flexible count)
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
@@ -462,7 +463,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	// Mock patch calls for applying manifests (flexible count)
 	mockKcpClient.EXPECT().
-		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything).
+		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 
 	// Call Process
@@ -666,7 +667,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		})
 
 	// Mock patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
@@ -731,7 +732,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		})
 
 	// Mock patch calls for applying manifests (flexible count) - but they should fail
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed"))
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed"))
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply")
@@ -752,13 +753,9 @@ func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Success() {
 		NewKcpClient(mock.Anything, parentPath).
 		Return(kcpClientMock, nil).Once()
 
-	// First Get => NotFound (so Patch executed)
+	// SSA Patch - no Get needed
 	kcpClientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "extra-ws"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "extra-ws")).Once()
-
-	kcpClientMock.EXPECT().
-		Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 
 	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
@@ -815,12 +812,9 @@ func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Patch_Error() {
 		NewKcpClient(mock.Anything, parentPath).
 		Return(kcpClientMock, nil).Once()
 
+	// SSA Patch fails - no Get needed
 	kcpClientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "ws3"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "ws3")).Once()
-
-	kcpClientMock.EXPECT().
-		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything).
+		Patch(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("patch failed")).Once()
 
 	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
@@ -943,10 +937,11 @@ func (s *KcpsetupTestSuite) Test_WorkspaceAuthConfigTemplate_FeatureDisableEmail
 
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			templateData := map[string]string{
+			templateData := map[string]any{
 				"baseDomainPort":                  "example.com:443",
 				"domainCADec":                     "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
 				"featureDisableEmailVerification": tc.featureToggleValue,
+				"welcomeAudiences":                []string{"test-audience"},
 			}
 
 			result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
@@ -999,7 +994,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration
 
 			kcpClientMock := new(mocks.Client)
 
-			templateData := map[string]string{
+			templateData := map[string]any{
 				"featureDisableContentConfigurations": tc.featureToggleValue,
 			}
 
@@ -1013,7 +1008,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration
 			} else {
 				kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 					Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Once()
-				kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+				kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 				err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 				s.Assert().NoError(err)
@@ -1027,7 +1022,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConf
 
 	kcpClientMock := new(mocks.Client)
 
-	templateData := map[string]string{
+	templateData := map[string]any{
 		"featureDisableContentConfigurations": "true",
 	}
 
@@ -1037,7 +1032,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConf
 	// Even with toggle enabled, non-ContentConfiguration files should be applied
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Once()
-	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &corev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err)

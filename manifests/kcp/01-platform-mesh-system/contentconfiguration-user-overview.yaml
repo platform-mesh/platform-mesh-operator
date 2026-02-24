@@ -1,0 +1,32 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  generation: 1
+  labels:
+    ui.platform-mesh.io/entity: main
+  name: user-overview
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "iam-wc-user-overview",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "entityType": "user.overview::compound",
+                "pathSegment": "user-overview-header",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/wc/main.js#user-overview",
+                "layoutConfig": {
+                  "slot": "header"
+                },
+                "webcomponent": {
+                  "selfRegistered": true,
+                  "type": "module"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

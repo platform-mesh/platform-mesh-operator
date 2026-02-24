@@ -108,7 +108,7 @@ func (s *FeaturesTestSuite) TestProcess() {
 		})
 
 	// Expect multiple Patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	// Mock workspace lookups and patch calls
 	mockKcpClient.EXPECT().

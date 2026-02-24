@@ -78,15 +78,9 @@ spec:
                                 "keepSelectedForChildren": false,
                                 "defineEntity": {
                                     "id": "namespace",
-                                    "contextKey": "namespaceId",
-                                    "graphqlEntity": {
-                                        "version": "v1",
-                                        "kind": "Namespace",
-                                        "query": "{ metadata { name deletionTimestamp} }"
-                                    }
+                                    "contextKey": "namespaceId"
                                 },
                                 "context": {
-                                    "accountId": ":accountId",
                                     "namespaceId": ":namespaceId",
                                     "resourceId": ":namespaceId"
                                 }

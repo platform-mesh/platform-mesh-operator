@@ -91,7 +91,7 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 	return &secret, nil
 }
 
-func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
+func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte, error) {
 	funcMap := template.FuncMap{
 		"indent": func(spaces int, s string) string {
 			pad := strings.Repeat(" ", spaces)
@@ -386,7 +386,7 @@ func WaitForWorkspace(
 
 func ApplyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string, wsPath string, inst *v1alpha1.PlatformMesh,
+	path string, k8sClient client.Client, templateData map[string]any, wsPath string, inst *v1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -430,19 +430,11 @@ func ApplyManifestFromFile(
 		}
 	}
 
-	existingObj := obj.DeepCopy()
-	err = k8sClient.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}, existingObj)
-	if err != nil && !kerrors.IsNotFound(err) {
-		return errors.Wrap(err, "Failed to get existing object: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
+	if err != nil {
+		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
-
-	if kerrors.IsNotFound(err) || needsPatch(*existingObj, obj, log) {
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
-		if err != nil {
-			return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-		}
-		log.Info().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied manifest file")
-	}
+	log.Info().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied manifest file")
 	return nil
 }
 
@@ -451,7 +443,7 @@ func ApplyDirStructure(
 	dir string,
 	kcpPath string,
 	config *rest.Config,
-	templateData map[string]string,
+	templateData map[string]any,
 	inst *v1alpha1.PlatformMesh,
 	kcpHelper KcpHelper,
 ) error {
@@ -533,7 +525,7 @@ func matchesStatusFieldValue(resource *unstructured.Unstructured, fieldPath []st
 	return value == expectedValue
 }
 
-func unstructuredFromFile(path string, templateData map[string]string, log *logger.Logger) (unstructured.Unstructured, error) {
+func unstructuredFromFile(path string, templateData map[string]any, log *logger.Logger) (unstructured.Unstructured, error) {
 	manifestBytes, err := os.ReadFile(path)
 	if err != nil {
 		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)

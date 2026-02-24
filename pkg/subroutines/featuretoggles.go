@@ -99,6 +99,15 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Accounts in accounts' feature")
+		case "feature-enable-account-iam-ui":
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-account-iam-ui")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply account-iam-ui manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Account IAM UI' feature")
+		case "feature-disable-email-verification":
+			log.Info().Msg("Enabled 'disable-email-verification' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
@@ -144,7 +153,7 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 	dir := r.workspaceDirectory + kcpDir
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
-	tplValues := map[string]string{
+	tplValues := map[string]any{
 		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"baseDomain":     baseDomain,
 		"protocol":       protocol,
