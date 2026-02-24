@@ -362,23 +362,23 @@ func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.Operato
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
+		return nil, fmt.Errorf("getting secret %s/%s: %w", secretName, operatorCfg.KCP.Namespace, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
+		return nil, fmt.Errorf("secret %s/%s is nil", secretName, operatorCfg.KCP.Namespace)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
+		return nil, fmt.Errorf("secret %s/%s has no Data", secretName, operatorCfg.KCP.Namespace)
 	}
 
 	kubeconfigData, ok := secret.Data["kubeconfig"]
 	if !ok || len(kubeconfigData) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"kubeconfig\"", secretName)
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"kubeconfig\"", secretName, operatorCfg.KCP.Namespace)
 	}
 
 	kubeconfig, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load kubeconfig from secret %s/platform-mesh-system: %w", secretName, err)
+		return nil, fmt.Errorf("failed to load kubeconfig from secret %s/%s: %w", secretName, operatorCfg.KCP.Namespace, err)
 	}
 
 	return clientcmd.NewDefaultClientConfig(*kubeconfig, nil).ClientConfig()
