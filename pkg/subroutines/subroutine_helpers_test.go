@@ -294,6 +294,35 @@ func (s *HelperTestSuite) TestConstructorOK() {
 	s.Assert().NotNil(client)
 }
 
+func (s *HelperTestSuite) TestURLSchemeHost() {
+	tests := []struct {
+		name      string
+		hostURL   string
+		want      string
+		expectErr bool
+	}{
+		{"scheme and host only", "https://frontproxy-front-proxy:6443", "https://frontproxy-front-proxy:6443", false},
+		{"URL with path is stripped", "https://frontproxy-front-proxy:6443/clusters/root:platform-mesh-system", "https://frontproxy-front-proxy:6443", false},
+		{"no scheme gets https", "example.com:6443", "https://example.com:6443", false},
+		{"no scheme with path", "example.com:6443/clusters/root:ws", "https://example.com:6443", false},
+		{"http preserved", "http://localhost:8080/path", "http://localhost:8080", false},
+		{"empty string", "", "", true},
+		{"invalid URL (no host)", "https://", "", true},
+	}
+	for _, tt := range tests {
+		s.T().Run(tt.name, func(t *testing.T) {
+			got, err := subroutines.URLSchemeHost(tt.hostURL)
+			if tt.expectErr {
+				s.Assert().Error(err, "hostURL=%q", tt.hostURL)
+				s.Assert().Empty(got)
+			} else {
+				s.Assert().NoError(err, "hostURL=%q", tt.hostURL)
+				s.Assert().Equal(tt.want, got, "hostURL=%q", tt.hostURL)
+			}
+		})
+	}
+}
+
 func (s *HelperTestSuite) TestApplyManifestFromFile() {
 
 	cl := new(mocks.Client)

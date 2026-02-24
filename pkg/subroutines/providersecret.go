@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strings"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -135,13 +136,45 @@ func (r *ProvidersecretSubroutine) Process(
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
+	var failed []struct {
+		secret string
+		err    error
+	}
 	for _, pc := range providers {
 		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg); opErr != nil {
-			log.Error().Err(opErr.Err()).Msg("Failed to handle provider connection")
-			return ctrl.Result{}, opErr
+			log.Error().Err(opErr.Err()).Str("secret", pc.Secret).Msg("Failed to handle provider connection")
+			failed = append(failed, struct {
+				secret string
+				err    error
+			}{pc.Secret, opErr.Err()})
 		}
 	}
+	if res, opErr := providerConnectionFailuresResult(failed); opErr != nil {
+		return res, opErr
+	}
 	return ctrl.Result{}, nil
+}
+
+// providerConnectionFailuresResult returns a combined error and requeue result for failed provider connections.
+// If failed is empty it returns (ctrl.Result{}, nil).
+func providerConnectionFailuresResult(failed []struct {
+	secret string
+	err    error
+}) (ctrl.Result, errors.OperatorError) {
+	if len(failed) == 0 {
+		return ctrl.Result{}, nil
+	}
+	var msg strings.Builder
+	msg.WriteString("provider connection(s) failed: ")
+	for i, f := range failed {
+		if i > 0 {
+			msg.WriteString("; ")
+		}
+		msg.WriteString(f.secret)
+		msg.WriteString(": ")
+		msg.WriteString(f.err.Error())
+	}
+	return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("%s", msg.String()), true, false)
 }
 
 func (r *ProvidersecretSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
@@ -152,11 +185,44 @@ func (r *ProvidersecretSubroutine) GetName() string {
 	return ProvidersecretSubroutineName
 }
 
+// normalizeRestConfigHost ensures cfg.Host has a scheme so that url.Parse(cfg.Host) yields a valid host (e.g. "example.com" -> "https://example.com").
+func normalizeRestConfigHost(cfg *rest.Config) {
+	if cfg == nil || cfg.Host == "" {
+		return
+	}
+	if !strings.HasPrefix(cfg.Host, "http://") && !strings.HasPrefix(cfg.Host, "https://") {
+		cfg.Host = "https://" + cfg.Host
+	}
+}
+
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	normalizeRestConfigHost(cfg)
+
+	// Original URL logic: hostPort from operator config (with namespace) or exposure when external (no shared function).
+	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	if pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "" {
+		baseDomain := instance.Spec.Exposure.BaseDomain
+		port := instance.Spec.Exposure.Port
+		if port == 0 {
+			port = 443
+		}
+		// Platform convention: KCP API is exposed at kcp.api.<baseDomain> (see Istio host, portal-server-lib; docs/ANALYSIS_PORTAL_URL_AND_KCP_API_PREFIX.md).
+		if strings.Contains(baseDomain, ":") {
+			hostPort = "https://kcp.api." + baseDomain
+		} else {
+			hostPort = fmt.Sprintf("https://kcp.api.%s:%d", baseDomain, port)
+		}
+	}
+	hasBaseURL := operatorCfg.KCP.FrontProxyName != "" || (pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "")
+
+	if !ptr.Deref(pc.UseAdminKubeconfig, false) && !hasBaseURL {
+		log.Error().Msg("Scoped kubeconfig requested but no base URL available (FrontProxy not set and external exposure not set)")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("scoped kubeconfig requested but no base URL"), true, true)
+	}
 
 	var address *url.URL
 
@@ -178,62 +244,10 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
 		}
 
-		// Use scoped kubeconfig when useAdminKubeconfig is false and FrontProxy is set. Also support legacy:
-		// extension-manager-operator with FrontProxyName set and no useAdminKubeconfig uses scoped.
-		useScoped := !ptr.Deref(pc.UseAdminKubeconfig, false) && operatorCfg.KCP.FrontProxyName != ""
-		legacyScoped := pc.Secret == "extension-manager-operator-kubeconfig" && operatorCfg.KCP.FrontProxyName != "" && pc.UseAdminKubeconfig == nil
-		if (useScoped || legacyScoped) && (ptr.Deref(pc.EndpointSliceName, "") != "" || pc.APIExportName != "") {
-			apiExportName := pc.APIExportName
-			if apiExportName == "" {
-				apiExportName = *pc.EndpointSliceName
-			}
-			apiExportPath := pc.APIExportPath
-			if apiExportPath == "" {
-				apiExportPath = pc.Path
-			}
-			hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
-			if pc.External {
-				hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
-			}
-			hostPath := pc.Path
-			if apiExportPath != "" {
-				hostPath = apiExportPath
-			}
-			hostURL, err := url.JoinPath(hostPort, "clusters", hostPath)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to build host URL for scoped kubeconfig")
-				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-			}
-			namespace := "platform-mesh-system"
-			if ptr.Deref(pc.Namespace, "") != "" {
-				namespace = *pc.Namespace
-			}
-			caData := cfg.TLSClientConfig.CAData
-			if caData == nil {
-				caData = []byte{}
-			}
-			writeSecret := func(ctx context.Context, name, ns string, kubeconfigBytes []byte) error {
-				secret := &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-				}
-				_, createErr := controllerutil.CreateOrUpdate(ctx, r.client, secret, func() error {
-					secret.Data = map[string][]byte{"kubeconfig": kubeconfigBytes}
-					return nil
-				})
-				return createErr
-			}
-			err = HandleProviderConnectionScoped(ctx, cfg, ProviderConnectionSpec{
-				Path:          pc.Path,
-				Secret:        pc.Secret,
-				APIExportName: apiExportName,
-				APIExportPath: apiExportPath,
-			}, ScopedKubeconfigConfig{}, hostURL, caData,
-				func() string { return namespace },
-				writeSecret,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
-				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+		if !ptr.Deref(pc.UseAdminKubeconfig, false) && hasBaseURL && (ptr.Deref(pc.EndpointSliceName, "") != "" || pc.APIExportName != "") {
+			res, opErr := r.writeScopedKubeconfigWithSlice(ctx, instance, pc, cfg, &slice, hostPort)
+			if opErr != nil {
+				return res, opErr
 			}
 			log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (scoped kubeconfig)")
 			return ctrl.Result{}, nil
@@ -246,6 +260,15 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 	} else {
+		if !ptr.Deref(pc.UseAdminKubeconfig, false) && hasBaseURL && pc.APIExportName != "" {
+			res, opErr := r.writeScopedKubeconfigWithoutSlice(ctx, pc, cfg, hostPort)
+			if opErr != nil {
+				return res, opErr
+			}
+			log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (scoped kubeconfig)")
+			return ctrl.Result{}, nil
+		}
+
 		kcpUrl, err := url.Parse(cfg.Host)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to parse KCP URL")
@@ -260,10 +283,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	newConfig := rest.CopyConfig(cfg)
-	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
-	if pc.External {
-		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
-	}
 	host, err := url.JoinPath(hostPort, address.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
@@ -333,16 +352,17 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	cluster := apiConfig.Contexts[curr].Cluster
 	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
 
-	var url *url.URL
-	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
+	vwURL, err := url.Parse(wt.Status.VirtualWorkspaces[0].URL)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing virtual workspace URL")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
-	apiConfig.Clusters[cluster].Server = url.String()
-	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
+	// Use the same host as the operator's KCP config (restCfg.Host) so we don't depend on FrontProxyName here.
+	if baseURL, parseErr := url.Parse(restCfg.Host); parseErr == nil {
+		vwURL.Host = baseURL.Host
+	}
+	apiConfig.Clusters[cluster].Server = vwURL.String()
+	log.Debug().Str("url", vwURL.String()).Msg("modified virtual workspace URL")
 
 	data, err := clientcmd.Write(*apiConfig)
 	if err != nil {
@@ -404,4 +424,58 @@ func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
 	}
 
 	return clientConfig
+}
+
+// writeScopedKubeconfigWithSlice creates a scoped kubeconfig when we have an APIExportEndpointSlice and writes the secret.
+func (r *ProvidersecretSubroutine) writeScopedKubeconfigWithSlice(
+	ctx context.Context,
+	pc corev1alpha1.ProviderConnection,
+	cfg *rest.Config,
+	hostPort string,
+) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx)
+	apiExportName := pc.APIExportName
+	if apiExportName == "" {
+		apiExportName = *pc.EndpointSliceName
+	}
+	namespace := DefaultScopedSecretNamespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	err := WriteScopedKubeconfigToSecret(ctx, r.client, cfg, ProviderConnectionSpec{
+		Path:          pc.Path,
+		Secret:        pc.Secret,
+		APIExportName: apiExportName,
+	}, hostPort, namespace)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (scoped kubeconfig)")
+	return ctrl.Result{}, nil
+}
+
+// writeScopedKubeconfigWithoutSlice creates a scoped kubeconfig when we have no endpoint slice but have APIExportName.
+func (r *ProvidersecretSubroutine) writeScopedKubeconfigWithoutSlice(
+	ctx context.Context,
+	pc corev1alpha1.ProviderConnection,
+	cfg *rest.Config,
+	hostPort string,
+) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx)
+	namespace := DefaultScopedSecretNamespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	err := WriteScopedKubeconfigToSecret(ctx, r.client, cfg, ProviderConnectionSpec{
+		Path:          pc.Path,
+		Secret:        pc.Secret,
+		APIExportName: pc.APIExportName,
+	}, hostPort, namespace)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (scoped kubeconfig)")
+	return ctrl.Result{}, nil
 }

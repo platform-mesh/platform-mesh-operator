@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -1590,9 +1591,22 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 }
 
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
-	// Setup test instance
+	// Setup test instance: use only account-operator (admin path) and kubernetes-graphql-gateway (admin path with slice)
+	// so we avoid the scoped path that requires APIExport (ResolveAPIExport uses its own client, not the mock).
 	instance := s.getBaseInstance()
-	instance.Spec.Kcp.ProviderConnections = nil
+	instance.Spec.Kcp.ProviderConnections = []corev1alpha1.ProviderConnection{
+		{
+			Path:               "root:platform-mesh-system",
+			Secret:             "account-operator-kubeconfig",
+			UseAdminKubeconfig: ptr.To(false),
+		},
+		{
+			EndpointSliceName:  ptr.To("core.platform-mesh.io"),
+			Path:               "root:platform-mesh-system",
+			Secret:             "kubernetes-grapqhl-gateway-kubeconfig",
+			UseAdminKubeconfig: ptr.To(true), // admin path so we use slice URL without calling ResolveAPIExport
+		},
+	}
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
 			EndpointSliceName: ptr.To(""),
@@ -1732,7 +1746,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).
-		Times(len(subroutines.DefaultProviderConnections))
+		Times(1) // only kubernetes-graphql-gateway has EndpointSliceName set (needs slice Get)
 
 	// Setup mock KCP helper
 	mockedKcpHelper := new(mocks.KcpHelper)
@@ -1740,7 +1754,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		EXPECT().
 		NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).
-		Times(len(subroutines.DefaultProviderConnections))
+		Times(1)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
@@ -1749,8 +1763,9 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		},
 	).Once()
 
+	providers := append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...)
 	// Setup mock expectations for each provider connection
-	for _, pc := range subroutines.DefaultProviderConnections {
+	for _, pc := range providers {
 		s.clientMock.
 			EXPECT().
 			Get(
@@ -1792,7 +1807,19 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					}
 					ctx := cfg.Contexts[cfg.CurrentContext]
 					cluster := cfg.Clusters[ctx.Cluster]
-					want := fmt.Sprintf("http://example.com/clusters/%s", pc.Path)
+					// hostPort from original logic: operatorCfg (frontproxy.platform-mesh-system:6443) or exposure when External.
+					// With slice (admin): address from slice URL so path empty -> hostPort only.
+					// Without slice: host = hostPort + "/clusters/" + path.
+					// External: hostPort = kcp.api.example.com:8443.
+					baseHost := "https://frontproxy-front-proxy.platform-mesh-system:6443"
+					var want string
+					if pc.External {
+						want = fmt.Sprintf("https://kcp.api.example.com:8443/clusters/%s", pc.Path)
+					} else if ptr.Deref(pc.EndpointSliceName, "") != "" {
+						want = baseHost // admin path with slice: hostPort + empty path
+					} else {
+						want = fmt.Sprintf("%s/clusters/%s", baseHost, pc.Path)
+					}
 					if cluster.Server != want {
 						s.log.Error().Msgf("server URL = %q; want %q", cluster.Server, want)
 						return false
@@ -1813,13 +1840,129 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	// Run test
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
 
-	// Add the missing operator config context
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
+	// Add operator config so hostPort is set (frontproxy.platform-mesh-system:6443) and hasBaseURL is true
+	operatorCfg := config.OperatorConfig{KCP: config.OperatorConfig{}.KCP}
+	operatorCfg.KCP.FrontProxyName = "frontproxy"
+	operatorCfg.KCP.Namespace = "platform-mesh-system"
+	operatorCfg.KCP.FrontProxyPort = "6443"
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
+	res, opErr := s.testObj.Process(ctx, instance)
+	s.Require().Nil(opErr)
+	s.Assert().Equal(ctrl.Result{}, res)
+}
+
+// TestHandleProviderConnections_NoDoublePathWhenKcpUrlHasPath ensures that when kcpUrl
+// has a path, the written provider kubeconfig server URLs use hostPort from operatorCfg
+// (not from cfg.Host), so there is no double path (e.g. no .../clusters/.../clusters/...).
+func (s *ProvidersecretTestSuite) TestHandleProviderConnections_NoDoublePathWhenKcpUrlHasPath() {
+	// Same instance and mocks as TestHandleProviderConnections, but kcpUrl has a path.
+	// buildKubeconfig will set cfg.Host = kcpUrl, so getBaseURL/URLSchemeHost must strip it
+	// before url.JoinPath(baseURL, "clusters", path) to avoid double path.
+	kcpUrlWithPath := "https://example.com/clusters/root:platform-mesh-system"
+	instance := s.getBaseInstance()
+	instance.Namespace = "platform-mesh-system"
+	// Only in-cluster providers so all secrets are in platform-mesh-system (same as instance.Namespace, no cross-namespace owner ref).
+	instance.Spec.Kcp.ProviderConnections = []corev1alpha1.ProviderConnection{
+		{Path: "root:platform-mesh-system", Secret: "account-operator-kubeconfig", UseAdminKubeconfig: ptr.To(false)},
+		{EndpointSliceName: ptr.To("core.platform-mesh.io"), Path: "root:platform-mesh-system", Secret: "kubernetes-grapqhl-gateway-kubeconfig", UseAdminKubeconfig: ptr.To(true)},
+	}
+	instance.Spec.Kcp.ExtraProviderConnections = nil
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-secret", Namespace: "default"},
+		Data: map[string][]byte{
+			"kubeconfig": secretKubeconfigData,
+			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
+			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
+			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
+		},
+	}
+
+	// Admin secret Get (buildKubeconfig): must match before provider secret Gets.
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "kcp-cluster-admin-client-cert", Namespace: "platform-mesh-system"}, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*corev1.Secret) = *secret
+			return nil
+		}).Once()
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*unstructured.Unstructured) = unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"status": map[string]interface{}{
+						"conditions": []interface{}{
+							map[string]interface{}{"type": "Available", "status": "True"},
+						},
+					},
+				},
+			}
+			return nil
+		}).Twice()
+
+	slice := &kcpapiv1alpha.APIExportEndpointSlice{
+		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
+			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{{URL: "http://example.com"}},
+		},
+	}
+	mockedKcpClient := new(mocks.Client)
+	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
+			return nil
+		}).Times(1)
+	mockedKcpHelper := new(mocks.KcpHelper)
+	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockedKcpClient, nil).Times(1)
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
+		func(_ context.Context, _ types.NamespacedName, o client.Object, _ ...client.GetOption) error {
+			*o.(*corev1.Secret) = *secret
+			return nil
+		}).Once()
+
+	doublePath := "/clusters/root:platform-mesh-system/clusters/root:platform-mesh-system"
+	for _, pc := range append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...) {
+		pc := pc
+		secretNS := "platform-mesh-system"
+		if pc.Namespace != nil && *pc.Namespace != "" {
+			secretNS = *pc.Namespace
+		}
+		s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: pc.Secret, Namespace: secretNS}, mock.Anything).
+			Return(apierrors.NewNotFound(schema.GroupResource{}, pc.Secret)).Once()
+		s.clientMock.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+			sec, ok := obj.(*corev1.Secret)
+			if !ok || sec.Name != pc.Secret || sec.Namespace != secretNS {
+				return false
+			}
+			data, ok := sec.Data["kubeconfig"]
+			if !ok {
+				return false
+			}
+			cfg, err := clientcmd.Load(data)
+			if err != nil {
+				return false
+			}
+			ctx := cfg.Contexts[cfg.CurrentContext]
+			cluster := cfg.Clusters[ctx.Cluster]
+			if cluster == nil || cluster.Server == "" {
+				return false
+			}
+			if strings.Contains(cluster.Server, doublePath) {
+				s.log.Error().Msgf("provider secret %s has double path in server URL: %s", pc.Secret, cluster.Server)
+				return false
+			}
+			return true
+		}), mock.Anything).RunAndReturn(func(ctx context.Context, obj client.Object, _ ...client.CreateOption) error {
+			return controllerutil.SetOwnerReference(instance, obj.(*corev1.Secret), s.clientMock.Scheme())
+		}).Once()
+	}
+
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, kcpUrlWithPath)
+	operatorCfg := config.OperatorConfig{KCP: config.OperatorConfig{}.KCP}
+	operatorCfg.KCP.FrontProxyName = "frontproxy"
+	operatorCfg.KCP.Namespace = "platform-mesh-system"
+	operatorCfg.KCP.FrontProxyPort = "6443"
+	operatorCfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	ctx := context.WithValue(context.WithValue(context.Background(), keys.LoggerCtxKey, s.log), keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, res)

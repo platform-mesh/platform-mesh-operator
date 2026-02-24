@@ -124,8 +124,6 @@ spec:
                       properties:
                         apiExportName:
                           type: string
-                        apiExportPath:
-                          type: string
                         endpointSliceName:
                           type: string
                         external:
@@ -179,8 +177,6 @@ spec:
                     items:
                       properties:
                         apiExportName:
-                          type: string
-                        apiExportPath:
                           type: string
                         endpointSliceName:
                           type: string

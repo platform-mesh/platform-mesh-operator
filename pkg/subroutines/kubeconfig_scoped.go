@@ -20,11 +20,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const (
 	// DefaultScopedSANamespace is the default namespace in the KCP workspace where we create ServiceAccounts for scoped kubeconfigs.
 	DefaultScopedSANamespace = "default"
+	// DefaultScopedSecretNamespace is the default namespace in the management cluster where provider kubeconfig secrets are written.
+	DefaultScopedSecretNamespace = "platform-mesh-system"
 	// DefaultTokenExpirationSeconds is used when TokenExpirationSeconds is not set (24h).
 	DefaultTokenExpirationSeconds = 86400
 	// ScopedClusterRolePrefix is the prefix for ClusterRoles created from APIExport.
@@ -33,17 +36,15 @@ const (
 	ScopedSAPrefix = "platform-mesh-provider-"
 )
 
-// ScopedKubeconfigConfig holds configurable options for scoped kubeconfig generation (from PlatformMesh spec or defaults).
-type ScopedKubeconfigConfig struct {
-	ServiceAccountNamespace string
-	TokenExpirationSeconds  int64
-}
-
 // buildKCPConfigForPath returns a copy of cfg with Host set to the KCP workspace path (for use when creating resources in that path).
 func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config {
 	out := rest.CopyConfig(cfg)
-	u, _ := url.Parse(cfg.Host)
-	out.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
+	schemeHost, err := URLSchemeHost(cfg.Host)
+	if err != nil {
+		// Fallback to original Host so callers still get a valid config
+		schemeHost = cfg.Host
+	}
+	out.Host = schemeHost + "/clusters/" + workspacePath
 	return out
 }
 
@@ -64,17 +65,16 @@ func newKCPClientWithRBAC(cfg *rest.Config, workspacePath string) (client.Client
 }
 
 // ResolveAPIExport returns the APIExport (v1alpha2) and the workspace path where it lives.
-// Only APIExportName and APIExportPath are used; no APIExportEndpointSlice.
+// apiExportPath must be non-empty (callers pass Path from the provider connection).
 func ResolveAPIExport(ctx context.Context, cfg *rest.Config, apiExportName, apiExportPath string) (*kcpapiv1alpha2.APIExport, string, error) {
 	if apiExportName == "" {
 		return nil, "", fmt.Errorf("cannot resolve APIExport: APIExportName is required")
 	}
-	exportPath := apiExportPath
-	if exportPath == "" {
-		exportPath = "root:platform-mesh-system" // fallback; callers should pass Path when APIExportPath is empty
+	if apiExportPath == "" {
+		return nil, "", fmt.Errorf("cannot resolve APIExport: workspace path is required")
 	}
 
-	kcpClient, err := newKCPClientWithRBAC(cfg, exportPath)
+	kcpClient, err := newKCPClientWithRBAC(cfg, apiExportPath)
 	if err != nil {
 		return nil, "", err
 	}
@@ -83,7 +83,7 @@ func ResolveAPIExport(ctx context.Context, cfg *rest.Config, apiExportName, apiE
 	if err := kcpClient.Get(ctx, client.ObjectKey{Name: apiExportName}, &export); err != nil {
 		return nil, "", fmt.Errorf("get APIExport %s: %w", apiExportName, err)
 	}
-	return &export, exportPath, nil
+	return &export, apiExportPath, nil
 }
 
 // hasWriteVerb returns true if verbs include update or patch (or "*").
@@ -293,6 +293,38 @@ func CreateTokenForSA(ctx context.Context, cfg *rest.Config, workspacePath, name
 	return tr.Status.Token, nil
 }
 
+// BuildHostURLForScoped returns hostPort + "/clusters/" + path for scoped kubeconfig server URL.
+func BuildHostURLForScoped(hostPort, path string) (string, error) {
+	return url.JoinPath(hostPort, "clusters", path)
+}
+
+// WriteScopedKubeconfigToSecret builds the scoped kubeconfig server URL, namespace, and CA data from cfg,
+// then calls HandleProviderConnectionScoped with a writeSecret callback that persists the kubeconfig into a Secret via k8sClient.
+func WriteScopedKubeconfigToSecret(ctx context.Context, k8sClient client.Client, cfg *rest.Config, spec ProviderConnectionSpec, hostPort, secretNamespace string) error {
+	hostURL, err := BuildHostURLForScoped(hostPort, spec.Path)
+	if err != nil {
+		return fmt.Errorf("build host URL for scoped kubeconfig: %w", err)
+	}
+	if secretNamespace == "" {
+		secretNamespace = DefaultScopedSecretNamespace
+	}
+	caData := cfg.TLSClientConfig.CAData
+	if caData == nil {
+		caData = []byte{}
+	}
+	writeSecret := func(ctx context.Context, name, ns string, kubeconfigBytes []byte) error {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		}
+		_, err := controllerutil.CreateOrUpdate(ctx, k8sClient, secret, func() error {
+			secret.Data = map[string][]byte{"kubeconfig": kubeconfigBytes}
+			return nil
+		})
+		return err
+	}
+	return HandleProviderConnectionScoped(ctx, cfg, spec, hostURL, caData, secretNamespace, writeSecret)
+}
+
 // BuildScopedKubeconfig builds a kubeconfig that uses the given token and CA for the cluster at hostURL.
 func BuildScopedKubeconfig(hostURL string, token string, caData []byte) *clientcmdapi.Config {
 	return &clientcmdapi.Config{
@@ -318,27 +350,26 @@ func BuildScopedKubeconfig(hostURL string, token string, caData []byte) *clientc
 }
 
 // HandleProviderConnectionScoped generates a service-specific kubeconfig for the provider and writes it to the Secret.
-// It resolves the APIExport by name/path only, creates SA + RBAC in the export workspace (saWorkspace if set, else exportPath), creates a token, and builds the kubeconfig.
-// hostURL should point to that same export workspace (e.g. https://kcp/clusters/root:platform-mesh-system) so the SA can access APIExportEndpointSlices and export content there.
+// Same pattern as consumers (rebac, extension-manager): path comes from context (Path = export workspace), only APIExportName in config.
+// Resolves the APIExport by name in Path, creates SA + RBAC in Path, creates a token, and builds the kubeconfig.
+// hostURL must point at that workspace (e.g. https://kcp/clusters/root:platform-mesh-system) so the SA can use APIExportEndpointSlices and export content there.
 func HandleProviderConnectionScoped(
 	ctx context.Context,
 	cfg *rest.Config,
 	pc ProviderConnectionSpec,
-	scopedConfig ScopedKubeconfigConfig,
 	hostURL string,
 	caData []byte,
-	getNamespace func() string,
+	secretNamespace string,
 	writeSecret func(ctx context.Context, name, namespace string, kubeconfigBytes []byte) error,
 ) error {
 	if pc.APIExportName == "" {
 		return fmt.Errorf("scoped kubeconfig requires APIExportName")
 	}
-	apiExportPath := pc.APIExportPath
-	if apiExportPath == "" {
-		apiExportPath = pc.Path
+	if pc.Path == "" {
+		return fmt.Errorf("scoped kubeconfig requires Path (export workspace)")
 	}
 
-	export, exportPath, err := ResolveAPIExport(ctx, cfg, pc.APIExportName, apiExportPath)
+	export, _, err := ResolveAPIExport(ctx, cfg, pc.APIExportName, pc.Path)
 	if err != nil {
 		return errors.Wrap(err, "resolve APIExport")
 	}
@@ -348,13 +379,8 @@ func HandleProviderConnectionScoped(
 		return errors.Wrap(err, "build RBAC from APIExport")
 	}
 
-	// SA in the export workspace (where APIExport and APIExportEndpointSlices live); optional override via SAWorkspace.
-	saWorkspace := pc.SAWorkspace
-	if saWorkspace == "" {
-		saWorkspace = exportPath
-	}
-
-	kcpClient, err := newKCPClientWithRBAC(cfg, saWorkspace)
+	// SA in the export workspace (Path) where APIExport and APIExportEndpointSlices live; always use default namespace in KCP.
+	kcpClient, err := newKCPClientWithRBAC(cfg, pc.Path)
 	if err != nil {
 		return errors.Wrap(err, "create KCP client for SA workspace")
 	}
@@ -362,19 +388,12 @@ func HandleProviderConnectionScoped(
 	if export.Name != "" {
 		providerKey = export.Name + "-" + pc.Secret
 	}
-	saNamespace := scopedConfig.ServiceAccountNamespace
-	if saNamespace == "" {
-		saNamespace = DefaultScopedSANamespace
-	}
-	if pc.ServiceAccountNamespace != nil && *pc.ServiceAccountNamespace != "" {
-		saNamespace = *pc.ServiceAccountNamespace
-	}
-	saName, err := EnsureServiceAccountAndRBAC(ctx, kcpClient, providerKey, saNamespace, rules)
+	saName, err := EnsureServiceAccountAndRBAC(ctx, kcpClient, providerKey, DefaultScopedSANamespace, rules)
 	if err != nil {
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}
 
-	token, err := CreateTokenForSA(ctx, cfg, saWorkspace, saNamespace, saName, scopedConfig.TokenExpirationSeconds)
+	token, err := CreateTokenForSA(ctx, cfg, pc.Path, DefaultScopedSANamespace, saName, DefaultTokenExpirationSeconds)
 	if err != nil {
 		return errors.Wrap(err, "create token for ServiceAccount")
 	}
@@ -385,23 +404,19 @@ func HandleProviderConnectionScoped(
 		return errors.Wrap(err, "write kubeconfig")
 	}
 
-	namespace := getNamespace()
-	if namespace == "" {
-		namespace = "platform-mesh-system"
+	if secretNamespace == "" {
+		secretNamespace = DefaultScopedSecretNamespace
 	}
-	if err := writeSecret(ctx, pc.Secret, namespace, kubeconfigBytes); err != nil {
+	if err := writeSecret(ctx, pc.Secret, secretNamespace, kubeconfigBytes); err != nil {
 		return errors.Wrap(err, "write provider secret")
 	}
 	return nil
 }
 
 // ProviderConnectionSpec is the minimal spec needed for scoped kubeconfig (avoids importing api/v1alpha1 in tests).
+// Same pattern as consumers: Path = export workspace (from context), APIExportName = which export (only name in config).
 type ProviderConnectionSpec struct {
-	Path                    string
-	Secret                  string
-	APIExportName           string
-	APIExportPath           string
-	ServiceAccountNamespace *string
-	// SAWorkspace is the KCP workspace where to create the ServiceAccount. If empty, the export workspace (APIExportPath/Path) is used so the SA can access APIExportEndpointSlices and export content there.
-	SAWorkspace string
+	Path          string // KCP workspace path for the export; also where SA is created and hostURL points.
+	Secret        string
+	APIExportName string
 }
