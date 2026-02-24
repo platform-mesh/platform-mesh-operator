@@ -15,7 +15,7 @@ replace (
 )
 
 require (
-	github.com/cert-manager/cert-manager v1.19.3
+	github.com/cert-manager/cert-manager v1.19.4
 	github.com/creasty/defaults v1.8.0
 	github.com/fluxcd/helm-controller/api v1.5.0
 	github.com/fluxcd/source-controller/api v1.8.0
