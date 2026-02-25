@@ -2,6 +2,7 @@ package subroutines_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -173,7 +174,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	// Check mutating webhook CA bundle
 	mutatingKey := subroutines.DEFAULT_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
 	s.Assert().Contains(inventory, mutatingKey)
-	expectedB64 := "dGVzdC1jYS1kYXRh" // base64 encoding of "test-ca-data"
+	expectedB64 := base64.StdEncoding.EncodeToString(expectedCaData)
 	s.Assert().Equal(expectedB64, inventory[mutatingKey])
 
 	// Check validating webhook CA bundle

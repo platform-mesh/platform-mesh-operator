@@ -202,7 +202,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	normalizeRestConfigHost(cfg)
 
-	// Original URL logic: hostPort from operator config (with namespace) or exposure when external (no shared function).
 	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "" {
 		baseDomain := instance.Spec.Exposure.BaseDomain
@@ -245,7 +244,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 
 		if !ptr.Deref(pc.UseAdminKubeconfig, false) && hasBaseURL && (ptr.Deref(pc.EndpointSliceName, "") != "" || pc.APIExportName != "") {
-			res, opErr := r.writeScopedKubeconfigWithSlice(ctx, instance, pc, cfg, &slice, hostPort)
+			res, opErr := r.writeScopedKubeconfigWithSlice(ctx, pc, cfg, hostPort)
 			if opErr != nil {
 				return res, opErr
 			}
@@ -357,12 +356,18 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 		log.Error().Err(err).Msg("parsing virtual workspace URL")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	// Use the same host as the operator's KCP config (restCfg.Host) so we don't depend on FrontProxyName here.
-	if baseURL, parseErr := url.Parse(restCfg.Host); parseErr == nil {
-		vwURL.Host = baseURL.Host
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	if operatorCfg.KCP.FrontProxyName != "" {
+		vwURL.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
+		log.Debug().Str("url", vwURL.String()).Msg("modified virtual workspace URL (operator front-proxy)")
+	} else {
+		// Fallback: use the same host as the operator's KCP config (restCfg.Host).
+		if baseURL, parseErr := url.Parse(restCfg.Host); parseErr == nil {
+			vwURL.Host = baseURL.Host
+		}
+		log.Debug().Str("url", vwURL.String()).Msg("modified virtual workspace URL (restCfg host)")
 	}
 	apiConfig.Clusters[cluster].Server = vwURL.String()
-	log.Debug().Str("url", vwURL.String()).Msg("modified virtual workspace URL")
 
 	data, err := clientcmd.Write(*apiConfig)
 	if err != nil {

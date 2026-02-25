@@ -281,13 +281,13 @@ func (suite *HelperTestSuite) SetupTest() {
 }
 
 func (s *HelperTestSuite) TestConstructorError() {
-	client, err := s.NewKcpClient(&rest.Config{}, "")
+	client, err := s.KcpHelper.NewKcpClient(&rest.Config{}, "")
 	s.Assert().Error(err)
 	s.Assert().Nil(client)
 }
 
 func (s *HelperTestSuite) TestConstructorOK() {
-	client, err := s.NewKcpClient(&rest.Config{
+	client, err := s.KcpHelper.NewKcpClient(&rest.Config{
 		Host: "http://server:1234",
 	}, "")
 	s.Assert().NoError(err)
