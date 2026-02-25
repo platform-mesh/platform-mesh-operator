@@ -18,45 +18,45 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		Path:               "root:platform-mesh-system",
 		Secret:             "account-operator-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 	},
 	{
 		Path:               "root:platform-mesh-system",
 		Secret:             "rebac-authz-webhook-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 		APIExportName:      "core.platform-mesh.io",
 	},
 	{
 		Path:               "root:platform-mesh-system",
 		Secret:             "security-operator-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 	},
 	{
 		EndpointSliceName:  ptr.To("core.platform-mesh.io"),
 		Path:               "root:platform-mesh-system",
 		Secret:             "kubernetes-grapqhl-gateway-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 	},
 	{
 		Path:               "root:platform-mesh-system",
 		Secret:             "extension-manager-operator-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 		APIExportName:      "core.platform-mesh.io",
 	},
 	{
 		Path:               "root:platform-mesh-system",
 		Secret:             "iam-service-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 	},
 	{
 		RawPath:            ptr.To("/services/contentconfigurations"),
 		Secret:             "portal-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 	},
 	{
 		Path:               "root",
 		Secret:             "security-initializer-kubeconfig",
-		UseAdminKubeconfig: ptr.To(false),
+		UseAdminKubeconfig: ptr.To(true),
 	},
 	{
 		Path:   "root",
