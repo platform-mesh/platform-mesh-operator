@@ -38,6 +38,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 type KindTestSuite struct {
@@ -290,6 +291,16 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
+	securityOperatorCa := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "security-operator-ca-secret",
+			Namespace: "platform-mesh-system",
+		},
+		Data: map[string][]byte{
+			"ca.crt": caRootBytes,
+		},
+		Type: corev1.SecretTypeOpaque,
+	}
 	domain_certificate_ca := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "domain-certificate-ca",
@@ -297,9 +308,8 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Data: map[string][]byte{
 			"tls.crt": caRootBytes,
-			"tls.key": keyBytes,
 		},
-		Type: corev1.SecretTypeTLS,
+		Type: corev1.SecretTypeOpaque,
 	}
 	createIfNotExists := func(obj client.Object) error {
 		if err := s.client.Create(ctx, obj); err != nil {
@@ -315,6 +325,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		keycloak_admin,
 		domain_certificate,
 		rbac_webhook_ca,
+		securityOperatorCa,
 		domain_certificate_ca,
 		pms_domain_certificate,
 	}
@@ -547,6 +558,9 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	options := ctrl.Options{
 		Scheme:      s.scheme,
 		BaseContext: func() context.Context { return ctx },
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
 	}
 	mgr, err := ctrl.NewManager(s.config, options)
 

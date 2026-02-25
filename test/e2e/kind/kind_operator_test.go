@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -68,13 +67,6 @@ func (s *KindTestSuite) TestExtraWorkspaces() {
 			Path:     "root:orgs:extra1",
 			Secret:   "extra1-kubeconfig",
 			External: true,
-		},
-		// Old-style connection for extension-manager-operator (0.2.0 component expects secret with virtual workspace URL).
-		// Ensures extension-manager-operator-kubeconfig is created with EndpointSliceName so tests pass without bumping OCM version.
-		corev1alpha1.ProviderConnection{
-			EndpointSliceName: ptr.To("core.platform-mesh.io"),
-			Path:              "root:platform-mesh-system",
-			Secret:            "extension-manager-operator-kubeconfig",
 		},
 	)
 	s.logger.Info().Str("platformmesh", fmt.Sprintf("%+v", pm)).Msg("Updating Platform Mesh resource to add extra workspace and provider connection")
