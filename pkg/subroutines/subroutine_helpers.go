@@ -665,7 +665,3 @@ func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig)
 	kcpUrl := inst.Spec.Exposure.Protocol + "://" + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
 	return kcpUrl
 }
-
-func getInternalKcpHost(cfg *config.OperatorConfig) string {
-	return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
-}

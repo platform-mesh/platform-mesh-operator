@@ -39,6 +39,7 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 type KindTestSuite struct {
@@ -304,9 +305,8 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Data: map[string][]byte{
 			"tls.crt": caRootBytes,
-			"tls.key": keyBytes,
 		},
-		Type: corev1.SecretTypeTLS,
+		Type: corev1.SecretTypeOpaque,
 	}
 	createIfNotExists := func(obj client.Object) error {
 		if err := s.client.Create(ctx, obj); err != nil {
@@ -584,6 +584,9 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	options := ctrl.Options{
 		Scheme:      s.scheme,
 		BaseContext: func() context.Context { return ctx },
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
 	}
 	mgr, err := ctrl.NewManager(s.config, options)
 
