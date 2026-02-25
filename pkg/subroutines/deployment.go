@@ -169,9 +169,15 @@ func (r *DeploymentSubroutine) Finalizers(instance runtimeobject.RuntimeObject) 
 }
 
 func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	inst := runtimeObj.(*v1alpha1.PlatformMesh)
+	inst, ok := runtimeObj.(*v1alpha1.PlatformMesh)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("unexpected runtime object type %T", runtimeObj), false, true)
+	}
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	operatorCfg, ok := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("unexpected config type from context"), false, true)
+	}
 
 	// Create DeploymentComponents Version
 	templateVars, err := TemplateVars(ctx, inst, r.clientRuntime)
@@ -1555,10 +1561,10 @@ func getDeploymentResource(ctx context.Context, client client.Client, resourceNa
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("deploymentTechnology", deploymentTech).Msgf("%s/%s resource not found, waiting for it to be created", resourceName, resourceNamespace)
-			return nil, nil
+			return nil, fmt.Errorf("%s/%s resource not found, waiting for it to be created", resourceName, resourceNamespace)
 		}
 		log.Error().Err(err).Str("deploymentTechnology", deploymentTech).Msgf("Failed to get %s/%s resource", resourceName, resourceNamespace)
-		return nil, nil
+		return nil, err
 	}
 	return obj, nil
 }
@@ -1577,27 +1583,44 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 
 	if len(pods.Items) > 0 {
 		pod := pods.Items[0]
-		spec := pod.Object["spec"].(map[string]interface{})
+		spec, ok := pod.Object["spec"].(map[string]interface{})
+		if !ok {
+			return false, &pod, fmt.Errorf("unexpected pod spec type for pod %s", pod.GetName())
+		}
 		// It is possible to have istio-proxy as an initContainer or a regular container
 		if initContainersInt, ok := spec["initContainers"]; ok {
-			initContainers := initContainersInt.([]interface{})
+			initContainers, ok := initContainersInt.([]interface{})
+			if !ok {
+				return false, &pod, fmt.Errorf("unexpected initContainers type for pod %s", pod.GetName())
+			}
 			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
 			for _, container := range initContainers {
-				containerMap := container.(map[string]interface{})
-				log.Debug().Msgf("Container name: %s", containerMap["name"].(string))
-				if containerMap["name"] == "istio-proxy" {
+				containerMap, ok := container.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				name, _ := containerMap["name"].(string)
+				log.Debug().Msgf("Container name: %s", name)
+				if name == "istio-proxy" {
 					log.Info().Msgf("Found Istio proxy container: %s", containerMap["image"])
 					return true, &pod, nil
 				}
 			}
 		}
 		if containersInt, ok := spec["containers"]; ok {
-			containers := containersInt.([]interface{})
+			containers, ok := containersInt.([]interface{})
+			if !ok {
+				return false, &pod, fmt.Errorf("unexpected containers type for pod %s", pod.GetName())
+			}
 			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d containers in pod", len(containers))
 			for _, container := range containers {
-				containerMap := container.(map[string]interface{})
-				log.Debug().Msgf("Container name: %s", containerMap["name"].(string))
-				if containerMap["name"] == "istio-proxy" {
+				containerMap, ok := container.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				name, _ := containerMap["name"].(string)
+				log.Debug().Msgf("Container name: %s", name)
+				if name == "istio-proxy" {
 					log.Info().Msgf("Found Istio proxy container: %s", containerMap["image"])
 					return true, &pod, nil
 				}

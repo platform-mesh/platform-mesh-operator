@@ -502,7 +502,10 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 	}
 
 	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
+		c, ok := condition.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if c["type"] == conditionType && c["status"] == conditionStatus {
 			return true
 		}

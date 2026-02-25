@@ -195,11 +195,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	newConfig := rest.CopyConfig(cfg)
-	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	var hostPort string
 	if pc.External {
-		newConfig.Host = getExternalKcpHost(instance, &operatorCfg) + address.Path
+		hostPort = getExternalKcpHost(instance, &operatorCfg)
 	} else {
-		newConfig.Host = getInternalKcpHost(&operatorCfg) + address.Path
+		hostPort = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	}
 	host, err := url.JoinPath(hostPort, address.Path)
 	if err != nil {

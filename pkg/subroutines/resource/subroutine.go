@@ -218,8 +218,12 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	}
 
 	version, found, err := unstructured.NestedString(inst.Object, versionPath...)
-	if err != nil || !found {
+	if err != nil || !found || version == "" {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
+		if err == nil {
+			err = fmt.Errorf("version not available in Resource status at path %v", versionPath)
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	// Create a minimal patch object with only the field we're updating
@@ -550,8 +554,12 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	obj.SetNamespace(inst.GetNamespace())
 
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
-	if err != nil || !found {
+	if err != nil || !found || version == "" {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
+		if err == nil {
+			err = fmt.Errorf("version not available in Resource status")
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	// Create a minimal patch object with only the field we're updating
@@ -583,8 +591,11 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 
 func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "helmRepository")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+	if err != nil || !found || url == "" {
+		log.Info().Err(err).Msg("Failed to get helmRepository from Resource status")
+		if err == nil {
+			err = fmt.Errorf("helmRepository not available in Resource status")
+		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
@@ -615,12 +626,19 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 
 func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
-	if err != nil || !found {
+	if err != nil || !found || version == "" {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
+		if err == nil {
+			err = fmt.Errorf("version not available in Resource status")
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "imageReference")
 	if err != nil || !found || url == "" {
 		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+		if err == nil {
+			err = fmt.Errorf("imageReference not available in Resource status")
+		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
@@ -674,8 +692,12 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 
 func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	commit, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "commit")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get version from Resource status")
+	if err != nil || !found || commit == "" {
+		log.Info().Err(err).Msg("Failed to get commit from Resource status")
+		if err == nil {
+			err = fmt.Errorf("commit not available in Resource status")
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "repoUrl")
