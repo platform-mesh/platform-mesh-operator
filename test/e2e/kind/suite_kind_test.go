@@ -291,7 +291,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeTLS,
 	}
-	security_operator_ca := &corev1.Secret{
+	securityOperatorCa := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "security-operator-ca-secret",
 			Namespace: "platform-mesh-system",
@@ -325,7 +325,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		keycloak_admin,
 		domain_certificate,
 		rbac_webhook_ca,
-		security_operator_ca,
+		securityOperatorCa,
 		domain_certificate_ca,
 		pms_domain_certificate,
 	}
