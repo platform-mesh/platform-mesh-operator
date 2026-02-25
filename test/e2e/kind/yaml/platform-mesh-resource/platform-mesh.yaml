@@ -55,22 +55,8 @@ spec:
         hostAliases:
           enabled: true
         kcp:
-          rootShard:
-            extraArgs:
-              - --feature-gates=WorkspaceAuthentication=true
-              - --shard-virtual-workspace-url=https://localhost:8443
-          webhook:
-            enabled: true
           frontProxy:
             clusterIP: "10.96.0.100"
-        keycloak:
-          crossplane:
-            clients:
-              welcome:
-                validRedirectUris:
-                  - "http://localhost:8000/callback*"
-                  - "http://localhost:4300/callback*"
-                  - "https://*"
     kcp:
       enabled: false
     kcp-operator:
@@ -82,17 +68,24 @@ spec:
           component: infra
     security-operator:
       values:
-        baseDomain: "portal.localhost:8443"
-        initializer:
-          extraArgs:
-            - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
-            - --idp-smtp-port=1025
-            - --idp-from-address=keycloak@portal.localhost
-            - --domain-ca-lookup
-            - --idp-additional-redirect-urls="https://default.portal.localhost:3000/callback*"
         caSecret: domain-certificate-ca
+        fga:
+          extraArgs:
+          - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
+          - --idp-smtp-port=1025
+          - --idp-from-address=keycloak@portal.localhost
+          - --set-default-password
+          - --idp-registration-allowed
         hostAliases:
           enabled: true
+        initializer:
+          extraArgs:
+          - --domain-ca-lookup
+          - --idp-registration-allowed
+          - --development-allow-unverified-emails
+          - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
+        log:
+          noJson: true
     portal:
       enabled: true
       values:
