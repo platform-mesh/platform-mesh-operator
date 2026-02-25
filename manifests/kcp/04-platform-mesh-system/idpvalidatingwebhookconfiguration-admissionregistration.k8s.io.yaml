@@ -1,0 +1,24 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: identityproviderconfiguration-validator.webhooks.core.platform-mesh.io
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      caBundle: {{ index . "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io.ca-bundle" }}
+      url: https://security-operator-webhook.platform-mesh-system.svc.cluster.local:9443/validate-core-platform-mesh-io-v1alpha1-identityproviderconfiguration
+    failurePolicy: Fail
+    name: identityproviderconfiguration.validation.platform-mesh.io
+    rules:
+      - apiGroups:
+          - core.platform-mesh.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - identityproviderconfigurations
+    sideEffects: None
+    timeoutSeconds: 30

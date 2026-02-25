@@ -148,6 +148,21 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 		}).
 		Once() // Only called once due to caching
 
+	// Mock the identity provider validating webhook secret lookup (called once due to caching)
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{
+			Name:      subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+		}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
+			}
+			return nil
+		}).
+		Once() // Only called once due to caching
+
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
 			Name:      "domain-certificate-ca",
@@ -179,14 +194,21 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	s.Assert().Contains(inventory, validatingKey)
 	s.Assert().Equal(expectedB64, inventory[validatingKey])
 
+	// Check identity provider validating webhook CA bundle
+	ipdValidatingKey := subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
+	s.Assert().Contains(inventory, ipdValidatingKey)
+	s.Assert().Equal(expectedB64, inventory[ipdValidatingKey])
+
 	// Second call should use cache (no additional mock calls expected)
 	inventory2, err2 := s.testObj.GetCABundleInventory(ctx)
 	s.Assert().NoError(err2)
 	s.Assert().NotNil(inventory2)
 	s.Assert().Contains(inventory2, mutatingKey)
 	s.Assert().Contains(inventory2, validatingKey)
+	s.Assert().Contains(inventory2, ipdValidatingKey)
 	s.Assert().Equal(expectedB64, inventory2[mutatingKey])
 	s.Assert().Equal(expectedB64, inventory2[validatingKey])
+	s.Assert().Equal(expectedB64, inventory2[ipdValidatingKey])
 
 	s.clientMock.AssertExpectations(s.T())
 
@@ -367,6 +389,20 @@ func (s *KcpsetupTestSuite) TestProcess() {
 			return nil
 		}).Once() // Only called once due to caching
 
+	// Mock the identity provider validating webhook CA secret lookup
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{
+			Name:      subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+		}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+			}
+			return nil
+		}).Once()
+
 	// Mock the secondary webhook server cert lookup (called once since we cache results)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
@@ -385,6 +421,10 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	mockKcpClient := new(mocks.Client)
 	s.helperMock.EXPECT().
 		NewKcpClient(mock.Anything, "root").
+		Return(mockKcpClient, nil)
+
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, "root:platform-mesh").
 		Return(mockKcpClient, nil)
 
 	s.helperMock.EXPECT().
@@ -586,6 +626,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	// Mock both webhook secret lookups for CA bundle inventory
 	webhookConfig := subroutines.DEFAULT_WEBHOOK_CONFIGURATION
 	validatingWebhookConfig := subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION
+	ipdValidatingWebhookConfig := subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION
 
 	// Mock the mutating webhook secret lookup (called once due to caching)
 	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
@@ -601,7 +642,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Return(nil).
 		Once()
 
-		// Mock the mutating webhook secret lookup (called once due to caching)
+	// Mock the domain certificate CA lookup
 	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
 		Name:      "domain-certificate-ca",
 		Namespace: webhookConfig.SecretRef.Namespace,
@@ -615,6 +656,20 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			}
 		}).
 		Return(nil)
+
+	// Mock the identity provider validating webhook secret lookup (called once due to caching)
+	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
+		Name:      ipdValidatingWebhookConfig.SecretRef.Name,
+		Namespace: ipdValidatingWebhookConfig.SecretRef.Namespace,
+	}, mock.AnythingOfType("*v1.Secret")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			sec := obj.(*corev1.Secret)
+			sec.Data = map[string][]byte{
+				ipdValidatingWebhookConfig.SecretData: []byte("dummy-ca-data"),
+			}
+		}).
+		Return(nil).
+		Once()
 
 	// Mock the validating webhook secret lookup (called once due to caching)
 	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
@@ -687,6 +742,35 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				webhookConfig.SecretData: []byte("dummy-ca-data"),
+			}
+		}).
+		Return(nil).
+		Once()
+
+	// Mock the domain certificate CA lookup
+	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
+		Name:      "domain-certificate-ca",
+		Namespace: webhookConfig.SecretRef.Namespace,
+	}, mock.AnythingOfType("*v1.Secret")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			sec := obj.(*corev1.Secret)
+			sec.Data = map[string][]byte{
+				"ca.crt":  []byte("test-ca-data"),
+				"tls.crt": []byte("test-tls-crt"),
+				"tls.key": []byte("test-tls-key"),
+			}
+		}).
+		Return(nil)
+
+	// Mock the identity provider validating webhook secret lookup (called once due to caching)
+	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
+		Name:      ipdValidatingWebhookConfig.SecretRef.Name,
+		Namespace: ipdValidatingWebhookConfig.SecretRef.Namespace,
+	}, mock.AnythingOfType("*v1.Secret")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			sec := obj.(*corev1.Secret)
+			sec.Data = map[string][]byte{
+				ipdValidatingWebhookConfig.SecretData: []byte("dummy-ca-data"),
 			}
 		}).
 		Return(nil).

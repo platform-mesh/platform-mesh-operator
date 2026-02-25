@@ -58,13 +58,13 @@ tasks:
     cmds:
       - test -s {{.LOCAL_BIN}}/kind || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/kind@{{ .KIND_VERSION }}
       - export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-  
+
   ## Development
   mockery:
     deps: [setup:mockery]
     cmds:
       - "{{.LOCAL_BIN}}/mockery"
-  
+
   kindtest:
     deps: [setup:mkcert, setup:kind]
     env:
@@ -95,7 +95,7 @@ tasks:
               go test -timeout {{.TEST_TIMEOUT}} -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
             fi
         ignore_error: false
-        
+
   manifests:
     deps: [setup:controller-gen]
     cmds:
@@ -150,7 +150,7 @@ tasks:
   bump-versions-internal:
     internal: true
     vars:
-      SERVICES: 
+      SERVICES:
         - account-operator
         - account-ui
         - apeiro-example-content

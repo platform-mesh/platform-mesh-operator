@@ -11,7 +11,7 @@ spec:
   - v250725-732d200.providermetadatas.ui.platform-mesh.io
   - v260112-5925c7e.authorizationmodels.core.platform-mesh.io
   - v250718-a64f278.stores.core.platform-mesh.io
-  - v251007-1d3512f.invites.core.platform-mesh.io
+  - v260213-fbdf981.invites.core.platform-mesh.io
   - v260217-2c67392.identityproviderconfigurations.core.platform-mesh.io
   permissionClaims:
     - all: true

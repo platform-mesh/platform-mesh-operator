@@ -4,3 +4,4 @@ metadata:
   name: security
 spec:
   initializer: true
+  terminator: true

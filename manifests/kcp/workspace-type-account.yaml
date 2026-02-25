@@ -27,3 +27,5 @@ spec:
     with:
       - name: universal
         path: root
+      - name: security
+        path: root

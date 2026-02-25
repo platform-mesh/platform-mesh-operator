@@ -1716,7 +1716,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 						"extension-manager-operator-kubeconfig",
 						"iam-service-kubeconfig",
 						"portal-kubeconfig",
-						"security-initializer-kubeconfig":
+						"security-initializer-kubeconfig",
+						"security-terminator-kubeconfig":
 						return true
 					}
 				}
