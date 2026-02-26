@@ -183,8 +183,8 @@ github.com/pingcap/errors v0.11.4 h1:lFuQV/oaUMGcD2tqt+01ROSmJs75VG1ToEOkZIZ4nE4
 github.com/pingcap/errors v0.11.4/go.mod h1:Oi8TUi2kEtXXLMJk9l1cGmz20kV3TaQ0usTwv5KuLY8=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/platform-mesh/golang-commons v0.12.3 h1:CXfJ+nsEWZXaMdTSWS6rXJj1Pd+nZf3psBIW/4iudN0=
-github.com/platform-mesh/golang-commons v0.12.3/go.mod h1:R5zM+28HUtFf1gNirbMax1UWKY1L9woiRRgbLVno+qk=
+github.com/platform-mesh/golang-commons v0.12.4 h1:rjUZKb5Co0XryYVAFbNAgplVNSpZj2eR8H3LfRtKRpw=
+github.com/platform-mesh/golang-commons v0.12.4/go.mod h1:R5zM+28HUtFf1gNirbMax1UWKY1L9woiRRgbLVno+qk=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
