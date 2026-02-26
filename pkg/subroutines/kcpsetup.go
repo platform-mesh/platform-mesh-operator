@@ -263,9 +263,9 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	caBundles[validatingKey] = validatingB64Data
 
 	domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
-		SecretData: "tls.crt",
+		SecretData: r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretKey,
 		SecretRef: corev1alpha1.SecretReference{
-			Name:      "domain-certificate-ca",
+			Name:      r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretName,
 			Namespace: "platform-mesh-system",
 		},
 	})
