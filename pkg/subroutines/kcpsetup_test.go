@@ -281,6 +281,20 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 			return nil
 		}).Once()
 
+	// Mock the identity provider validating webhook secret lookup
+	clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{
+			Name:      subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+		}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			secret := obj.(*corev1.Secret)
+			secret.Data = map[string][]byte{
+				subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+			}
+			return nil
+		}).Once()
+
 	// Mock the custom-named domain CA secret lookup with custom key
 	clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
