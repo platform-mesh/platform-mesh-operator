@@ -34,6 +34,6 @@ ENV USER_UID=1001
 ENV GROUP_UID=1001
 COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/manager /operator/manager
 COPY --from=builder --chown=${USER_UID}:${GROUP_UID} /workspace/manifests /operator/manifests
-
+COPY --chown=${USER_UID}:${GROUP_UID} gotemplates/ /operator/gotemplates
 USER ${USER_UID}:${GROUP_UID}
 ENTRYPOINT ["/operator/manager"]

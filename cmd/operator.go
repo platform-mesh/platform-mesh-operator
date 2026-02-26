@@ -19,20 +19,23 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"os"
 
 	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/platform-mesh/golang-commons/traces"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 var operatorCmd = &cobra.Command{
@@ -84,10 +87,19 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	log.Info().Msg("Starting manager")
 
 	restCfg := ctrl.GetConfigOrDie()
+	if operatorCfg.RemoteRuntime.IsEnabled() {
+		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
+		_, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
+	}
+	if err != nil {
+		setupLog.Error(err, "unable to create PlatformMesh client")
+		os.Exit(1)
+	}
+	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", restCfg.Host))
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -105,20 +117,36 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	log.Info().Msg("Manager successfully started")
+	var clientInfra client.Client
+	restCfgInfra := ctrl.GetConfigOrDie()
+	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
+	clientInfra, err = client.New(restCfgInfra, client.Options{Scheme: subroutines.GetClientScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to create Infra client")
+		os.Exit(1)
+	}
+	if operatorCfg.RemoteInfra.IsEnabled() {
+		clientInfra, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
+		if err != nil {
+			setupLog.Error(err, "unable to create Infra client")
+			os.Exit(1)
+		}
+	}
+	imageVersionStore := subroutines.NewImageVersionStore()
 
-	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
-	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
+	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "PlatformMesh")); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg)
-	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
+	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, clientInfra, imageVersionStore)
+	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
-
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
@@ -132,4 +160,5 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
+
 }

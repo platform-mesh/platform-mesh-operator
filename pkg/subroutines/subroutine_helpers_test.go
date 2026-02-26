@@ -2,17 +2,24 @@ package subroutines_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
+	"github.com/platform-mesh/golang-commons/context/keys"
+	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/errors"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
@@ -327,4 +334,114 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 	ctx := context.WithValue(context.TODO(), keys.ConfigCtxKey, operatorCfg)
 	err = subroutines.ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
+}
+
+func (s *HelperTestSuite) TestPlatformMeshExtraProviderConnections() {
+	// Simulate a PlatformMesh resource with extraProviderConnections:
+	//   spec:
+	//     kcp:
+	//       extraProviderConnections:
+	//         - endpointSliceName: ""
+	//           path: root:providers:httpbin-provider
+	//           secret: httpbin-kubeconfig
+	//           namespace: example-httpbin-provider
+	//           external: true
+	instance := &corev1alpha1.PlatformMesh{}
+	instance.Name = "test-platform-mesh"
+	instance.Namespace = "default"
+	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
+		BaseDomain: "example.com",
+		Port:       1234,
+		Protocol:   "https",
+	}
+	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
+		{
+			EndpointSliceName: ptr.To(""),
+			Path:              "root:providers:httpbin-provider",
+			Secret:            "httpbin-kubeconfig",
+			Namespace:         ptr.To("example-httpbin-provider"),
+			External:          true,
+		},
+	}
+
+	// Setup mocks
+	clientMock := new(mocks.Client)
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = corev1alpha1.AddToScheme(scheme)
+	clientMock.EXPECT().Scheme().Return(scheme).Maybe()
+
+	// Capture the secret passed to Patch so we can assert on it after HandleProviderConnection returns
+	var capturedSecret *corev1.Secret
+	clientMock.EXPECT().
+		Patch(mock.Anything,
+			mock.MatchedBy(func(obj client.Object) bool {
+				sec, ok := obj.(*corev1.Secret)
+				if !ok {
+					return false
+				}
+				return sec.Name == "httpbin-kubeconfig" && sec.Namespace == "example-httpbin-provider"
+			}),
+			mock.Anything,
+			mock.Anything,
+			mock.Anything).
+		RunAndReturn(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+			capturedSecret = obj.(*corev1.Secret).DeepCopy()
+			return nil
+		}).Once()
+
+	// Setup operator config and context
+	operatorCfg := config.OperatorConfig{}
+	operatorCfg.KCP.FrontProxyName = "frontproxy"
+	operatorCfg.KCP.FrontProxyPort = "6443"
+	operatorCfg.KCP.Namespace = "platform-mesh-system"
+
+	logCfg := logger.DefaultConfig()
+	logCfg.Level = "debug"
+	logCfg.NoJSON = true
+	log, _ := logger.New(logCfg)
+
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
+
+	// Build a rest.Config to pass to HandleProviderConnection
+	restCfg := &rest.Config{
+		Host: "https://frontproxy.platform-mesh-system:6443",
+		TLSClientConfig: rest.TLSClientConfig{
+			CertData: []byte("dummy-cert"),
+			KeyData:  []byte("dummy-key"),
+			CAData:   []byte("dummy-ca"),
+		},
+	}
+
+	// Create the ProvidersecretSubroutine and invoke HandleProviderConnection
+	testObj := subroutines.NewProviderSecretSubroutine(clientMock, &subroutines.Helper{}, nil)
+
+	pc := instance.Spec.Kcp.ExtraProviderConnections[0]
+	res, opErr := testObj.HandleProviderConnection(ctx, instance, pc, restCfg)
+	s.Require().Nil(opErr)
+	s.Assert().False(res.Requeue)
+
+	// Validate the captured secret after HandleProviderConnection returns
+	clientMock.AssertExpectations(s.T())
+	s.Require().NotNil(capturedSecret, "Patch should have been called with a secret")
+	s.Assert().Equal("httpbin-kubeconfig", capturedSecret.Name)
+	s.Assert().Equal("example-httpbin-provider", capturedSecret.Namespace)
+
+	// Parse the kubeconfig from the secret and validate the server: field
+	kubeconfigData, ok := capturedSecret.Data["kubeconfig"]
+	s.Require().True(ok, "secret should contain kubeconfig key")
+	s.Require().NotEmpty(kubeconfigData, "kubeconfig data should not be empty")
+
+	cfg, err := clientcmd.Load(kubeconfigData)
+	s.Require().NoError(err, "kubeconfig should be valid")
+
+	expectedServer := fmt.Sprintf("https://example.com:1234/clusters/%s",
+		"root:providers:httpbin-provider")
+
+	s.Require().Len(cfg.Clusters, 1, "kubeconfig should have exactly one cluster")
+	cluster, ok := cfg.Clusters["default-cluster"]
+	s.Require().True(ok, "kubeconfig should have a 'default-cluster' entry")
+	s.Assert().Equal(expectedServer, cluster.Server,
+		"server field should be front-proxy host with provider path")
 }

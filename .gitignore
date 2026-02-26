@@ -42,4 +42,7 @@ test/e2e/kind/certs/
 *.key
 **/__debug_bin*
 gha-logs.txt
+*.kubeconfig
+debug
+.cursor/*
 test/e2e/kind/kind-testcluster.kubeconfig

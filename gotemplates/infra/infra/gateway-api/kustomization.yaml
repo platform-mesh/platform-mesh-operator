@@ -1,0 +1,23 @@
+{{- if and .gatewayApi.enabled (ne .deploymentTechnology "argocd") }}
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: {{ .gatewayApi.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+spec:
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
+  force: false
+  interval: {{ .gatewayApi.kustomization.interval }}
+  path: {{ .gatewayApi.kustomization.path }}
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: {{ .gatewayApi.name }}
+{{- end }}

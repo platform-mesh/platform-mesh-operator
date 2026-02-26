@@ -2,10 +2,8 @@ package subroutines_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
-	"strings"
 	"testing"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
@@ -53,7 +51,7 @@ func (s *KcpsetupTestSuite) SetupTest() {
 	cfg.NoJSON = true
 	cfg.Name = "KcpsetupTestSuite"
 	s.log, _ = logger.New(cfg)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "https://kcp.example.com")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest)
 }
 
 func (s *KcpsetupTestSuite) TearDownTest() {
@@ -71,7 +69,7 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 	helper := &subroutines.Helper{}
 
 	// create new test object
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, &config.OperatorConfig{}, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, &config.OperatorConfig{}, ManifestStructureTest)
 }
 
 func (s *KcpsetupTestSuite) Test_applyDirStructure() {
@@ -216,7 +214,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 
 	// Test case 2: Secret not found
 	// Create a new instance to clear the cache
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest)
 
 	// Mock the mutating webhook secret lookup to return error
 	s.clientMock.EXPECT().
@@ -516,7 +514,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	s.Assert().Equal(ctrl.Result{}, result)
 
 	// Test error case - create a new instance to clear the cache
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest, "https://kcp.example.com")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{}, ManifestStructureTest)
 }
 
 func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
@@ -524,7 +522,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Times(3)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest)
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -612,7 +610,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	// test err1 - expect error when NewKcpClient fails
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(nil, errors.New("failed to create client"))
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest)
 
 	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
@@ -623,7 +621,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper = new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest)
 
 	// Mock both webhook secret lookups for CA bundle inventory
 	webhookConfig := subroutines.DEFAULT_WEBHOOK_CONFIGURATION
@@ -732,7 +730,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient = new(mocks.Client)
 	mockedKcpHelper = new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest, "")
+	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, &config.OperatorConfig{}, ManifestStructureTest)
 
 	// Mock both secret lookups again (they should be cached from previous call)
 	// Since we're creating a new instance, the cache is cleared, so we need to mock again
@@ -822,44 +820,6 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply")
-}
-
-func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
-
-	logcfg := logger.DefaultConfig()
-	// logcfg.Level = defaultCfg.Log.Level
-	// logcfg.NoJSON = defaultCfg.Log.NoJson
-	var err error
-	log, err := logger.New(logcfg)
-	if err != nil {
-		panic(err)
-	}
-
-	// Resource
-	path := "../../manifests/k8s/platform-mesh-operator-components/resource.yaml"
-	templateData := map[string]any{
-		"componentName": "component1",
-		"repoName":      "repo1",
-		"referencePath": "\n        - ref1\n        - ref2",
-	}
-	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
-	s.Assert().Nil(err)
-	s.Assert().Equal(obj.GetKind(), "Resource")
-	spec := obj.Object["spec"].(map[string]interface{})
-	content := spec["componentRef"].(map[string]interface{})
-	contentJSON, err := json.Marshal(content)
-	s.Assert().Nil(err)
-	s.Assert().Truef(strings.Contains(string(contentJSON), "component1"), "Content does not contain expected componentName")
-
-	resource := spec["resource"].(map[string]interface{})
-	byReference := resource["byReference"].(map[string]interface{})
-	referencePath := byReference["referencePath"].([]interface{})
-	contentJSON, err = json.Marshal(referencePath)
-	s.Assert().Nil(err)
-
-	s.Assert().Truef(strings.Contains(string(contentJSON), "ref1"), "Content does not contain expected referencePath")
-	s.Assert().Truef(strings.Contains(string(contentJSON), "ref2"), "Content does not contain expected referencePath")
-	s.Assert().Truef(strings.Contains(string(contentJSON), "platform-mesh-operator-components"), "Content does not contain expected referencePath")
 }
 
 // Tests for applyExtraWorkspaces (via assumed exported wrapper ApplyExtraWorkspaces).

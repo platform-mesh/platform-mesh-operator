@@ -23,13 +23,25 @@ import (
 
 // PlatformMeshSpec defines the desired state of PlatformMesh
 type PlatformMeshSpec struct {
-	Exposure       *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp            Kcp                  `json:"kcp,omitempty"`
-	Values         apiextensionsv1.JSON `json:"values,omitempty"`
-	OCM            *OCMConfig           `json:"ocm,omitempty"`
-	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
-	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
-	Wait           *WaitConfig          `json:"wait,omitempty"`
+	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp              Kcp                  `json:"kcp,omitempty"`
+	Values           apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM              *OCMConfig           `json:"ocm,omitempty"`
+	FeatureToggles   []FeatureToggle      `json:"featureToggles,omitempty"`
+	InfraValues      apiextensionsv1.JSON `json:"infraValues,omitempty"`
+	Wait             *WaitConfig          `json:"wait,omitempty"`
+	ProfileConfigMap *ConfigMapReference  `json:"profileConfigMap,omitempty"`
+}
+
+// ConfigMapReference references a ConfigMap by name and optional namespace.
+// If namespace is not specified, it defaults to the PlatformMesh resource's namespace.
+type ConfigMapReference struct {
+	// Name is the name of the ConfigMap.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Namespace is the namespace of the ConfigMap. If not specified, defaults to the PlatformMesh resource's namespace.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 type WaitConfig struct {
@@ -37,13 +49,32 @@ type WaitConfig struct {
 }
 
 type ResourceType struct {
-	metav1.APIVersions      `json:",inline"`
-	metav1.GroupKind        `json:",inline"`
-	Name                    string `json:"name,omitempty"`
-	Namespace               string `json:"namespace,omitempty"`
-	metav1.LabelSelector    `json:",inline,omitempty"`
-	metav1.ConditionStatus  `json:"conditionStatus,omitempty"` // e.g., "True"
-	metav1.RowConditionType `json:"conditionType,omitempty"`   // e.g., "Ready"
+	// Versions are the API versions to check (e.g., ["v1", "v1alpha1"]).
+	Versions []string `json:"versions,omitempty"`
+	// Group is the API group (e.g., "argoproj.io").
+	Group string `json:"group,omitempty"`
+	// Kind is the resource kind (e.g., "Application").
+	Kind string `json:"kind,omitempty"`
+	// Name is the specific resource name to check. If empty, uses LabelSelector.
+	Name string `json:"name,omitempty"`
+	// Namespace is the namespace to search in.
+	Namespace string `json:"namespace,omitempty"`
+	// LabelSelector filters resources by labels when Name is not specified.
+	metav1.LabelSelector `json:",inline,omitempty"`
+	// ConditionStatus is the expected condition status (e.g., "True").
+	ConditionStatus metav1.ConditionStatus `json:"conditionStatus,omitempty"`
+	// ConditionType is the condition type to check (e.g., "Ready").
+	ConditionType string `json:"conditionType,omitempty"`
+	// StatusFieldPath specifies a path to a nested status field to check instead of conditions.
+	// When set, StatusValue is required and ConditionType/ConditionStatus are ignored.
+	// Example: ["status", "sync", "status"] for ArgoCD Application sync status.
+	// +optional
+	StatusFieldPath []string `json:"statusFieldPath,omitempty"`
+	// StatusValue is the expected value at the StatusFieldPath.
+	// Required when StatusFieldPath is set.
+	// Example: "Synced" for ArgoCD Application sync status.
+	// +optional
+	StatusValue string `json:"statusValue,omitempty"`
 }
 type FeatureToggle struct {
 	Name       string            `json:"name,omitempty"`
@@ -160,15 +191,12 @@ type KcpWorkspace struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",name="KCP",type=string,description="KCP status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].reason",name="KCP_REASON",type=string,description="KCP reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",name="SECRET",type=string,description="Provider Secret status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].reason",name="SECRET_REASON",type=string,description="Provider Secret reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",name="DEPLOYMENT",type=string,description="Deployment status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason",name="DEPLOYMENT_REASON",type=string,description="Deployment reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",name="WAIT",type=string,description="Wait status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].reason",name="WAIT_REASON",type=string,description="Wait reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='Ready')].status",name="Ready",type=string,description="Shows if resource is ready",priority=0
+// +kubebuilder:printcolumn:name="DEPLOYMENT",type=string,jsonPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",description="Deployment status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="KCP",type=string,jsonPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",description="KCP status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="SECRET",type=string,jsonPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",description="Provider Secret status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="FEATURES",type=string,jsonPath=".status.conditions[?(@.type=='FeatureToggleSubroutine_Ready')].status",description="Feature toggles' status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="WAIT",type=string,jsonPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",description="Wait status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="Ready",type=string,jsonPath=".status.conditions[?(@.type=='Ready')].status",description="Shows if resource is ready",priority=0
 
 // PlatformMesh is the Schema for the platform-mesh API
 type PlatformMesh struct {

@@ -1,0 +1,519 @@
+apiVersion: v1
+data:
+  profile.yaml: |
+    components:
+      deploymentTechnology: fluxcd
+      iamWebhookCA: null
+      ocm:
+        component:
+          create: true
+          name: platform-mesh
+        interval: 3m
+        referencePath: []
+        repo:
+          create: true
+          name: platform-mesh
+        skipVerify: true
+      port: 443
+      protocol: https
+      services:
+        account-operator:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: account-operator
+          syncWave: 4
+          enabled: true
+          values:
+            hostAliases:
+              enabled: true
+            crds:
+              enabled: false
+            kcp:
+              apiExportEndpointSliceName: ""
+              enabled: true
+            kubeconfigSecret: account-operator-kubeconfig
+            log:
+              level: debug
+            subroutines:
+              fga:
+                grpcAddr: openfga:8081
+            tracing:
+              collector:
+                host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
+              enabled: false
+        etcd-druid:
+          syncWave: 1
+          enabled: true
+          gitRepo: true
+          imageResources:
+          - annotations:
+              artifact: image
+              for: etcd-druid
+              repo: oci
+          path: charts
+          targetNamespace: etcd-druid-system
+          values: {}
+        extension-manager-operator:
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: extension-manager-operator
+          syncWave: 4
+          enabled: true
+          values:
+            crds:
+              enabled: false
+            kcp:
+              enabled: true
+              kubeconfigSecret: extension-manager-operator-kubeconfig
+            tracing:
+              collector:
+                host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
+              enabled: false
+        marketplace-ui:
+          enabled: false
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: marketplace-ui
+        iam-ui:
+          # -- Enable IAM UI
+          enabled: true
+          syncWave: 4
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: iam-ui
+        iam-service:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: iam-service
+          syncWave: 4
+          enabled: false
+          values:
+            istio:
+              hosts:
+              - '*.{{ .baseDomain }}'
+        infra:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - name: kcp-image
+            annotations:
+              path: kcp.image.tag
+              for: infra
+              repo: oci
+              artifact: image
+            resource: image
+            referencePath:
+              - name: kcp
+          ignoreDifferences:
+          - group: operator.kcp.io
+            kind: FrontProxy
+            name: frontproxy
+            jsonPointers:
+            - /status
+            - /metadata/finalizers
+            - /spec/serviceTemplate/spec/ports
+          syncWave: 3
+          dependsOn:
+          - name: kcp-operator
+            namespace: platform-mesh-system
+          enabled: true
+          values:
+            cors:
+              enabled: true
+            gatewayApi:
+              enabled: true
+              passThrough:
+                gateway:
+                  # -- Toggle to enable/disable the passthrough gateway
+                  enabled: true
+                  hostname: localhost
+                  port: 8443
+                  name: https-passthrough
+                  protocol: TLS
+            hostAliases:
+              enabled: true
+            istio:
+              enabled: false
+            kcp:
+              image:
+                tag: v0.29.0
+              rootShard:
+                extraArgs:
+                - --feature-gates=WorkspaceAuthentication=true
+                - --shard-virtual-workspace-url=https://localhost:8443
+              webhook:
+                enabled: true
+              external:
+                hostname: localhost
+            keycloak:
+              istio:
+                virtualservice:
+                  hosts:
+                  - portal.localhost
+            traefik:
+              accessControlAllowOriginList:
+              - http://localhost:4200
+              - http://localhost:4300
+              - http://*.localhost:4200
+              - http://*.localhost:4300
+              - http://sub.localhost:4300
+              - https://portal.dev.local:8443
+              - https://*.portal.dev.local:8443
+        kcp-operator:
+          syncWave: 1
+          enabled: true
+          helmRepo: true
+          imageResource:
+            enabled: true
+            labels:
+              component: infra
+              infra: "true"
+            name: kcp-image
+          targetNamespace: kcp-operator
+        keycloak:
+          syncWave: 2
+          enabled: true
+          values:
+            auth:
+              adminUser: keycloak-admin
+              existingSecret: keycloak-admin
+              passwordSecretKey: secret
+            extraEnvVars:
+            - name: JAVA_OPTS_APPEND
+              value: -Djgroups.dns.query=keycloak-headless.platform-mesh-system.svc.cluster.local
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+            global:
+              imagePullSecrets:
+              - name: github
+              security:
+                allowInsecureImages: true
+            httpRelativePath: /keycloak/
+            image:
+              registry: ghcr.io/platform-mesh
+              repository: upstream-images/keycloak
+            postgresql:
+              auth:
+                existingSecret: ""
+                secretKeys:
+                  adminPasswordKey: password
+                  userPasswordKey: password
+                username: keycloak
+              image:
+                registry: ghcr.io/platform-mesh
+                repository: upstream-images/postgresql
+                tag: 17.6.0-debian-12-r4
+              nameOverride: postgresql-keycloak
+              primary:
+                resourcesPreset: none
+            resources:
+              limits:
+                cpu: "2"
+                ephemeral-storage: 2Gi
+                memory: 2Gi
+              requests:
+                cpu: 750m
+                ephemeral-storage: 50Mi
+                memory: 1Gi
+        kubernetes-graphql-gateway:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: kubernetes-graphql-gateway
+          syncWave: 4
+          enabled: true
+          values:
+            gatewayApi:
+              enabled: true
+            hostAliases:
+              enabled: true
+            istio:
+              enabled: false
+            kubeConfig:
+              enabled: true
+              secretName: kubernetes-graphql-gateway-kubeconfig
+            listener:
+              virtualWorkspacesConfig:
+                content:
+                  virtualWorkspaces:
+                  - kubeconfig: /app/kubeconfig/kubeconfig
+                    name: contentconfigurations
+                    url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations
+                  - kubeconfig: /app/kubeconfig/kubeconfig
+                    name: marketplace
+                    url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
+                enabled: true
+            tracing:
+              enabled: false
+            trust:
+              default:
+                audience: default
+                jwksUrl: http://keycloak-headless.platform-mesh-system:8080/keycloak/realms/default/protocol/openid-connect/certs
+                trustedIssuer: https://{{ .baseDomainPort }}/keycloak/realms/default
+        observability:
+          syncWave: 4
+          enabled: false
+          targetNamespace: observability
+          values:
+            opentelemetry-collector:
+              ports:
+                metrics:
+                  enabled: true
+              service:
+                type: ClusterIP
+        openfga:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - name: openfga-image
+            annotations:
+              repo: oci
+              artifact: image
+              for: openfga
+          - name: openfga-postgresql-image
+            resource: postgresql-image
+            annotations:
+              repo: oci
+              artifact: image
+              for: openfga
+              path: postgresql.image.tag
+          syncWave: 2
+          enabled: true
+          helmRepo: true
+          values:
+            autoscaling:
+              enabled: false
+            checkQueryCache:
+              enabled: true
+              limit: 10000
+              ttl: 10s
+            datastore:
+              applyMigrations: true
+              engine: postgres
+              maxOpenConns: 30
+              migrationType: initContainer
+              migrations:
+                image:
+                  pullPolicy: Always
+                  repository: groundnuty/k8s-wait-for
+                  tag: v2.0
+            extraEnvVars:
+            - name: OPENFGA_EXPERIMENTALS
+              value: enable-list-users
+            global:
+              imagePullSecrets:
+              - name: github
+            image:
+              tag: v1.11.2
+            log:
+              level: info
+            migrate:
+              repository: openfga/openfga
+              annotations:
+                sidecar.istio.io/inject: "false"
+            podAnnotations:
+              traffic.sidecar.istio.io/excludeInboundPorts: "2112"
+            postgresql:
+              enabled: true
+              image:
+                registry: ghcr.io/platform-mesh
+                repository: images/postgresql
+                tag: 17.6.0-debian-12-r4
+              nameOverride: postgres
+            replicaCount: 1
+            telemetry:
+              trace:
+                enabled: true
+                otlp:
+                  endpoint: observability-opentelemetry-collector.openmfp-observability.svc.cluster.local:4317
+                  tls:
+                    enabled: false
+        portal:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: portal
+          syncWave: 4
+          enabled: true
+          values:
+            auth:
+              default:
+                baseDomain: '{{ .baseDomain }}'
+                clientId: welcome
+                clientSecretKey: attribute.client_secret
+                clientSecretName: portal-client-secret-welcome
+                discoveryUrl: https://{{ .baseDomainPort }}/keycloak/realms/${org-name}/.well-known/openid-configuration
+            cookieDomain: '{{ .baseDomain }}'
+            crdGatewayApiUrl: https://${org-subdomain}{{ .baseDomain }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
+            environment: kind
+            extraEnvVars:
+            - name: DEFAULT_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
+              value: https://${org-subdomain}{{ .baseDomainPort }}/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql
+            - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
+              value: https://${org-subdomain}{{ .baseDomainPort }}/iam/graphql
+            frontendPort: '8443'
+            http:
+              protocol: https
+            kcp:
+              kubeconfigSecret: portal-kubeconfig
+        rebac-authz-webhook:
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: rebac-authz-webhook
+          syncWave: 4
+          enabled: true
+          values:
+            hostAliases:
+              enabled: true
+            certManager:
+              createCA: true
+              enabled: true
+            istio:
+              dnsNames:
+              - rebac-authz-webhook.platform-mesh-system.svc.cluster.local
+              exposed: false
+            log:
+              level: debug
+            openfga:
+              url: openfga:8081
+        security-operator:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: security-operator
+          syncWave: 4
+          enabled: true
+          values:
+            baseDomain: '{{ .baseDomainPort }}'
+            crds:
+              enabled: false
+            fga:
+              inviteKeycloakBaseUrl: "https://{{ .baseDomainPort }}/keycloak"
+              target: openfga.platform-mesh-system.svc.cluster.local:8081
+            initializer:
+              kubeconfigSecret: security-initializer-kubeconfig
+              extraArgs:
+                - --domain-ca-lookup
+                # remove arguments below when the operator and the portal are ready
+                - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
+                - --idp-smtp-port=1025
+                - --idp-from-address=keycloak@portal.localhost
+                - --development-allow-unverified-emails
+                - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
+                - --idp-registration-allowed
+            kubeconfigSecret: security-operator-kubeconfig
+            log:
+              level: debug
+            operator:
+              maxConcurrentReconciles: 1
+              shutdownTimeout: 1m
+        virtual-workspaces:
+          # -- Allow the configuration of additional ocm resources
+          imageResources:
+          - annotations:
+              repo: oci
+              artifact: image
+              for: virtual-workspaces
+          syncWave: 4
+          enabled: true
+          targetNamespace: platform-mesh-system
+      targetNamespace: platform-mesh-system
+    infra:
+      deploymentTechnology: fluxcd
+      ocm:
+        component:
+          name: platform-mesh
+        interval: 3m
+        referencePath: []
+        repo:
+          name: platform-mesh
+        skipVerify: true
+      certManager:
+        enabled: true
+        interval: 1m
+        name: cert-manager
+        ocmResourceName: chart
+        targetNamespace: default
+        values:
+          installCRDs: true
+      gatewayApi:
+        syncOptions:
+        - ServerSideApply=true
+        - SkipCRDs=false
+        enabled: true
+        kustomization:
+          install:
+            crds: Skip
+          interval: 1m
+          path: ./config/crd/experimental
+        name: gateway-api
+        ocmResourceName: crds
+      traefik:
+        skipCrds: true
+        syncOptions:
+        - SkipCRDs=true
+        syncWave: 1
+        chart:
+          name: traefik
+        enabled: true
+        interval: 1m
+        name: traefik
+        ocmResourceName: chart
+        targetNamespace: default
+        values:
+          experimental:
+            kubernetesGateway:
+              enabled: true
+          gateway:
+            enabled: false
+          gatewayClass:
+            enabled: true
+          ports:
+            websecure:
+              exposedPort: 8443
+              nodePort: 31000
+          providers:
+            kubernetesGateway:
+              enabled: true
+              experimentalChannel: true
+          service:
+            spec:
+              clusterIP: 10.96.188.4
+            type: NodePort
+      traefikCRDs:
+        chart:
+          name: traefik-crds
+        enabled: true
+        interval: 1m
+        name: traefik-crds
+        ocmComponentName: traefik
+        ocmResourceName: crds
+        targetNamespace: default
+        values:
+          gatewayAPI: false
+kind: ConfigMap
+metadata:
+  name: platform-mesh-profile
+  namespace: platform-mesh-system

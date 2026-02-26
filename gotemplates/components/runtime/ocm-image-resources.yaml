@@ -1,0 +1,52 @@
+{{ $values := .values }}
+{{- range $service, $config := .values.services }}
+{{- if $config.enabled }}
+{{- with $config.imageResources }}
+{{- range . }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  namespace: {{ $.releaseNamespace }}
+  {{- if .name }}
+  name: "{{ .name }}"
+  {{- else }}
+  name: "{{ $service }}-image"
+  {{- end }}
+  {{- with .labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .annotations }}
+  annotations:
+{{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  skipVerify: {{ $values.ocm.skipVerify }}
+  componentRef:
+    name: {{ $values.ocm.component.name }}
+  resource:
+    byReference:
+      resource:
+        name: {{ .resource | default "image" }}
+      referencePath:
+{{- if .referencePath }}
+{{ toYaml .referencePath | nindent 8 }}
+{{- else if $config.referencePath }}
+{{ toYaml $config.referencePath | nindent 8 }}
+{{- else }}
+{{- with $values.ocm.referencePath }}
+{{ toYaml . | nindent 8 }}
+{{- end }}
+        - name: {{ $service }}
+{{- end }}
+  interval: 1m
+  ocmConfig:
+    - kind: Repository
+      apiVersion: delivery.ocm.software/v1alpha1
+      name: {{ $values.ocm.repo.name }}
+      namespace: {{ $.releaseNamespace }}
+---
+{{- end }}
+{{- end }}
+{{ end -}}
+{{ end -}}

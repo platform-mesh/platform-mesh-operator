@@ -1,0 +1,24 @@
+{{- if eq .deploymentTechnology "argocd" }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-mesh-runtime
+  namespace: argocd
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+spec:
+  description: Default project for platform-mesh runtime cluster
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: {{ .releaseNamespace }}
+      server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    - namespace: kube-system
+      server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+  sourceNamespaces:
+    - {{ .releaseNamespace }}
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+{{- end }}
+

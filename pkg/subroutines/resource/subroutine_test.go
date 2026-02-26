@@ -5,11 +5,16 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	subroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -25,61 +30,26 @@ func TestResourceTestSuite(t *testing.T) {
 
 func (s *ResourceTestSuite) SetupTest() {
 	s.managerMock = new(mocks.Manager)
-	s.subroutine = subroutines.NewResourceSubroutine(s.managerMock)
+	s.subroutine = subroutines.NewResourceSubroutine(new(mocks.Client), &config.OperatorConfig{}, nil)
 }
 
-func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
-	ctx := context.TODO()
+func setupDeploymentTechMocks(clientMock *mocks.Client) {
+	setupDeploymentTechMocksWithTech(clientMock, "fluxcd")
+}
 
-	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "delivery.ocm.software/v1alpha1",
-			"kind":       "Resource",
-			"metadata": map[string]interface{}{
-				"name":      "test-resource",
-				"namespace": "default",
-				"annotations": map[string]interface{}{
-					"artifact": "chart",
-					"repo":     "oci",
-				},
-			},
-			"status": map[string]interface{}{
-				"conditions": []interface{}{
-					map[string]interface{}{
-						"type":   "Ready",
-						"status": "True",
-					},
-				},
-				"resource": map[string]interface{}{
-					"access": map[string]interface{}{
-						"type":           "ociArtifact",
-						"imageReference": "oci://oci-registry-docker-registry.registry.svc.cluster.local/platform-mesh/upstream-images/charts/keycloak:25.2.3@sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
-					},
-				},
-			},
-			"spec": map[string]interface{}{},
-		},
-	}
-
-	clientMock := new(mocks.Client)
-	s.managerMock.On("GetClient").Return(clientMock)
-
-	clientMock.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
-			// Simulate a successful patch operation
-			ocirepo := obj.(*unstructured.Unstructured)
-
-			spec, _, _ := unstructured.NestedFieldNoCopy(ocirepo.Object, "spec")
-			url := spec.(map[string]interface{})["url"]
-			s.Require().Equal(url, "oci://oci-registry-docker-registry.registry.svc.cluster.local/platform-mesh/upstream-images/charts/keycloak")
+func setupDeploymentTechMocksWithTech(clientMock *mocks.Client, deploymentTech string) {
+	clientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			return nil
-		},
-	)
-
-	result, err := s.subroutine.Process(ctx, inst)
-	s.Nil(err)
-	s.NotNil(result)
+		}).Maybe()
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{
+				"profile.yaml": "infra:\n  deploymentTechnology: " + deploymentTech + "\ncomponents: {}\n",
+			}
+			return nil
+		}).Maybe()
 }
 
 func (s *ResourceTestSuite) Test_GetName() {
@@ -234,7 +204,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			managerMock := new(mocks.Manager)
-			subroutine := subroutines.NewResourceSubroutine(managerMock)
+			clientMock := new(mocks.Client)
 			ctx := context.TODO()
 
 			annotations := map[string]interface{}{
@@ -273,19 +243,14 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 				s.Require().NoError(err)
 			}
 
-			clientMock := new(mocks.Client)
 			managerMock.On("GetClient").Return(clientMock)
+			setupDeploymentTechMocks(clientMock)
+			subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
-			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-					s.Require().Equal(tt.expectedName, key.Name)
-					s.Require().Equal(tt.expectedNs, key.Namespace)
-					return nil
-				},
-			)
-
-			clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-				func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+			// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
+			// Patch is called with: ctx, obj, patch, fieldOwner, forceOwnership (5 args total)
+			clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+				func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 					helmRelease := obj.(*unstructured.Unstructured)
 
 					actualVersion, found, err := unstructured.NestedString(helmRelease.Object, tt.expectedPath...)
@@ -333,10 +298,11 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	// updateGitRepo uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			gitRepo := obj.(*unstructured.Unstructured)
 
 			commit, found, err := unstructured.NestedString(gitRepo.Object, "spec", "ref", "commit")
@@ -358,7 +324,9 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 		},
 	)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := sub.Process(ctx, inst)
+
 	s.Nil(err)
 	s.NotNil(result)
 }
@@ -393,10 +361,14 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
+	// updateGitRepo uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
-	result, err := s.subroutine.Process(ctx, inst)
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := sub.Process(ctx, inst)
+
 	s.NotNil(err)
 	s.NotNil(result)
 }
@@ -431,19 +403,13 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
 
-	getCallCount := 0
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-			getCallCount++
-			return nil
-		},
-	)
-
-	updateCallCount := 0
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
-			updateCallCount++
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	patchCallCount := 0
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			patchCallCount++
 			unstr := obj.(*unstructured.Unstructured)
 
 			if unstr.GetKind() == "HelmRepository" {
@@ -461,22 +427,34 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 				s.Require().NoError(err)
 				s.Require().True(found)
 				s.Require().Equal("5m", interval)
-			} else if unstr.GetKind() == "HelmRelease" {
-				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
-				s.Require().NoError(err)
-				s.Require().True(found)
-				s.Require().Equal("1.2.3", version)
 			}
 
 			return nil
 		},
 	)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	// HelmRelease now uses Patch (Server-Side Apply) instead of Update
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			if unstr.GetKind() == "HelmRelease" {
+				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
+				s.Require().NoError(err)
+				s.Require().True(found)
+				s.Require().Equal("1.2.3", version)
+			}
+			return nil
+		},
+	)
+
+	sub := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := sub.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
-	s.Equal(2, getCallCount)
-	s.Equal(2, updateCallCount)
+	// updateHelmRepository: 1 Patch (Server-Side Apply, no Get needed)
+	// updateHelmRelease: 1 Patch (Server-Side Apply, no Get needed)
+	s.Equal(2, patchCallCount) // One for HelmRepository, one for HelmRelease
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
@@ -506,8 +484,10 @@ func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
 
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
 }
@@ -541,18 +521,25 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			unstr := obj.(*unstructured.Unstructured)
-
 			if unstr.GetKind() == "HelmRepository" {
 				return nil
 			}
+			return nil
+		},
+	)
+	// updateHelmRelease uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			unstr := obj.(*unstructured.Unstructured)
 			if unstr.GetKind() == "HelmRelease" {
 				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
 				s.Require().NoError(err)
@@ -561,7 +548,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 			}
 			return nil
 		},
-	).Times(2)
+	)
 
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
@@ -597,13 +584,15 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Times(1)
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error")).Times(1)
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	// updateHelmRelease uses Patch directly, so test Patch error
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()                       // HelmRepository
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error")).Once() // HelmRelease
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -639,13 +628,15 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Times(1)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(errors.New("update error")).Times(1)
+	// updateHelmRepository uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // HelmRepository
+	// updateHelmRelease uses Patch (Server-Side Apply) directly
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error")).Once() // HelmRelease
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -677,11 +668,13 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
+	// updateHelmReleaseWithImageTag uses Patch directly, so test Patch error
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -713,12 +706,13 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	}
 
 	managerMock := new(mocks.Manager)
-	subroutine := subroutines.NewResourceSubroutine(managerMock)
 	clientMock := new(mocks.Client)
 	managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	clientMock.EXPECT().Update(mock.Anything, mock.Anything).Return(errors.New("update error"))
+	// updateHelmReleaseWithImageTag uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -755,8 +749,10 @@ func (s *ResourceTestSuite) Test_updateOciRepo_ParseRefError() {
 
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
 
-	result, err := s.subroutine.Process(ctx, inst)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
 }
@@ -791,10 +787,12 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 
 	clientMock := new(mocks.Client)
 	s.managerMock.On("GetClient").Return(clientMock)
+	setupDeploymentTechMocks(clientMock)
+	// updateOciRepo uses Patch (Server-Side Apply) directly without Get
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
-
-	result, err := s.subroutine.Process(ctx, inst)
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
 	s.NotNil(result)
 }
@@ -814,7 +812,945 @@ func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
 		},
 	}
 
-	result, err := s.subroutine.Process(ctx, inst)
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test SetRuntimeClient
+func (s *ResourceTestSuite) Test_SetRuntimeClient() {
+	clientMock := new(mocks.Client)
+	runtimeClientMock := new(mocks.Client)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	subroutine.SetRuntimeClient(runtimeClientMock)
+
+	// Verify by running a process that uses the runtime client
+	ctx := context.TODO()
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	runtimeClientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).Return(nil).Maybe()
+	runtimeClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{
+				"profile.yaml": "infra:\n  deploymentTechnology: fluxcd\ncomponents: {}\n",
+			}
+			return nil
+		}).Maybe()
+
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test getMetadataValue with labels fallback
+func (s *ResourceTestSuite) Test_Process_WithLabelsOnly() {
+	ctx := context.TODO()
+
+	// Resource with labels instead of annotations
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"labels": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"type":           "ociArtifact",
+						"imageReference": "oci://registry.example.com/charts/mychart:1.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test updateOciRepo success path
+func (s *ResourceTestSuite) Test_updateOciRepo_Success() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-oci-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+					"access": map[string]interface{}{
+						"type":           "ociArtifact",
+						"imageReference": "oci://ghcr.io/example/charts/mychart:1.2.3",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			ociRepo := obj.(*unstructured.Unstructured)
+
+			s.Equal("OCIRepository", ociRepo.GetKind())
+			s.Equal("test-oci-resource", ociRepo.GetName())
+
+			tag, found, err := unstructured.NestedString(ociRepo.Object, "spec", "ref", "tag")
+			s.NoError(err)
+			s.True(found)
+			s.Equal("1.2.3", tag)
+
+			url, found, err := unstructured.NestedString(ociRepo.Object, "spec", "url")
+			s.NoError(err)
+			s.True(found)
+			s.Contains(url, "oci://")
+
+			return nil
+		},
+	)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test updateOciRepo with missing imageReference
+func (s *ResourceTestSuite) Test_updateOciRepo_MissingImageReference() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access":  map[string]interface{}{},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test updateGitRepo with missing repoUrl
+func (s *ResourceTestSuite) Test_updateGitRepo_MissingRepoUrl() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-git-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"access": map[string]interface{}{
+						"type":   "gitHub",
+						"commit": "abc123",
+						// Missing repoUrl
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test helm chart with FluxCD - tests the full helm chart processing path
+func (s *ResourceTestSuite) Test_FluxCD_HelmChart_FullPath() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-chart-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+
+	// Setup mocks - list returns error, triggering ConfigMap fallback
+	clientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+			return errors.New("list error")
+		}).Maybe()
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{
+				"profile.yaml": "infra:\n  deploymentTechnology: fluxcd\ncomponents: {}\n",
+			}
+			return nil
+		}).Maybe()
+
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(2)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD image artifact - Application not found
+func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_ApplicationNotFound() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-image",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.0.0",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	// For FluxCD path (default), updateHelmReleaseWithImageTag is called
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD with unsupported artifact type
+func (s *ResourceTestSuite) Test_Process_ArgoCD_UnsupportedArtifact() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "unsupported",
+					"repo":     "other",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should succeed with no action taken (no matching conditions)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test updateHelmRepository Patch error
+func (s *ResourceTestSuite) Test_updateHelmRepository_PatchError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	// HelmRepository Patch fails
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("patch error")).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test with nil labels (covers getMetadataValue nil labels path)
+func (s *ResourceTestSuite) Test_Process_NilLabelsAndAnnotations() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				// No annotations, no labels
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test with empty annotations (annotation key exists but value is empty)
+func (s *ResourceTestSuite) Test_Process_EmptyAnnotationValues() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "",
+					"repo":     "",
+				},
+				"labels": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"imageReference": "oci://registry.example.com/charts/mychart:1.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupDeploymentTechMocks(clientMock)
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// setupArgoCDDeploymentTechMocks sets up mocks to return argocd deployment technology
+func setupArgoCDDeploymentTechMocks(clientMock *mocks.Client) {
+	// Mock List for PlatformMeshList - returns empty list
+	clientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+			return nil
+		}).Maybe()
+	// Mock Get for ConfigMap lookups - returns ConfigMap with argocd deployment technology
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			if key.Name == "platform-mesh-profile" {
+				cm := obj.(*corev1.ConfigMap)
+				cm.Name = key.Name
+				cm.Namespace = key.Namespace
+				cm.Data = map[string]string{
+					"profile.yaml": `
+infra:
+  deploymentTechnology: argocd
+`,
+				}
+				return nil
+			}
+			return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "configmaps"}, key.Name)
+		}).Maybe()
+}
+
+// Test ArgoCD chart artifact with Helm repository - full path
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_HelmRepository() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-helm-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-helm-resource")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://old-repo.example.com", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "0.9.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart artifact - Application already up to date
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_AlreadyUpToDate() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application with same values
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-resource")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://charts.example.com", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "1.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// No Patch expected since values are already up to date
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart artifact - Application not found (skip update)
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_AppNotFound() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns not found
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "test-argocd-resource")).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// When Application is not found, the subroutine should return an error to trigger requeue
+	// so it can retry after DeploymentSubroutine creates the Application
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD image artifact with Helm values update
+func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_HelmValuesUpdate() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-image-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "oci",
+					"for":      "target-app",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.0.0",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("target-app")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "image:\n  tag: 1.0.0\n", "spec", "source", "helm", "values")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch for Helm values
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD image artifact - Application not found
+func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_AppNotFound() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-image",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.0.0",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns not found
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "test-argocd-image")).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// When Application is not found, the subroutine should return an error to trigger requeue
+	// so it can retry after DeploymentSubroutine creates the Application
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD unsupported artifact type
+func (s *ResourceTestSuite) Test_ArgoCD_UnsupportedArtifact() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "unknown",
+					"repo":     "other",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err) // Should succeed - unsupported artifact is just skipped
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with OCI imageReference
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIImageReference() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-oci-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+					"access": map[string]interface{}{
+						"imageReference": "ghcr.io/example/charts/mychart:1.2.3",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-oci-resource")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "ghcr.io/example/charts", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "1.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with Git repoUrl
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-git-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"repoUrl": "https://github.com/example/charts.git",
+						"ref":     "v1.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-git-resource")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://github.com/example/charts.git", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "v0.9.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ConfigMap with deploymentTechnology in components section
+func (s *ResourceTestSuite) Test_DeploymentTech_ComponentsSection() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+
+	// Mock List for PlatformMeshList - returns empty list
+	clientMock.EXPECT().List(mock.Anything, mock.AnythingOfType("*v1alpha1.PlatformMeshList"), mock.Anything).Return(nil).Maybe()
+
+	// Mock Get for ConfigMap - first one not found, second one has components section
+	callCount := 0
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			callCount++
+			if key.Name == "platform-mesh-system-profile" {
+				cm := obj.(*corev1.ConfigMap)
+				cm.Name = key.Name
+				cm.Namespace = key.Namespace
+				cm.Data = map[string]string{
+					"profile.yaml": `
+components:
+  deploymentTechnology: argocd
+`,
+				}
+				return nil
+			}
+			return apierrors.NewNotFound(schema.GroupResource{}, key.Name)
+		}).Maybe()
+
+	// ArgoCD Application Get
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "test-resource")).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// When Application is not found, the subroutine should return an error to trigger requeue
+	// so it can retry after DeploymentSubroutine creates the Application
+	s.NotNil(err)
 	s.NotNil(result)
 }

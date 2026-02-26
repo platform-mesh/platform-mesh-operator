@@ -33,9 +33,10 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
-		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+		Secret:            "kubernetes-graphql-gateway-kubeconfig",
 	},
 	{
+		// EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:   "root:platform-mesh-system",
 		Secret: "extension-manager-operator-kubeconfig",
 	},
@@ -56,6 +57,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Secret: "security-terminator-kubeconfig",
 	},
 }
+var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{}
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
 		Name:      AccountOperatorWebhookSecretName,
@@ -101,46 +103,21 @@ var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.We
 var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 	ResourceTypes: []corev1alpha1.ResourceType{
 		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
-				Group: "helm.toolkit.fluxcd.io",
-				Kind:  "HelmRelease",
-			},
-			Namespace: "default",
+			Versions:  []string{"v2"},
+			Group:     "helm.toolkit.fluxcd.io",
+			Kind:      "HelmRelease",
+			Namespace: "platform-mesh-system",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
 					{
-						Key:      "helm.toolkit.fluxcd.io/name",
+						Key:      "core.platform-mesh.io/operator-created",
 						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-components"},
+						Values:   []string{"true"},
 					},
 				},
 			},
-			ConditionStatus:  v1.ConditionTrue,
-			RowConditionType: "Ready",
-		},
-		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
-				Group: "helm.toolkit.fluxcd.io",
-				Kind:  "HelmRelease",
-			},
-			Namespace: "default",
-			LabelSelector: v1.LabelSelector{
-				MatchExpressions: []v1.LabelSelectorRequirement{
-					{
-						Key:      "helm.toolkit.fluxcd.io/name",
-						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-infra-components"},
-					},
-				},
-			},
-			ConditionStatus:  v1.ConditionTrue,
-			RowConditionType: "Ready",
+			ConditionStatus: v1.ConditionTrue,
+			ConditionType:   "Ready",
 		},
 	},
 }

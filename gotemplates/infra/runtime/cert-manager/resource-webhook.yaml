@@ -1,0 +1,32 @@
+{{- if .certManager.enabled }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: image
+    repo: oci
+    for: cert-manager
+  annotations:
+    path: webhook.image.tag
+  name: {{ .certManager.name }}-webhook-image
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+  componentRef:
+    name: {{ .ocm.component.name }}
+  interval: {{ default "5m" .ocm.interval }}
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Repository
+      name: {{ .ocm.repo.name }}
+      namespace: {{ .releaseNamespace }}
+  resource:
+    byReference:
+      referencePath:
+      {{- range .ocm.referencePath }}
+        - name: {{ .name }}
+      {{- end }}
+        - name: {{ .certManager.name }}
+      resource:
+        name: webhook-image
+  skipVerify: {{ default false .ocm.skipVerify }}
+{{- end }}
