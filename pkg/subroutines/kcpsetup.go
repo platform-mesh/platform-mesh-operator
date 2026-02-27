@@ -164,6 +164,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["protocol"] = protocol
 	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
 	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
+	templateData["featureEnableTerminalControllerManager"] = HasFeatureToggle(inst, "feature-enable-terminal-controller-manager")
 	templateData["registrationAllowed"] = r.cfg.IDP.RegistrationAllowed
 
 	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")

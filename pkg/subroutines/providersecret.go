@@ -129,6 +129,13 @@ func (r *ProvidersecretSubroutine) Process(
 		providers = append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...)
 	}
 
+	if HasFeatureToggle(instance, "feature-enable-terminal-controller-manager") == "true" {
+		providers = append(providers, corev1alpha1.ProviderConnection{
+			Path:   "root:platform-mesh-system",
+			Secret: "terminal-controller-manager-kubeconfig",
+		})
+	}
+
 	// Build kcp kubeonfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {

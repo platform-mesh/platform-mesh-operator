@@ -1,0 +1,20 @@
+apiVersion: apis.kcp.io/v1alpha2
+kind: APIExport
+metadata:
+  name: terminal.platform-mesh.io
+spec:
+  permissionClaims:
+  - group: core.platform-mesh.io
+    identityHash: 7748f340fc0b85b16becaf6e9c45258ecf9a367569d085448a7af64be9d321b0
+    resource: accountinfos
+    verbs:
+    - get
+    - list
+    - watch
+  resources:
+  - group: terminal.platform-mesh.io
+    name: terminals
+    schema: v260216-62483c5.terminals.terminal.platform-mesh.io
+    storage:
+      crd: {}
+status: {}
