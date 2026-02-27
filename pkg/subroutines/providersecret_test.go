@@ -1673,7 +1673,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 						"iam-service-kubeconfig",
 						"portal-kubeconfig",
 						"security-initializer-kubeconfig",
-						"security-terminator-kubeconfig":
+						"security-terminator-kubeconfig",
+						"init-agent-kubeconfig":
 						return true
 					}
 				}
