@@ -108,6 +108,13 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj runtim
 				return ctrl.Result{}, opErr
 			}
 			log.Info().Msg("Enabled 'Account IAM UI' feature")
+		case "feature-enable-terminal-controller-manager":
+			_, opErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-terminal-controller-manager")
+			if opErr != nil {
+				log.Error().Err(opErr.Err()).Msg("Failed to apply terminal-controller-manager manifests")
+				return ctrl.Result{}, opErr
+			}
+			log.Info().Msg("Enabled 'Terminal controller manager' feature")
 		case "feature-disable-email-verification":
 			log.Info().Msg("Enabled 'disable-email-verification' feature")
 		default:
