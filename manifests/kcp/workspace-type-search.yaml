@@ -1,0 +1,13 @@
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: WorkspaceType
+metadata:
+  name: search
+  annotations:
+    kcp.io/cluster: root
+    kcp.io/path: root
+spec:
+  defaultAPIBindings: []
+  defaultChildWorkspaceType:
+    name: search
+    path: root
+  initializer: true
