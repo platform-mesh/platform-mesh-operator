@@ -122,6 +122,8 @@ spec:
                   extraProviderConnections:
                     items:
                       properties:
+                        apiExportName:
+                          type: string
                         endpointSliceName:
                           type: string
                         external:
@@ -134,6 +136,8 @@ spec:
                           type: string
                         secret:
                           type: string
+                        useAdminKubeconfig:
+                          type: boolean
                       required:
                       - secret
                       type: object
@@ -172,6 +176,8 @@ spec:
                   providerConnections:
                     items:
                       properties:
+                        apiExportName:
+                          type: string
                         endpointSliceName:
                           type: string
                         external:
@@ -184,6 +190,8 @@ spec:
                           type: string
                         secret:
                           type: string
+                        useAdminKubeconfig:
+                          type: boolean
                       required:
                       - secret
                       type: object

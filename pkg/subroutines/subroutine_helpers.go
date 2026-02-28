@@ -49,14 +49,37 @@ type KcpHelper interface {
 type Helper struct {
 }
 
+// URLSchemeHost returns the scheme+host part of a URL (no path). Use this when building
+// KCP URLs so that path segments are not duplicated when the input already contains a path
+// (e.g. KCP.Url set to https://host:6443/clusters/root:ws). If hostURL has no scheme,
+// "https://" is prepended before parsing. Returns an error if the URL cannot be parsed
+// or has no host.
+func URLSchemeHost(hostURL string) (string, error) {
+	if hostURL == "" {
+		return "", fmt.Errorf("host URL is empty")
+	}
+	base := hostURL
+	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+		base = "https://" + base
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("host URL has no host: %s", hostURL)
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
 func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error) {
 	config.QPS = 1000.0
 	config.Burst = 2000.0
-	u, err := url.Parse(config.Host)
+	schemeHost, err := URLSchemeHost(config.Host)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to parse kcp host: %s", config.Host)
 	}
-	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
+	config.Host = schemeHost + "/clusters/" + workspacePath
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))

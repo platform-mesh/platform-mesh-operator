@@ -137,12 +137,14 @@ type SecretReference struct {
 }
 
 type ProviderConnection struct {
-	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
-	Path              string  `json:"path,omitempty"`
-	RawPath           *string `json:"rawPath,omitempty"`
-	Secret            string  `json:"secret"`
-	External          bool    `json:"external,omitempty"`
-	Namespace         *string `json:"namespace,omitempty"`
+	EndpointSliceName  *string `json:"endpointSliceName,omitempty"`
+	Path               string  `json:"path,omitempty"`
+	RawPath            *string `json:"rawPath,omitempty"`
+	Secret             string  `json:"secret"`
+	External           bool    `json:"external,omitempty"`
+	Namespace          *string `json:"namespace,omitempty"`
+	UseAdminKubeconfig *bool   `json:"useAdminKubeconfig,omitempty"`
+	APIExportName      string  `json:"apiExportName,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh
