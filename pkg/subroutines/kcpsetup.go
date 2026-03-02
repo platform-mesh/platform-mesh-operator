@@ -163,6 +163,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["protocol"] = protocol
 	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
 	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
+	templateData["featureEnableTerminalControllerManager"] = HasFeatureToggle(inst, "feature-enable-terminal-controller-manager")
 	templateData["registrationAllowed"] = r.cfg.IDP.RegistrationAllowed
 
 	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
@@ -262,9 +263,9 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	caBundles[validatingKey] = validatingB64Data
 
 	domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
-		SecretData: "tls.crt",
+		SecretData: r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretKey,
 		SecretRef: corev1alpha1.SecretReference{
-			Name:      "domain-certificate-ca",
+			Name:      r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretName,
 			Namespace: "platform-mesh-system",
 		},
 	})

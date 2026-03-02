@@ -56,6 +56,10 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		Path:   "root",
 		Secret: "security-terminator-kubeconfig",
 	},
+	{
+		Path:   "root:platform-mesh-system",
+		Secret: "init-agent-kubeconfig",
+	},
 }
 var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{}
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{

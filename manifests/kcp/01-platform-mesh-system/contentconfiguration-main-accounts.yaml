@@ -105,7 +105,7 @@ spec:
                                   "hideFromNav": true,
                                   "keepSelectedForChildren": false,
                                   "defineEntity": {
-                                      "id": "core_platform-mesh_io_account:1",
+                                      "id": "core_platform-mesh_io_account",
                                       "type": "account",
                                       "contextKey": "core_platform-mesh_io_accountId",
                                       "dynamicFetchId": "core_platform-mesh_io_account",
@@ -115,6 +115,9 @@ spec:
                                       "accountId": ":core_platform-mesh_io_accountId:1",
                                       "core_platform-mesh_io_accountId": ":core_platform-mesh_io_accountId:1",
                                       "resourceId": ":core_platform-mesh_io_accountId:1"
+                                  },
+                                  "navHeader": {
+                                    "label": ":core_platform-mesh_io_accountId:1"
                                   }
                               }
                           ]

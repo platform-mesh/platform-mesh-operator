@@ -4,28 +4,28 @@ go 1.25.1
 
 replace sigs.k8s.io/controller-runtime => github.com/kcp-dev/controller-runtime v0.19.0-kcp.1
 
-replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260225072540-1154d8351b1e
+replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260302090605-89f973993637
 
 replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.0
 
 replace (
-	k8s.io/api => k8s.io/api v0.35.1
-	k8s.io/apimachinery => k8s.io/apimachinery v0.35.1
-	k8s.io/client-go => k8s.io/client-go v0.35.1
+	k8s.io/api => k8s.io/api v0.35.2
+	k8s.io/apimachinery => k8s.io/apimachinery v0.35.2
+	k8s.io/client-go => k8s.io/client-go v0.35.2
 )
 
 require (
 	github.com/cert-manager/cert-manager v1.19.4
 	github.com/creasty/defaults v1.8.0
-	github.com/fluxcd/helm-controller/api v1.5.0
+	github.com/fluxcd/helm-controller/api v1.5.1
 	github.com/fluxcd/source-controller/api v1.8.0
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.28.3
-	github.com/mandelsoft/goutils v0.0.0-20260209132453-cd86279dc63b
+	github.com/mandelsoft/goutils v0.0.0-20260226120828-1ef06f3d9aa1
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.12.3
+	github.com/platform-mesh/golang-commons v0.12.6
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -33,10 +33,10 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0
 	golang.org/x/sys v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.35.1
-	k8s.io/apiextensions-apiserver v0.35.1
-	k8s.io/apimachinery v0.35.1
-	k8s.io/client-go v0.35.1
+	k8s.io/api v0.35.2
+	k8s.io/apiextensions-apiserver v0.35.2
+	k8s.io/apimachinery v0.35.2
+	k8s.io/client-go v0.35.2
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/controller-runtime v0.23.1
 	sigs.k8s.io/kustomize/api v0.21.1
