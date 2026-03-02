@@ -2,6 +2,7 @@ package resource_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -1687,6 +1688,664 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo() {
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with Git repoUrl - fallback to component version when ref is not available
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_ComponentVersionFallback() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-git-component-version",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"repoUrl": "https://github.com/example/charts.git",
+						// No ref field - should fallback to component.version
+					},
+				},
+				"component": map[string]interface{}{
+					"version": "v2.0.0",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-git-component-version")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://github.com/example/charts.git", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "v1.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch - should update targetRevision to component version v2.0.0
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			// Verify the patch content
+			patchData, err := patch.Data(obj)
+			s.Require().NoError(err)
+
+			var patchMap map[string]interface{}
+			err = json.Unmarshal(patchData, &patchMap)
+			s.Require().NoError(err)
+
+			// Verify the patch contains the expected fields
+			spec, ok := patchMap["spec"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec")
+
+			source, ok := spec["source"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec.source")
+
+			// Should use component version v2.0.0 as targetRevision (fallback from missing ref)
+			s.Equal("v2.0.0", source["targetRevision"], "targetRevision should be component version")
+			s.Equal("https://github.com/example/charts.git", source["repoURL"], "repoURL should match")
+
+			return nil
+		}).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with Git repoUrl - fallback to resource version when ref and component version are not available
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_ResourceVersionFallback() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-git-resource-version",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "3.0.0",
+					"access": map[string]interface{}{
+						"repoUrl": "https://github.com/example/charts.git",
+						// No ref field - should fallback to resource.version
+					},
+				},
+				// No component.version - should fallback to resource.version
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-git-resource-version")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://github.com/example/charts.git", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "2.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch - should update targetRevision to resource version 3.0.0
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			patchData, err := patch.Data(obj)
+			s.Require().NoError(err)
+
+			var patchMap map[string]interface{}
+			err = json.Unmarshal(patchData, &patchMap)
+			s.Require().NoError(err)
+
+			spec, ok := patchMap["spec"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec")
+
+			source, ok := spec["source"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec.source")
+
+			// Should use resource version 3.0.0 as targetRevision (fallback from missing ref and component.version)
+			s.Equal("3.0.0", source["targetRevision"], "targetRevision should be resource version")
+			s.Equal("https://github.com/example/charts.git", source["repoURL"], "repoURL should match")
+
+			return nil
+		}).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with Git repoUrl - fallback to commit when ref, component version, and resource version are not available
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_CommitFallback() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-git-commit",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"access": map[string]interface{}{
+						"repoUrl": "https://github.com/example/charts.git",
+						"commit":  "abc123def456",
+						// No ref field
+					},
+					// No version field
+				},
+				// No component.version
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-git-commit")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://github.com/example/charts.git", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "oldcommit789", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch - should update targetRevision to commit abc123def456
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			patchData, err := patch.Data(obj)
+			s.Require().NoError(err)
+
+			var patchMap map[string]interface{}
+			err = json.Unmarshal(patchData, &patchMap)
+			s.Require().NoError(err)
+
+			spec, ok := patchMap["spec"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec")
+
+			source, ok := spec["source"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec.source")
+
+			// Should use commit abc123def456 as targetRevision (final fallback)
+			s.Equal("abc123def456", source["targetRevision"], "targetRevision should be commit hash")
+			s.Equal("https://github.com/example/charts.git", source["repoURL"], "repoURL should match")
+
+			return nil
+		}).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with Git repoUrl - error when no version source is available
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_NoVersionSource() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-git-no-version",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "git",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"access": map[string]interface{}{
+						"repoUrl": "https://github.com/example/charts.git",
+						// No ref, no commit
+					},
+					// No version
+				},
+				// No component.version
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should return error because no version source is available
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with OCI imageReference with oci:// prefix
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIWithPrefix() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-oci-prefix",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.0.0",
+					"access": map[string]interface{}{
+						"imageReference": "oci://ghcr.io/platform-mesh/charts/mychart:2.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-oci-prefix")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "ghcr.io/platform-mesh/charts", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "1.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch - verify oci:// prefix is stripped from repoURL
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			patchData, err := patch.Data(obj)
+			s.Require().NoError(err)
+
+			var patchMap map[string]interface{}
+			err = json.Unmarshal(patchData, &patchMap)
+			s.Require().NoError(err)
+
+			spec, ok := patchMap["spec"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec")
+
+			source, ok := spec["source"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec.source")
+
+			// repoURL should have oci:// prefix stripped and chart name removed
+			s.Equal("ghcr.io/platform-mesh/charts", source["repoURL"], "repoURL should have oci:// prefix stripped")
+			s.Equal("2.0.0", source["targetRevision"], "targetRevision should be version")
+
+			return nil
+		}).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with OCI imageReference from alternative path (status.resource.imageReference)
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIAlternativePath() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-oci-alt-path",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "3.0.0",
+					// imageReference at resource level, not in access
+					"imageReference": "ghcr.io/example/charts/test:3.0.0",
+					"access":         map[string]interface{}{},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-oci-alt-path")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "ghcr.io/example/charts", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "2.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch - verify alternative path imageReference is used
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			patchData, err := patch.Data(obj)
+			s.Require().NoError(err)
+
+			var patchMap map[string]interface{}
+			err = json.Unmarshal(patchData, &patchMap)
+			s.Require().NoError(err)
+
+			spec, ok := patchMap["spec"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec")
+
+			source, ok := spec["source"].(map[string]interface{})
+			s.Require().True(ok, "patch should contain spec.source")
+
+			// repoURL should be extracted from alternative path imageReference
+			s.Equal("ghcr.io/example/charts", source["repoURL"], "repoURL should be extracted from imageReference")
+			s.Equal("3.0.0", source["targetRevision"], "targetRevision should be version")
+
+			return nil
+		}).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with invalid OCI imageReference (no slash)
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIInvalidFormat() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-oci-invalid",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access": map[string]interface{}{
+						"imageReference": "invalid-no-slash:1.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should return error because imageReference format is invalid
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with Helm repository - missing version
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_HelmRepo_MissingVersion() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-helm-no-version",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					// Missing version field
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should return error because version is missing
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart with OCI - missing version
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCI_MissingVersion() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-oci-no-version",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "oci",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					// Missing version field
+					"access": map[string]interface{}{
+						"imageReference": "ghcr.io/example/charts/test:1.0.0",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should return error because version is missing
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart - Patch failure
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_PatchFailure() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-patch-failure",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "2.0.0",
+					"access": map[string]interface{}{
+						"helmRepository": "https://charts.example.com",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	// ArgoCD Application Get - returns existing application with different version
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "argoproj.io",
+		Version: "v1alpha1",
+		Kind:    "Application",
+	})
+	existingApp.SetName("test-argocd-patch-failure")
+	existingApp.SetNamespace("default")
+	_ = unstructured.SetNestedField(existingApp.Object, "https://charts.example.com", "spec", "source", "repoURL")
+	_ = unstructured.SetNestedField(existingApp.Object, "1.0.0", "spec", "source", "targetRevision")
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			existingApp.DeepCopyInto(unstr)
+			return nil
+		}).Once()
+
+	// ArgoCD Application Patch - returns error
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed")).Once()
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should return error due to patch failure
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// Test ArgoCD chart - missing all access fields (no helmRepository, repoUrl, or imageReference)
+func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_MissingAllAccessFields() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-argocd-no-access",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.0.0",
+					"access":  map[string]interface{}{
+						// No helmRepository, repoUrl, or imageReference
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	setupArgoCDDeploymentTechMocks(clientMock)
+
+	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
+	result, err := subroutine.Process(ctx, inst)
+	// Should return error because no access fields are available
+	s.NotNil(err)
 	s.NotNil(result)
 }
 

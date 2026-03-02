@@ -28,7 +28,10 @@ spec:
   resource:
     byReference:
       resource:
-        name: chart
+        name: {{ $config.ocmResourceName | default "chart" }}
+{{- if $config.ocmResourceType }}
+        type: {{ $config.ocmResourceType }}
+{{- end }}
       referencePath:
 {{- if $config.referencePath }}
 {{ toYaml $config.referencePath | nindent 8 }}
@@ -44,6 +47,8 @@ spec:
       apiVersion: delivery.ocm.software/v1alpha1
       {{- if (($config.ocm).repo).name }}
       name: {{ $config.ocm.repo.name }}
+      {{- else if $.ocmRepoName }}
+      name: {{ $config.ocmRepoName }}
       {{- else }}
       name: {{ $values.ocm.repo.name }}
       {{- end }}

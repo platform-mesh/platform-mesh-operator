@@ -27,7 +27,7 @@ spec:
   resource:
     byReference:
       resource:
-        name: {{ .resource | default "image" }}
+        name: {{ .resourceName | default "image" }}
       referencePath:
 {{- if .referencePath }}
 {{ toYaml .referencePath | nindent 8 }}
@@ -43,7 +43,7 @@ spec:
   ocmConfig:
     - kind: Repository
       apiVersion: delivery.ocm.software/v1alpha1
-      name: {{ $values.ocm.repo.name }}
+      name: {{ .ocmRepoName | default $values.ocm.repo.name }}
       namespace: {{ $.releaseNamespace }}
 ---
 {{- end }}

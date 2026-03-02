@@ -33,13 +33,9 @@ type PlatformMeshSpec struct {
 	ProfileConfigMap *ConfigMapReference  `json:"profileConfigMap,omitempty"`
 }
 
-// ConfigMapReference references a ConfigMap by name and optional namespace.
-// If namespace is not specified, it defaults to the PlatformMesh resource's namespace.
 type ConfigMapReference struct {
-	// Name is the name of the ConfigMap.
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
-	// Namespace is the namespace of the ConfigMap. If not specified, defaults to the PlatformMesh resource's namespace.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 }
@@ -49,30 +45,16 @@ type WaitConfig struct {
 }
 
 type ResourceType struct {
-	// Versions are the API versions to check (e.g., ["v1", "v1alpha1"]).
-	Versions []string `json:"versions,omitempty"`
-	// Group is the API group (e.g., "argoproj.io").
-	Group string `json:"group,omitempty"`
-	// Kind is the resource kind (e.g., "Application").
-	Kind string `json:"kind,omitempty"`
-	// Name is the specific resource name to check. If empty, uses LabelSelector.
-	Name string `json:"name,omitempty"`
-	// Namespace is the namespace to search in.
-	Namespace string `json:"namespace,omitempty"`
-	// LabelSelector filters resources by labels when Name is not specified.
+	Versions             []string `json:"versions,omitempty"`
+	Group                string   `json:"group,omitempty"`
+	Kind                 string   `json:"kind,omitempty"`
+	Name                 string   `json:"name,omitempty"`
+	Namespace            string   `json:"namespace,omitempty"`
 	metav1.LabelSelector `json:",inline,omitempty"`
-	// ConditionStatus is the expected condition status (e.g., "True").
-	ConditionStatus metav1.ConditionStatus `json:"conditionStatus,omitempty"`
-	// ConditionType is the condition type to check (e.g., "Ready").
-	ConditionType string `json:"conditionType,omitempty"`
-	// StatusFieldPath specifies a path to a nested status field to check instead of conditions.
-	// When set, StatusValue is required and ConditionType/ConditionStatus are ignored.
-	// Example: ["status", "sync", "status"] for ArgoCD Application sync status.
+	ConditionStatus      metav1.ConditionStatus `json:"conditionStatus,omitempty"`
+	ConditionType        string                 `json:"conditionType,omitempty"`
 	// +optional
 	StatusFieldPath []string `json:"statusFieldPath,omitempty"`
-	// StatusValue is the expected value at the StatusFieldPath.
-	// Required when StatusFieldPath is set.
-	// Example: "Synced" for ArgoCD Application sync status.
 	// +optional
 	StatusValue string `json:"statusValue,omitempty"`
 }
@@ -111,24 +93,17 @@ type Kcp struct {
 	ProviderConnections      []ProviderConnection             `json:"providerConnections,omitempty"`
 	ExtraProviderConnections []ProviderConnection             `json:"extraProviderConnections,omitempty"`
 	ExtraDefaultAPIBindings  []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
-	// ExtraWorkspaces allows declaring additional workspaces that the operator will create.
 	// +optional
 	ExtraWorkspaces []WorkspaceDeclaration `json:"extraWorkspaces,omitempty"`
 }
 
-// WorkspaceDeclaration defines a workspace to be created by the operator.
 type WorkspaceDeclaration struct {
-	// Path is the full logical path of the workspace to be created (e.g., "root:orgs:my-workspace").
-	Path string `json:"path"`
-	// Type defines the WorkspaceType for the new workspace.
+	Path string                 `json:"path"`
 	Type WorkspaceTypeReference `json:"type"`
 }
 
-// WorkspaceTypeReference specifies the type of a workspace.
 type WorkspaceTypeReference struct {
-	// Name is the name of the WorkspaceType.
 	Name string `json:"name"`
-	// Path is the logical cluster path where the WorkspaceType is defined.
 	Path string `json:"path"`
 }
 
@@ -159,10 +134,8 @@ type KCPAPIVersionKindRef struct {
 }
 
 type SecretReference struct {
-	// name is unique within a namespace to reference a secret resource.
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
-	// namespace defines the space within which the secret name must be unique.
 	// +optional
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
