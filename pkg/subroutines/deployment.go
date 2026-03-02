@@ -50,6 +50,8 @@ type DeploymentSubroutine struct {
 const (
 	profileConfigMapKey           = "profile.yaml"
 	defaultProfileConfigMapSuffix = "-profile"
+	// argoPlaceholderRepoURL is set by templates and replaced by ResourceSubroutine with actual OCM values
+	argoPlaceholderRepoURL = "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE"
 )
 
 func NewDeploymentSubroutine(clientRuntime client.Client, clientInfra client.Client, cfg *pmconfig.CommonServiceConfig, operatorCfg *config.OperatorConfig) *DeploymentSubroutine {
@@ -235,7 +237,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 				Str("healthStatus", healthStatus).Msg("cert-manager Application is not healthy..")
 			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not healthy"), true, false)
 		}
-	} else {
+	}
+
+	if deploymentTech == "fluxcd" {
 		// For FluxCD HelmReleases, check Ready condition
 		if !matchesConditionWithStatus(rel, "Ready", "True") {
 			log.Info().Str("deploymentTechnology", deploymentTech).Msg("cert-manager Release is not ready..")
@@ -265,9 +269,6 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 
 	// Check if istio-proxy is injected
-	// At he boostrap time of the cluster the operator will install istio. Later in the Process the operator needs
-	// to communicate via the proxy with KCP. Once Istio is up and running the operator will be restarted to ensure
-	// this communication will work
 	if r.cfgOperator.Subroutines.Deployment.EnableIstio {
 
 		// Wait for istiod release to be ready before continuing
@@ -291,7 +292,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 					Str("healthStatus", healthStatus).Msg("istio-istiod Application is not healthy..")
 				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not healthy"), true, false)
 			}
-		} else {
+		}
+
+		if deploymentTech == "fluxcd" {
 			// For FluxCD HelmReleases, check Ready condition
 			if !matchesConditionWithStatus(rel, "Ready", "True") {
 				log.Info().Str("deploymentTechnology", deploymentTech).Msg("istio-istiod Release is not ready..")
@@ -384,9 +387,6 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 		deploymentTech = "fluxcd" // default to fluxcd if invalid
 	}
 	infraProfileMap["deploymentTechnology"] = deploymentTech
-
-	// destinationServer from infra profile (for AppProject destinations.server) will be available
-	// in templateVars automatically since infraProfileMap is merged with templateVarsMap
 
 	// Merge infra profile (base) with templateVars (overrides)
 	// templateVars take precedence over profile values
@@ -889,7 +889,49 @@ func calculateSyncWaves(services map[string]interface{}, defaultNamespace string
 	return nil
 }
 
-// renderTemplatesInValue renders templates in a value and returns the rendered result
+// renderTemplatesInValue recursively traverses a value (map, slice, or string) and renders
+// any Go text/template expressions found in string values. Non-string values pass through unchanged.
+//
+// Template expressions use standard Go template syntax with access to templateData via dot notation.
+// If a string does not contain "{{" and "}}", it is returned as-is. If template parsing or execution
+// fails, the original string is returned without error to handle intentional non-template braces.
+//
+// Examples:
+//
+//	templateData := map[string]interface{}{
+//	    "namespace": "prod",
+//	    "config": map[string]interface{}{
+//	        "clusterName": "cluster-1",
+//	        "syncWave":    "10",
+//	    },
+//	}
+//
+//	// String with template → rendered
+//	renderTemplatesInValue("ns-{{ .namespace }}", templateData)
+//	// Returns: "ns-prod", nil
+//
+//	// Nested map access
+//	renderTemplatesInValue("wave-{{ .config.syncWave }}", templateData)
+//	// Returns: "wave-10", nil
+//
+//	// Map values are recursively rendered
+//	renderTemplatesInValue(map[string]interface{}{
+//	    "name": "{{ .config.clusterName }}",
+//	    "port": 8080,
+//	}, templateData)
+//	// Returns: map[string]interface{}{"name": "cluster-1", "port": 8080}, nil
+//
+//	// Slice values are recursively rendered
+//	renderTemplatesInValue([]interface{}{"{{ .namespace }}", "static"}, templateData)
+//	// Returns: []interface{}{"prod", "static"}, nil
+//
+//	// Non-template strings pass through
+//	renderTemplatesInValue("plain-text", templateData)
+//	// Returns: "plain-text", nil
+//
+//	// Non-string types pass through unchanged
+//	renderTemplatesInValue(42, templateData)
+//	// Returns: 42, nil
 func renderTemplatesInValue(v interface{}, templateData map[string]interface{}) (interface{}, error) {
 	switch val := v.(type) {
 	case map[string]interface{}:
@@ -1047,48 +1089,7 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 		// For ArgoCD Applications, preserve existing repoURL and targetRevision if they're already set
 		// (not placeholder values) to avoid overwriting values set by ResourceSubroutine
 		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
-			existingApp := &unstructured.Unstructured{}
-			existingApp.SetGroupVersionKind(obj.GroupVersionKind())
-			if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existingApp); err == nil {
-				// Application exists - check if repoURL and targetRevision are already set (not placeholders)
-				existingRepoURL, found, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "repoURL")
-				existingTargetRevision, foundRev, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
-
-				// Check if the new object has repoURL/targetRevision before trying to preserve
-				var newRepoURL string
-				var newTargetRevision string
-				if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-					if source, ok := spec["source"].(map[string]interface{}); ok {
-						if url, ok := source["repoURL"].(string); ok {
-							newRepoURL = url
-						}
-						if rev, ok := source["targetRevision"].(string); ok {
-							newTargetRevision = rev
-						}
-					}
-				}
-
-				// Only preserve if:
-				// 1. Existing value is set and not a placeholder
-				// 2. New object has the field (so we don't remove required fields)
-				// 3. Existing value is different from new value (to avoid unnecessary removals)
-				if found && existingRepoURL != "" && existingRepoURL != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newRepoURL != "" && existingRepoURL != newRepoURL {
-					// Remove repoURL from the new object to preserve the existing value
-					if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-						if source, ok := spec["source"].(map[string]interface{}); ok {
-							delete(source, "repoURL")
-						}
-					}
-				}
-				if foundRev && existingTargetRevision != "" && existingTargetRevision != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newTargetRevision != "" && existingTargetRevision != newTargetRevision {
-					// Remove targetRevision from the new object to preserve the existing value
-					if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-						if source, ok := spec["source"].(map[string]interface{}); ok {
-							delete(source, "targetRevision")
-						}
-					}
-				}
-			}
+			r.preserveExistingArgoSourceFields(ctx, obj.Object, obj.GetName(), obj.GetNamespace(), log)
 
 			// Merge Resource-managed image versions into helm values
 			r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
@@ -1204,53 +1205,10 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 			// For ArgoCD Applications, preserve existing repoURL and targetRevision if they're already set
 			// (not placeholder values) to avoid overwriting values set by ResourceSubroutine
 			if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
-				existingApp := &unstructured.Unstructured{}
-				existingApp.SetGroupVersionKind(obj.GroupVersionKind())
-				if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existingApp); err == nil {
-					// Application exists - check if repoURL and targetRevision are already set (not placeholders)
-					existingRepoURL, found, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "repoURL")
-					existingTargetRevision, foundRev, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
+				r.preserveExistingArgoSourceFields(ctx, objMap, obj.GetName(), obj.GetNamespace(), log)
 
-					// Check if the new object has repoURL/targetRevision before trying to preserve
-					var newRepoURL string
-					var newTargetRevision string
-					if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-						if source, ok := spec["source"].(map[string]interface{}); ok {
-							if url, ok := source["repoURL"].(string); ok {
-								newRepoURL = url
-							}
-							if rev, ok := source["targetRevision"].(string); ok {
-								newTargetRevision = rev
-							}
-						}
-					}
-
-					// Only preserve if:
-					// 1. Existing value is set and not a placeholder
-					// 2. New object has the field (so we don't remove required fields)
-					// 3. Existing value is different from new value (to avoid unnecessary removals)
-					if found && existingRepoURL != "" && existingRepoURL != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newRepoURL != "" && existingRepoURL != newRepoURL {
-						// Remove repoURL from the new object to preserve the existing value
-						if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-							if source, ok := spec["source"].(map[string]interface{}); ok {
-								delete(source, "repoURL")
-							}
-						}
-					}
-					if foundRev && existingTargetRevision != "" && existingTargetRevision != "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE" && newTargetRevision != "" && existingTargetRevision != newTargetRevision {
-						// Remove targetRevision from the new object to preserve the existing value
-						if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-							if source, ok := spec["source"].(map[string]interface{}); ok {
-								delete(source, "targetRevision")
-							}
-						}
-					}
-					// Update the unstructured object with the modified map
-					obj = unstructured.Unstructured{Object: objMap}
-
-					// Merge Resource-managed image versions into helm values
-					r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
-				}
+				// Merge Resource-managed image versions into helm values
+				r.mergeImageVersionsIntoHelmValues(objMap, obj.GetName(), obj.GetNamespace(), log)
 			}
 
 			// For FluxCD HelmReleases, merge Resource-managed image versions into spec.values
@@ -1407,7 +1365,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	return nil
 }
 
-func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -1540,7 +1498,7 @@ func getHelmRelease(ctx context.Context, client client.Client, releaseName strin
 			return nil, nil
 		}
 		log.Error().Err(err).Msgf("Failed to get %s/%s Release", releaseName, releaseNamespace)
-		return nil, nil
+		return nil, err
 	}
 	return kcpRelease, nil
 }
@@ -1655,7 +1613,7 @@ func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Con
 	}
 
 	// Update KCP Webhook secret with the latest CA bundle
-	return r.udpateKcpWebhookSecret(ctx, inst)
+	return r.updateKcpWebhookSecret(ctx, inst)
 }
 
 func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8sClient client.Client, templateData map[string]any) error {

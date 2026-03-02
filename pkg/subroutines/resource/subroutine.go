@@ -414,7 +414,7 @@ func getNestedString(m map[string]interface{}, path ...string) (string, bool) {
 		return "", false
 	}
 	current := m
-	for i, key := range path[:len(path)-1] {
+	for _, key := range path[:len(path)-1] {
 		val, ok := current[key]
 		if !ok {
 			return "", false
@@ -424,7 +424,6 @@ func getNestedString(m map[string]interface{}, path ...string) (string, bool) {
 		} else {
 			return "", false
 		}
-		_ = i // avoid unused variable
 	}
 	lastKey := path[len(path)-1]
 	val, ok := current[lastKey]

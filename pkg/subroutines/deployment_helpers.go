@@ -13,9 +13,16 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
+
+var argoApplicationGVK = schema.GroupVersionKind{
+	Group:   "argoproj.io",
+	Version: "v1alpha1",
+	Kind:    "Application",
+}
 
 const (
 	// Field manager names for Server-Side Apply
@@ -179,5 +186,61 @@ func templateFuncMap() template.FuncMap {
 		"not": func(v interface{}) bool {
 			return isZeroValue(v)
 		},
+	}
+}
+
+// preserveExistingArgoSourceFields checks if an existing ArgoCD Application has repoURL/targetRevision
+// values set by ResourceSubroutine and removes those fields from the new object to preserve them.
+// This prevents DeploymentSubroutine from overwriting values managed by ResourceSubroutine.
+func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
+	ctx context.Context,
+	objMap map[string]interface{},
+	name, namespace string,
+	log *logger.Logger,
+) {
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(argoApplicationGVK)
+
+	if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existingApp); err != nil {
+		// Application doesn't exist yet, nothing to preserve
+		return
+	}
+
+	// Application exists - check if repoURL and targetRevision are already set (not placeholders)
+	existingRepoURL, found, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "repoURL")
+	existingTargetRevision, foundRev, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
+
+	// Check if the new object has repoURL/targetRevision before trying to preserve
+	var newRepoURL, newTargetRevision string
+	if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+		if source, ok := spec["source"].(map[string]interface{}); ok {
+			if url, ok := source["repoURL"].(string); ok {
+				newRepoURL = url
+			}
+			if rev, ok := source["targetRevision"].(string); ok {
+				newTargetRevision = rev
+			}
+		}
+	}
+
+	// Only preserve if:
+	// 1. Existing value is set and not a placeholder
+	// 2. New object has the field (so we don't remove required fields)
+	// 3. Existing value is different from new value (to avoid unnecessary removals)
+	if found && existingRepoURL != "" && existingRepoURL != argoPlaceholderRepoURL && newRepoURL != "" && existingRepoURL != newRepoURL {
+		if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+			if source, ok := spec["source"].(map[string]interface{}); ok {
+				delete(source, "repoURL")
+				log.Debug().Str("app", name).Msg("Preserving existing repoURL from ResourceSubroutine")
+			}
+		}
+	}
+	if foundRev && existingTargetRevision != "" && existingTargetRevision != argoPlaceholderRepoURL && newTargetRevision != "" && existingTargetRevision != newTargetRevision {
+		if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+			if source, ok := spec["source"].(map[string]interface{}); ok {
+				delete(source, "targetRevision")
+				log.Debug().Str("app", name).Msg("Preserving existing targetRevision from ResourceSubroutine")
+			}
+		}
 	}
 }
