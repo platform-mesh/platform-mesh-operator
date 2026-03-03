@@ -50,7 +50,7 @@ type Helper struct {
 }
 
 // URLSchemeHost returns the scheme+host part of a URL (no path). Use this when building
-// KCP URLs so that path segments are not duplicated when the input already contains a path
+// kcp URLs so that path segments are not duplicated when the input already contains a path
 // (e.g. KCP.Url set to https://host:6443/clusters/root:ws). If hostURL has no scheme,
 // "https://" is prepended before parsing. Returns an error if the URL cannot be parsed
 // or has no host.
