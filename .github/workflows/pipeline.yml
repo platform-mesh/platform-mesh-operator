@@ -113,9 +113,29 @@ jobs:
     uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
+      version: pr-${{ github.event.pull_request.number }}
       release_branch: ${{ inputs.release_branch }}
       multiarch: false
+      push: true
     secrets: inherit
+
+  sbomPR:
+    needs: [dockerBuild]
+    if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+    uses: platform-mesh/.github/.github/workflows/job-sbom.yml@main
+    with:
+      imageReference: ${{ inputs.imageTagName }}:pr-${{ github.event.pull_request.number }}
+
+  imageOcmPR:
+    needs: [dockerBuild, sbomPR]
+    if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@main
+    secrets: inherit
+    with:
+      imageReference: ${{ inputs.imageTagName }}:pr-${{ github.event.pull_request.number }}
+      appVersion: pr-${{ github.event.pull_request.number }}
+      repoName: ${{ github.event.repository.name }}
+      commit: ${{ github.sha }}
 
   dockerBuildAndPush:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
@@ -129,17 +149,16 @@ jobs:
     secrets: inherit
 
   sbom:
-    # needs: [createVersion, dockerBuildAndPush]
-    # if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-sbom.yml@feat/sbom
+    needs: [createVersion, dockerBuildAndPush]
+    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    uses: platform-mesh/.github/.github/workflows/job-sbom.yml@main
     with:
       imageReference: ${{ inputs.imageTagName }}:${{ needs.createVersion.outputs.version }}
 
   imageOcm:
-    # needs: [createVersion, dockerBuildAndPush, sbom]
-    needs: [sbom]
-    # if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@feat/sbom
+    needs: [createVersion, dockerBuildAndPush, sbom]
+    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@main
     secrets: inherit
     with:
       imageReference: ${{ inputs.imageTagName }}:${{ needs.createVersion.outputs.version }}
