@@ -217,7 +217,8 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
 		}
 
-		if !ptr.Deref(pc.UseAdminKubeconfig, false) {
+		// Scoped kubeconfig only when UseAdminKubeconfig is explicitly false; default (nil/true) stays admin.
+		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
 			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
 		}
 
@@ -228,7 +229,12 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 	} else {
-		if !ptr.Deref(pc.UseAdminKubeconfig, false) {
+		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
+			if pc.APIExportName == "" {
+				err := fmt.Errorf("scoped kubeconfig (useAdminKubeconfig: false) requires apiExportName or endpointSliceName")
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Invalid provider connection configuration")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
 			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
 		}
 
