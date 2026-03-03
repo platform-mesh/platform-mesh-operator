@@ -1592,13 +1592,13 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	// Setup test instance: use only account-operator (admin path) and kubernetes-graphql-gateway (admin path with slice)
-	// so we avoid the scoped path that requires APIExport (ResolveAPIExport uses its own client, not the mock).
+	// First provider uses admin path; second uses admin path with slice URL (avoids scoped path and ResolveAPIExport mocks).
 	instance := s.getBaseInstance()
 	instance.Spec.Kcp.ProviderConnections = []corev1alpha1.ProviderConnection{
 		{
 			Path:               "root:platform-mesh-system",
 			Secret:             "account-operator-kubeconfig",
-			UseAdminKubeconfig: ptr.To(false),
+			UseAdminKubeconfig: ptr.To(true),
 		},
 		{
 			EndpointSliceName:  ptr.To("core.platform-mesh.io"),
@@ -1609,11 +1609,12 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	}
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
-			EndpointSliceName: ptr.To(""),
-			Path:              "root:platform-mesh-system",
-			Secret:            "external-kubeconfig",
-			External:          true,
-			Namespace:         ptr.To("test"),
+			EndpointSliceName:  ptr.To(""),
+			Path:               "root:platform-mesh-system",
+			Secret:             "external-kubeconfig",
+			External:           true,
+			Namespace:          ptr.To("test"),
+			UseAdminKubeconfig: ptr.To(true),
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
@@ -1866,7 +1867,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections_NoDoublePathWhen
 	instance.Namespace = "platform-mesh-system"
 	// Only in-cluster providers so all secrets are in platform-mesh-system (same as instance.Namespace, no cross-namespace owner ref).
 	instance.Spec.Kcp.ProviderConnections = []corev1alpha1.ProviderConnection{
-		{Path: "root:platform-mesh-system", Secret: "account-operator-kubeconfig", UseAdminKubeconfig: ptr.To(false)},
+		{Path: "root:platform-mesh-system", Secret: "account-operator-kubeconfig", UseAdminKubeconfig: ptr.To(true)},
 		{EndpointSliceName: ptr.To("core.platform-mesh.io"), Path: "root:platform-mesh-system", Secret: "kubernetes-grapqhl-gateway-kubeconfig", UseAdminKubeconfig: ptr.To(true)},
 	}
 	instance.Spec.Kcp.ExtraProviderConnections = nil

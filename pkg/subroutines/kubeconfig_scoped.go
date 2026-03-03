@@ -8,6 +8,7 @@ import (
 
 	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 	"github.com/platform-mesh/golang-commons/errors"
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -19,21 +20,25 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const (
-	// DefaultScopedSANamespace is the default namespace in the KCP workspace where we create ServiceAccounts for scoped kubeconfigs.
-	DefaultScopedSANamespace = "default"
-	// DefaultScopedSecretNamespace is the default namespace in the management cluster where provider kubeconfig secrets are written.
-	DefaultScopedSecretNamespace = "platform-mesh-system"
-	// DefaultTokenExpirationSeconds is used when TokenExpirationSeconds is not set (24h).
-	DefaultTokenExpirationSeconds = 86400
-	// ScopedClusterRolePrefix is the prefix for ClusterRoles created from APIExport.
-	ScopedClusterRolePrefix = "platform-mesh-provider-"
-	// ScopedSAPrefix is the prefix for ServiceAccounts created for providers.
-	ScopedSAPrefix = "platform-mesh-provider-"
+	// defaultScopedSANamespace is the default namespace in the KCP workspace where we create ServiceAccounts for scoped kubeconfigs.
+	defaultScopedSANamespace = "default"
+	// defaultScopedSecretNamespace is the default namespace in the management cluster where provider kubeconfig secrets are written.
+	defaultScopedSecretNamespace = "platform-mesh-system"
+	// defaultTokenExpirationSeconds is used when TokenExpirationSeconds is not set (7 days).
+	secondsPerDay                 = 86400
+	defaultTokenExpirationSeconds = 7 * secondsPerDay
+	// scopedClusterRolePrefix is the prefix for ClusterRoles created from APIExport.
+	scopedClusterRolePrefix = "platform-mesh-provider-"
+	// scopedSAPrefix is the prefix for ServiceAccounts created for providers.
+	scopedSAPrefix = "platform-mesh-provider-"
+	// kcpWorkspaceAccessRoleName is the pre-defined KCP ClusterRole that grants workspace content access (verb=access to "/").
+	kcpWorkspaceAccessRoleName = "system:kcp:workspace:access"
 )
 
 // buildKCPConfigForPath returns a copy of cfg with Host set to the KCP workspace path (for use when creating resources in that path).
@@ -64,9 +69,9 @@ func newKCPClientWithRBAC(cfg *rest.Config, workspacePath string) (client.Client
 	return cl, nil
 }
 
-// ResolveAPIExport returns the APIExport (v1alpha2) and the workspace path where it lives.
+// resolveAPIExport returns the APIExport (v1alpha2) and the workspace path where it lives.
 // apiExportPath must be non-empty (callers pass Path from the provider connection).
-func ResolveAPIExport(ctx context.Context, cfg *rest.Config, apiExportName, apiExportPath string) (*kcpapiv1alpha2.APIExport, string, error) {
+func resolveAPIExport(ctx context.Context, cfg *rest.Config, apiExportName, apiExportPath string) (*kcpapiv1alpha2.APIExport, string, error) {
 	if apiExportName == "" {
 		return nil, "", fmt.Errorf("cannot resolve APIExport: APIExportName is required")
 	}
@@ -96,8 +101,8 @@ func hasWriteVerb(verbs []string) bool {
 	return false
 }
 
-// RBACFromAPIExport builds PolicyRules from the APIExport (v1alpha2): spec.Resources (full access), spec.PermissionClaims (verbs), and a static rule for apiexports/content.
-func RBACFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.PolicyRule, error) {
+// rbacFromAPIExport builds PolicyRules from the APIExport (v1alpha2): spec.Resources (full access), spec.PermissionClaims (verbs), and a static rule for apiexports/content.
+func rbacFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.PolicyRule, error) {
 	var rules []rbacv1.PolicyRule
 
 	// Full access to exported resources (spec.resources).
@@ -174,20 +179,15 @@ func RBACFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.PolicyRule, e
 	return rules, nil
 }
 
-// KCPWorkspaceAccessRoleName is the pre-defined KCP ClusterRole that grants workspace content access (verb=access to "/").
-// Binding the scoped SA to this role ensures the workspace content authorizer allows requests before local RBAC is evaluated.
-// See: https://docs.kcp.io/kcp/concepts/authorization/ (Workspace Content authorizer).
-const KCPWorkspaceAccessRoleName = "system:kcp:workspace:access"
-
-// EnsureServiceAccountAndRBAC creates or updates a ServiceAccount, ClusterRole, ClusterRoleBinding, and a binding to system:kcp:workspace:access in the KCP workspace.
+// ensureServiceAccountAndRBAC creates or updates a ServiceAccount, ClusterRole, ClusterRoleBinding, and a binding to system:kcp:workspace:access in the KCP workspace.
 // saNamespace is the namespace for the SA (configurable).
-func EnsureServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, providerKey string, saNamespace string, policyRules []rbacv1.PolicyRule) (saName string, err error) {
-	saName = ScopedSAPrefix + sanitizeProviderKey(providerKey)
-	crName := ScopedClusterRolePrefix + sanitizeProviderKey(providerKey)
+func ensureServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, providerKey string, saNamespace string, policyRules []rbacv1.PolicyRule) (saName string, err error) {
+	saName = scopedSAPrefix + sanitizeProviderKey(providerKey)
+	crName := scopedClusterRolePrefix + sanitizeProviderKey(providerKey)
 	workspaceAccessCRBName := "platform-mesh-workspace-access-" + sanitizeProviderKey(providerKey)
 
 	if saNamespace == "" {
-		saNamespace = DefaultScopedSANamespace
+		saNamespace = defaultScopedSANamespace
 	}
 
 	sa := &corev1.ServiceAccount{
@@ -221,46 +221,46 @@ func EnsureServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, p
 
 	crb := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: crName},
-		RoleRef: rbacv1.RoleRef{
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, crb, func() error {
+		crb.RoleRef = rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "ClusterRole",
 			Name:     crName,
-		},
-		Subjects: []rbacv1.Subject{
+		}
+		crb.Subjects = []rbacv1.Subject{
 			{
 				Kind:      rbacv1.ServiceAccountKind,
 				Namespace: saNamespace,
 				Name:      saName,
 			},
-		},
-	}
-	if err := kcpClient.Create(ctx, crb); err != nil {
-		if !kerrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("create ClusterRoleBinding %s: %w", crName, err)
 		}
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("create or update ClusterRoleBinding %s: %w", crName, err)
 	}
 
 	// Bind SA to KCP's pre-defined workspace access role so the workspace content authorizer allows the SA before local RBAC.
 	// Without this, discovery (e.g. GET /api, /apis) can fail with "failed to get server groups: unknown" in some KCP setups.
 	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: workspaceAccessCRBName},
-		RoleRef: rbacv1.RoleRef{
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, workspaceAccessCRB, func() error {
+		workspaceAccessCRB.RoleRef = rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "ClusterRole",
-			Name:     KCPWorkspaceAccessRoleName,
-		},
-		Subjects: []rbacv1.Subject{
+			Name:     kcpWorkspaceAccessRoleName,
+		}
+		workspaceAccessCRB.Subjects = []rbacv1.Subject{
 			{
 				Kind:      rbacv1.ServiceAccountKind,
 				Namespace: saNamespace,
 				Name:      saName,
 			},
-		},
-	}
-	if err := kcpClient.Create(ctx, workspaceAccessCRB); err != nil {
-		if !kerrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("create ClusterRoleBinding %s for workspace access: %w", workspaceAccessCRBName, err)
 		}
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("create or update ClusterRoleBinding %s for workspace access: %w", workspaceAccessCRBName, err)
 	}
 	return saName, nil
 }
@@ -269,9 +269,9 @@ func sanitizeProviderKey(key string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(key, "_", "-"), " ", "-")
 }
 
-// CreateTokenForSA creates a token for the ServiceAccount in the KCP workspace using TokenRequest.
-// expirationSeconds: if > 0 use it; otherwise use DefaultTokenExpirationSeconds.
-func CreateTokenForSA(ctx context.Context, cfg *rest.Config, workspacePath, namespace, saName string, expirationSeconds int64) (string, error) {
+// createTokenForSA creates a token for the ServiceAccount in the KCP workspace using TokenRequest.
+// expirationSeconds: if > 0 use it; otherwise use defaultTokenExpirationSeconds.
+func createTokenForSA(ctx context.Context, cfg *rest.Config, workspacePath, namespace, saName string, expirationSeconds int64) (string, error) {
 	config := buildKCPConfigForPath(cfg, workspacePath)
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -279,7 +279,7 @@ func CreateTokenForSA(ctx context.Context, cfg *rest.Config, workspacePath, name
 	}
 	expSec := expirationSeconds
 	if expSec <= 0 {
-		expSec = DefaultTokenExpirationSeconds
+		expSec = defaultTokenExpirationSeconds
 	}
 	treq := &authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
@@ -299,14 +299,14 @@ func BuildHostURLForScoped(hostPort, path string) (string, error) {
 }
 
 // WriteScopedKubeconfigToSecret builds the scoped kubeconfig server URL, namespace, and CA data from cfg,
-// then calls HandleProviderConnectionScoped with a writeSecret callback that persists the kubeconfig into a Secret via k8sClient.
+// then calls handleProviderConnectionScoped with a writeSecret callback that persists the kubeconfig into a Secret via k8sClient.
 func WriteScopedKubeconfigToSecret(ctx context.Context, k8sClient client.Client, cfg *rest.Config, spec ProviderConnectionSpec, hostPort, secretNamespace string) error {
 	hostURL, err := BuildHostURLForScoped(hostPort, spec.Path)
 	if err != nil {
 		return fmt.Errorf("build host URL for scoped kubeconfig: %w", err)
 	}
 	if secretNamespace == "" {
-		secretNamespace = DefaultScopedSecretNamespace
+		secretNamespace = defaultScopedSecretNamespace
 	}
 	caData := cfg.TLSClientConfig.CAData
 	if caData == nil {
@@ -322,7 +322,25 @@ func WriteScopedKubeconfigToSecret(ctx context.Context, k8sClient client.Client,
 		})
 		return err
 	}
-	return HandleProviderConnectionScoped(ctx, cfg, spec, hostURL, caData, secretNamespace, writeSecret)
+	return handleProviderConnectionScoped(ctx, cfg, spec, hostURL, caData, secretNamespace, writeSecret)
+}
+
+// writeScopedKubeconfigForProviderConnection resolves apiExportName and namespace from pc, then writes the scoped kubeconfig secret.
+// apiExportName is pc.APIExportName, or pc.EndpointSliceName if APIExportName is empty (when using an APIExportEndpointSlice).
+func writeScopedKubeconfigForProviderConnection(ctx context.Context, k8sClient client.Client, cfg *rest.Config, pc corev1alpha1.ProviderConnection, hostPort string) error {
+	apiExportName := pc.APIExportName
+	if apiExportName == "" && pc.EndpointSliceName != nil {
+		apiExportName = *pc.EndpointSliceName
+	}
+	namespace := defaultScopedSecretNamespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	return WriteScopedKubeconfigToSecret(ctx, k8sClient, cfg, ProviderConnectionSpec{
+		Path:          pc.Path,
+		Secret:        pc.Secret,
+		APIExportName: apiExportName,
+	}, hostPort, namespace)
 }
 
 // BuildScopedKubeconfig builds a kubeconfig that uses the given token and CA for the cluster at hostURL.
@@ -349,11 +367,11 @@ func BuildScopedKubeconfig(hostURL string, token string, caData []byte) *clientc
 	}
 }
 
-// HandleProviderConnectionScoped generates a service-specific kubeconfig for the provider and writes it to the Secret.
+// handleProviderConnectionScoped generates a service-specific kubeconfig for the provider and writes it to the Secret.
 // Same pattern as consumers (rebac, extension-manager): path comes from context (Path = export workspace), only APIExportName in config.
 // Resolves the APIExport by name in Path, creates SA + RBAC in Path, creates a token, and builds the kubeconfig.
 // hostURL must point at that workspace (e.g. https://kcp/clusters/root:platform-mesh-system) so the SA can use APIExportEndpointSlices and export content there.
-func HandleProviderConnectionScoped(
+func handleProviderConnectionScoped(
 	ctx context.Context,
 	cfg *rest.Config,
 	pc ProviderConnectionSpec,
@@ -369,12 +387,12 @@ func HandleProviderConnectionScoped(
 		return fmt.Errorf("scoped kubeconfig requires Path (export workspace)")
 	}
 
-	export, _, err := ResolveAPIExport(ctx, cfg, pc.APIExportName, pc.Path)
+	export, _, err := resolveAPIExport(ctx, cfg, pc.APIExportName, pc.Path)
 	if err != nil {
 		return errors.Wrap(err, "resolve APIExport")
 	}
 
-	rules, err := RBACFromAPIExport(export)
+	rules, err := rbacFromAPIExport(export)
 	if err != nil {
 		return errors.Wrap(err, "build RBAC from APIExport")
 	}
@@ -388,12 +406,12 @@ func HandleProviderConnectionScoped(
 	if export.Name != "" {
 		providerKey = export.Name + "-" + pc.Secret
 	}
-	saName, err := EnsureServiceAccountAndRBAC(ctx, kcpClient, providerKey, DefaultScopedSANamespace, rules)
+	saName, err := ensureServiceAccountAndRBAC(ctx, kcpClient, providerKey, defaultScopedSANamespace, rules)
 	if err != nil {
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}
 
-	token, err := CreateTokenForSA(ctx, cfg, pc.Path, DefaultScopedSANamespace, saName, DefaultTokenExpirationSeconds)
+	token, err := createTokenForSA(ctx, cfg, pc.Path, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
 	if err != nil {
 		return errors.Wrap(err, "create token for ServiceAccount")
 	}
@@ -405,7 +423,7 @@ func HandleProviderConnectionScoped(
 	}
 
 	if secretNamespace == "" {
-		secretNamespace = DefaultScopedSecretNamespace
+		secretNamespace = defaultScopedSecretNamespace
 	}
 	if err := writeSecret(ctx, pc.Secret, secretNamespace, kubeconfigBytes); err != nil {
 		return errors.Wrap(err, "write provider secret")
