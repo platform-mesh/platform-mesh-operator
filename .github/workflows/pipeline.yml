@@ -133,7 +133,7 @@ jobs:
     secrets: inherit
     with:
       imageReference: ${{ inputs.imageTagName }}:pr-${{ github.event.pull_request.number }}
-      appVersion: pr-${{ github.event.pull_request.number }}
+      appVersion: 0.0.0-pr.${{ github.event.pull_request.number }}
       repoName: ${{ github.event.repository.name }}
       commit: ${{ github.sha }}
 
