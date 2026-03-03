@@ -130,14 +130,14 @@ jobs:
 
   sbom:
     needs: [createVersion, dockerBuildAndPush]
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    # if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     uses: platform-mesh/.github/.github/workflows/job-sbom.yml@feat/sbom
     with:
       imageReference: ${{ inputs.imageTagName }}:${{ needs.createVersion.outputs.version }}
 
   imageOcm:
     needs: [createVersion, dockerBuildAndPush, sbom]
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    # if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@feat/sbom
     secrets: inherit
     with:
