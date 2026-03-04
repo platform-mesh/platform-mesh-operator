@@ -24,7 +24,7 @@ func TestNewOperatorConfig(t *testing.T) {
 
 	assert.True(t, cfg.Subroutines.KcpSetup.Enabled)
 	assert.Equal(t, "domain-certificate", cfg.Subroutines.KcpSetup.DomainCertificateCASecretName)
-	assert.Equal(t, "tls.crt", cfg.Subroutines.KcpSetup.DomainCertificateCASecretKey)
+	assert.Equal(t, "ca.crt", cfg.Subroutines.KcpSetup.DomainCertificateCASecretKey)
 
 	assert.True(t, cfg.Subroutines.ProviderSecret.Enabled)
 	assert.False(t, cfg.Subroutines.FeatureToggles.Enabled)
