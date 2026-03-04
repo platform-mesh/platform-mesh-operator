@@ -3,57 +3,57 @@ package config
 import "github.com/spf13/pflag"
 
 type KCPConfig struct {
-	Url                    string `mapstructure:"kcp-url"`
-	Namespace              string `mapstructure:"kcp-namespace" default:"platform-mesh-system"`
-	RootShardName          string `mapstructure:"kcp-root-shard-name" default:"root"`
-	FrontProxyName         string `mapstructure:"kcp-front-proxy-name" default:"frontproxy"`
-	FrontProxyPort         string `mapstructure:"kcp-front-proxy-port" default:"6443"`
-	ClusterAdminSecretName string `mapstructure:"kcp-cluster-admin-secret-name" default:"kcp-cluster-admin-client-cert"`
+	Url                    string
+	Namespace              string
+	RootShardName          string
+	FrontProxyName         string
+	FrontProxyPort         string
+	ClusterAdminSecretName string
 }
 
 type IDPConfig struct {
-	RegistrationAllowed bool `mapstructure:"idp-registration-allowed" default:"false"`
+	RegistrationAllowed bool
 }
 
 type DeploymentSubroutineConfig struct {
-	Enabled                          bool   `mapstructure:"subroutines-deployment-enabled" default:"true"`
-	AuthorizationWebhookSecretName   string `mapstructure:"authorization-webhook-secret-name" default:"kcp-webhook-secret"`
-	AuthorizationWebhookSecretCAName string `mapstructure:"authorization-webhook-secret-ca-name" default:"rebac-authz-webhook-cert"`
-	EnableIstio                      bool   `mapstructure:"subroutines-deployment-enable-istio" default:"true"`
+	Enabled                          bool
+	AuthorizationWebhookSecretName   string
+	AuthorizationWebhookSecretCAName string
+	EnableIstio                      bool
 }
 
 type KcpSetupSubroutineConfig struct {
-	Enabled                       bool   `mapstructure:"subroutines-kcp-setup-enabled" default:"true"`
-	DomainCertificateCASecretName string `mapstructure:"domain-certificate-ca-secret-name" default:"domain-certificate"`
-	DomainCertificateCASecretKey  string `mapstructure:"domain-certificate-ca-secret-key" default:"ca.crt"`
+	Enabled                       bool
+	DomainCertificateCASecretName string
+	DomainCertificateCASecretKey  string
 }
 
 type ProviderSecretSubroutineConfig struct {
-	Enabled bool `mapstructure:"subroutines-provider-secret-enabled" default:"true"`
+	Enabled bool
 }
 
 type FeatureTogglesSubroutineConfig struct {
-	Enabled bool `mapstructure:"subroutines-feature-toggles-enabled" default:"false"`
+	Enabled bool
 }
 
 type WaitSubroutineConfig struct {
-	Enabled bool `mapstructure:"subroutines-wait-enabled" default:"true"`
+	Enabled bool
 }
 
 type SubroutinesConfig struct {
-	Deployment     DeploymentSubroutineConfig     `mapstructure:",squash"`
-	KcpSetup       KcpSetupSubroutineConfig       `mapstructure:",squash"`
-	ProviderSecret ProviderSecretSubroutineConfig `mapstructure:",squash"`
-	FeatureToggles FeatureTogglesSubroutineConfig `mapstructure:",squash"`
-	Wait           WaitSubroutineConfig           `mapstructure:",squash"`
+	Deployment     DeploymentSubroutineConfig
+	KcpSetup       KcpSetupSubroutineConfig
+	ProviderSecret ProviderSecretSubroutineConfig
+	FeatureToggles FeatureTogglesSubroutineConfig
+	Wait           WaitSubroutineConfig
 }
 
 // OperatorConfig struct to hold the app config
 type OperatorConfig struct {
-	WorkspaceDir string            `mapstructure:"workspace-dir" default:"/operator/"`
-	KCP          KCPConfig         `mapstructure:",squash"`
-	IDP          IDPConfig         `mapstructure:",squash"`
-	Subroutines  SubroutinesConfig `mapstructure:",squash"`
+	WorkspaceDir string
+	KCP          KCPConfig
+	IDP          IDPConfig
+	Subroutines  SubroutinesConfig
 }
 
 func NewOperatorConfig() OperatorConfig {
