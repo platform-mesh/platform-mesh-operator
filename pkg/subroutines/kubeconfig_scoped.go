@@ -153,14 +153,7 @@ func getPolicyRulesFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.Pol
 			Resources: []string{resource},
 			Verbs:     verbs,
 		})
-		hasUpdatePatch := false
-		for _, v := range verbs {
-			if v == "*" || v == "update" || v == "patch" {
-				hasUpdatePatch = true
-				break
-			}
-		}
-		if hasUpdatePatch {
+		if hasUpdatePatchVerbs(verbs) {
 			rules = append(rules, rbacv1.PolicyRule{
 				APIGroups: []string{group},
 				Resources: []string{resource + "/status"},
@@ -201,6 +194,16 @@ func getPolicyRulesFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.Pol
 	})
 
 	return rules, nil
+}
+
+// hasUpdatePatchVerbs returns true if verbs include update or patch (or "*").
+func hasUpdatePatchVerbs(verbs []string) bool {
+	for _, v := range verbs {
+		if v == "*" || v == "update" || v == "patch" {
+			return true
+		}
+	}
+	return false
 }
 
 // ensureScopedProviderServiceAccountAndRBAC creates or updates a ServiceAccount, ClusterRole, ClusterRoleBinding, and a binding to system:kcp:workspace:access in the KCP workspace for the scoped provider flow.
