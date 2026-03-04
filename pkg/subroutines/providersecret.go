@@ -289,7 +289,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		providerSecret.Data = map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
