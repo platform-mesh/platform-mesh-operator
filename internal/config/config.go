@@ -25,7 +25,7 @@ type DeploymentSubroutineConfig struct {
 type KcpSetupSubroutineConfig struct {
 	Enabled                       bool   `mapstructure:"subroutines-kcp-setup-enabled" default:"true"`
 	DomainCertificateCASecretName string `mapstructure:"domain-certificate-ca-secret-name" default:"domain-certificate"`
-	DomainCertificateCASecretKey  string `mapstructure:"domain-certificate-ca-secret-key" default:"tls.crt"`
+	DomainCertificateCASecretKey  string `mapstructure:"domain-certificate-ca-secret-key" default:"ca.crt"`
 }
 
 type ProviderSecretSubroutineConfig struct {
