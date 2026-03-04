@@ -1618,7 +1618,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
-		BaseDomain: "example.com",
+		BaseDomain: "kcp.api.example.com", // KCP API host (no hardcoded prefix)
 		Port:       8443,
 		Protocol:   "https",
 	}
