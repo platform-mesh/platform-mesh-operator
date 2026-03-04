@@ -76,7 +76,7 @@ func NewOperatorConfig() OperatorConfig {
 			KcpSetup: KcpSetupSubroutineConfig{
 				Enabled:                       true,
 				DomainCertificateCASecretName: "domain-certificate",
-				DomainCertificateCASecretKey:  "tls.crt",
+				DomainCertificateCASecretKey:  "ca.crt",
 			},
 			ProviderSecret: ProviderSecretSubroutineConfig{
 				Enabled: true,
