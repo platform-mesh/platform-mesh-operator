@@ -241,6 +241,17 @@ The ProviderSecret subroutine manages the creation and maintenance of secrets fo
 - Updates the secrets when configurations change
 - Manages access credentials for connecting to provider clusters
 
+#### Scoped kubeconfig
+
+For provider connections with `apiExportName` and `path`, the operator can create a **scoped kubeconfig** secret: a token limited to the APIExport’s resources and permission claims so consumers use least-privilege credentials.
+
+- Resolves the APIExport in the workspace path (v1alpha1 and v1alpha2).
+- Creates a ServiceAccount and ClusterRole in that KCP workspace; rules come from the APIExport (exported resources, permission claims, plus `apiexports/content`, `apiexportendpointslices`, `apibindings`, discovery).
+- Binds the ServiceAccount to that ClusterRole and to KCP’s **`system:kcp:workspace:access`** so the workspace content authorizer allows the token before resource RBAC applies.
+- Creates a token and writes kubeconfig (server URL, token, CA) into the configured secret.
+
+Without the binding to `system:kcp:workspace:access`, KCP denies the token at workspace level and you may see errors like `failed to get server groups: unknown`. See [KCP – Authorizers](https://docs.kcp.io/kcp/main/concepts/authorization/authorizers/) for details.
+
 ### Defaults
 
 The Defaults subroutine applies default configurations when specific fields are not explicitly set:

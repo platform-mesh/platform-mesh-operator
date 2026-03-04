@@ -165,12 +165,16 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 // normalizeRestConfigHost ensures cfg.Host has a scheme so that url.Parse(cfg.Host) yields a valid host (e.g. "example.com" -> "https://example.com").
-func normalizeRestConfigHost(cfg *rest.Config) {
+// scheme is the protocol from the PlatformMesh exposure (see baseDomainPortProtocol), or "https" when not set.
+func normalizeRestConfigHost(cfg *rest.Config, scheme string) {
 	if cfg == nil || cfg.Host == "" {
 		return
 	}
 	if !strings.HasPrefix(cfg.Host, "http://") && !strings.HasPrefix(cfg.Host, "https://") {
-		cfg.Host = "https://" + cfg.Host
+		if scheme == "" {
+			scheme = "https"
+		}
+		cfg.Host = scheme + "://" + cfg.Host
 	}
 }
 
@@ -179,20 +183,22 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	normalizeRestConfigHost(cfg)
+	_, _, _, scheme := baseDomainPortProtocol(instance)
+	normalizeRestConfigHost(cfg, scheme)
 
-	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	hostPort := fmt.Sprintf("%s://%s-front-proxy.%s:%s", scheme, operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "" {
-		baseDomain := instance.Spec.Exposure.BaseDomain
-		port := instance.Spec.Exposure.Port
+		exp := instance.Spec.Exposure
+		baseDomain := exp.BaseDomain
+		port := exp.Port
 		if port == 0 {
 			port = 443
 		}
-		// Platform convention: KCP API is exposed at kcp.api.<baseDomain> (see Istio host, portal-server-lib; docs/ANALYSIS_PORTAL_URL_AND_KCP_API_PREFIX.md).
+		// BaseDomain is the KCP API host (no hardcoded prefix; may be e.g. "kcp.api.example.com" or "kcp.example.com").
 		if strings.Contains(baseDomain, ":") {
-			hostPort = "https://kcp.api." + baseDomain
+			hostPort = scheme + "://" + baseDomain
 		} else {
-			hostPort = fmt.Sprintf("https://kcp.api.%s:%d", baseDomain, port)
+			hostPort = fmt.Sprintf("%s://%s:%d", scheme, baseDomain, port)
 		}
 	}
 	hasBaseURL := operatorCfg.KCP.FrontProxyName != "" || (pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "")
@@ -219,6 +225,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 
 		// Scoped kubeconfig only when UseAdminKubeconfig is explicitly false; default (nil/true) stays admin.
 		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
+			log.Info().Str("secret", pc.Secret).Msg("Creating scoped kubeconfig for provider connection (endpoint slice)")
 			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
 		}
 
@@ -235,6 +242,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 				log.Error().Err(err).Str("secret", pc.Secret).Msg("Invalid provider connection configuration")
 				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 			}
+			log.Info().Str("secret", pc.Secret).Str("apiExportName", pc.APIExportName).Msg("Creating scoped kubeconfig for provider connection")
 			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
 		}
 
@@ -340,7 +348,19 @@ func (r *ProvidersecretSubroutine) writeScopedKubeconfig(
 		log.Error().Msg("Scoped kubeconfig requested but no base URL available (FrontProxy not set and external exposure not set)")
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("scoped kubeconfig requested but no base URL"), true, true)
 	}
-	if err := writeScopedKubeconfigForProviderConnection(ctx, r.client, cfg, pc, hostPort); err != nil {
+	apiExportName := pc.APIExportName
+	if apiExportName == "" && pc.EndpointSliceName != nil {
+		apiExportName = *pc.EndpointSliceName
+	}
+	namespace := defaultScopedSecretNamespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	if err := WriteScopedKubeconfigToSecret(ctx, r.client, cfg, ProviderConnectionSpec{
+		Path:          pc.Path,
+		Secret:        pc.Secret,
+		APIExportName: apiExportName,
+	}, hostPort, namespace); err != nil {
 		log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
