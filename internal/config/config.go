@@ -3,7 +3,7 @@ package config
 // OperatorConfig struct to hold the app config
 type OperatorConfig struct {
 	WorkspaceDir string `mapstructure:"workspace-dir" default:"/operator/"`
-	KCP struct {
+	KCP          struct {
 		Url                    string `mapstructure:"kcp-url"`
 		Namespace              string `mapstructure:"kcp-namespace" default:"platform-mesh-system"`
 		RootShardName          string `mapstructure:"kcp-root-shard-name" default:"root"`
@@ -24,7 +24,7 @@ type OperatorConfig struct {
 		KcpSetup struct {
 			Enabled                       bool   `mapstructure:"subroutines-kcp-setup-enabled" default:"true"`
 			DomainCertificateCASecretName string `mapstructure:"domain-certificate-ca-secret-name" default:"domain-certificate"`
-			DomainCertificateCASecretKey  string `mapstructure:"domain-certificate-ca-secret-key" default:"tls.crt"`
+			DomainCertificateCASecretKey  string `mapstructure:"domain-certificate-ca-secret-key" default:"ca.crt"`
 		} `mapstructure:",squash"`
 		ProviderSecret struct {
 			Enabled bool `mapstructure:"subroutines-provider-secret-enabled" default:"true"`
