@@ -108,7 +108,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		},
 		BaseContext:                   func() context.Context { return ctx },
 		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
-		LeaderElection:                defaultCfg.LeaderElection.Enabled,
+		LeaderElection:                defaultCfg.LeaderElectionEnabled,
 		LeaderElectionID:              "81924e50.platform-mesh.org",
 		LeaderElectionReleaseOnCancel: true,
 	})
