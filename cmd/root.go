@@ -5,7 +5,6 @@ import (
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -20,7 +19,6 @@ var (
 	setupLog    logr.Logger
 	operatorCfg config.OperatorConfig
 	defaultCfg  *pmconfig.CommonServiceConfig
-	v           *viper.Viper
 	log         *logger.Logger
 )
 
@@ -37,16 +35,10 @@ func init() {
 
 	rootCmd.AddCommand(operatorCmd)
 
-	var err error
-	v, defaultCfg, err = pmconfig.NewDefaultConfig(rootCmd)
-	if err != nil {
-		panic(err)
-	}
-
-	err = pmconfig.BindConfigToFlags(v, operatorCmd, &operatorCfg)
-	if err != nil {
-		panic(err)
-	}
+	defaultCfg = pmconfig.NewDefaultConfig()
+	operatorCfg = config.NewOperatorConfig()
+	defaultCfg.AddFlags(rootCmd.PersistentFlags())
+	operatorCfg.AddFlags(operatorCmd.Flags())
 
 	cobra.OnInitialize(initLog)
 }
