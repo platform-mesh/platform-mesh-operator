@@ -72,7 +72,7 @@ tasks:
     cmds:
       - |
         export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-        go test -timeout {{.TEST_TIMEOUT}} -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+        go test -v -timeout {{.TEST_TIMEOUT}} -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
 
   test:

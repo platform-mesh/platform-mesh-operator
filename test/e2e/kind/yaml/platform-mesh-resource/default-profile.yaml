@@ -47,12 +47,19 @@ data:
         etcd-druid:
           syncWave: 1
           enabled: true
-          gitRepo: true
+          gitRepo: false
+          ocm:
+            repo:
+              name: gardener-releases
+          ocmResourceName: etcd-druid
+          ocmResourceType: helmChart
           imageResources:
           - annotations:
               artifact: image
               for: etcd-druid
               repo: oci
+            ocmRepoName: gardener-releases
+            resourceName: etcd-druid
           path: charts
           targetNamespace: etcd-druid-system
           values: {}
@@ -288,6 +295,7 @@ data:
               for: openfga
           - name: openfga-postgresql-image
             resource: postgresql-image
+            resourceName: postgresql-image
             annotations:
               repo: oci
               artifact: image
@@ -429,6 +437,8 @@ data:
             operator:
               maxConcurrentReconciles: 1
               shutdownTimeout: 1m
+            terminator:
+              kubeconfigSecret: security-terminator-kubeconfig
         virtual-workspaces:
           # -- Allow the configuration of additional ocm resources
           imageResources:
