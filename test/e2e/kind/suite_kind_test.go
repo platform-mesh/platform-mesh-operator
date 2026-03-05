@@ -529,7 +529,7 @@ func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
 
 func (s *KindTestSuite) runOperator(ctx context.Context) {
 
-	appConfig := config.OperatorConfig{}
+	appConfig := config.NewOperatorConfig()
 
 	err := defaults.Set(&appConfig)
 	if err != nil {
