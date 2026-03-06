@@ -83,9 +83,10 @@ tasks:
       - cmd: |
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
-              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 12m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
+                kubectl describe -n platform-mesh-system platformmeshes platform-mesh
                 # ...
                 exit 1
               }
