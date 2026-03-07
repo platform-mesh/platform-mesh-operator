@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strings"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
@@ -142,11 +143,15 @@ func (r *ProvidersecretSubroutine) Process(
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
+	var errs []error
 	for _, pc := range providers {
 		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg); opErr != nil {
-			log.Error().Err(opErr.Err()).Msg("Failed to handle provider connection")
-			return ctrl.Result{}, opErr
+			log.Error().Err(opErr.Err()).Str("secret", pc.Secret).Msg("Failed to handle provider connection")
+			errs = append(errs, fmt.Errorf("%s: %w", pc.Secret, opErr.Err()))
 		}
+	}
+	if len(errs) > 0 {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("provider connection(s) failed: %w", utilerrors.NewAggregate(errs)), true, false)
 	}
 	return ctrl.Result{}, nil
 }
@@ -159,11 +164,44 @@ func (r *ProvidersecretSubroutine) GetName() string {
 	return ProvidersecretSubroutineName
 }
 
+// normalizeRestConfigHost ensures cfg.Host has a scheme so that url.Parse(cfg.Host) yields a valid host (e.g. "example.com" -> "https://example.com").
+// scheme is the protocol from the PlatformMesh exposure (see baseDomainPortProtocol), or "https" when not set.
+func normalizeRestConfigHost(cfg *rest.Config, scheme string) {
+	if cfg == nil || cfg.Host == "" {
+		return
+	}
+	if !strings.HasPrefix(cfg.Host, "http://") && !strings.HasPrefix(cfg.Host, "https://") {
+		if scheme == "" {
+			scheme = "https"
+		}
+		cfg.Host = scheme + "://" + cfg.Host
+	}
+}
+
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	_, _, _, scheme := baseDomainPortProtocol(instance)
+	normalizeRestConfigHost(cfg, scheme)
+
+	hostPort := fmt.Sprintf("%s://%s-front-proxy.%s:%s", scheme, operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	if pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "" {
+		exp := instance.Spec.Exposure
+		baseDomain := exp.BaseDomain
+		port := exp.Port
+		if port == 0 {
+			port = 443
+		}
+		// BaseDomain is the KCP API host (no hardcoded prefix; may be e.g. "kcp.api.example.com" or "kcp.example.com").
+		if strings.Contains(baseDomain, ":") {
+			hostPort = scheme + "://" + baseDomain
+		} else {
+			hostPort = fmt.Sprintf("%s://%s:%d", scheme, baseDomain, port)
+		}
+	}
+	hasBaseURL := operatorCfg.KCP.FrontProxyName != "" || (pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "")
 
 	var address *url.URL
 
@@ -185,6 +223,12 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
 		}
 
+		// Scoped kubeconfig only when UseAdminKubeconfig is explicitly false; default (nil/true) stays admin.
+		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
+			log.Info().Str("secret", pc.Secret).Msg("Creating scoped kubeconfig for provider connection (endpoint slice)")
+			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
+		}
+
 		endpointURL := slice.Status.APIExportEndpoints[0].URL
 		address, err = url.Parse(endpointURL)
 		if err != nil {
@@ -192,6 +236,16 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 	} else {
+		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
+			if pc.APIExportName == "" {
+				err := fmt.Errorf("scoped kubeconfig (useAdminKubeconfig: false) requires apiExportName or endpointSliceName")
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Invalid provider connection configuration")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
+			log.Info().Str("secret", pc.Secret).Str("apiExportName", pc.APIExportName).Msg("Creating scoped kubeconfig for provider connection")
+			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
+		}
+
 		kcpUrl, err := url.Parse(cfg.Host)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to parse KCP URL")
@@ -206,10 +260,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	newConfig := rest.CopyConfig(cfg)
-	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
-	if pc.External {
-		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
-	}
 	host, err := url.JoinPath(hostPort, address.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
@@ -239,7 +289,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		providerSecret.Data = map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
@@ -247,73 +297,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 
 	log.Debug().Str("secret", pc.Secret).Msg("Created or updated provider secret")
-
-	return ctrl.Result{}, nil
-}
-
-func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
-) (ctrl.Result, errors.OperatorError) {
-	log := logger.LoadLoggerFromContext(ctx)
-
-	kcpClient, err := r.kcpHelper.NewKcpClient(restCfg, ic.Path)
-	if err != nil {
-		log.Error().Err(err).Msg("creating kcp client for initializer")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-
-	wt := &kcptenancyv1alpha.WorkspaceType{}
-	if err := kcpClient.Get(ctx, types.NamespacedName{Name: ic.WorkspaceTypeName}, wt); err != nil {
-		log.Error().Err(err).Msg("getting WorkspaceType")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
-	}
-	if len(wt.Status.VirtualWorkspaces) == 0 {
-		err = fmt.Errorf("no virtual workspaces found in %s", ic.WorkspaceTypeName)
-		log.Error().Err(err).Msg("bad WorkspaceType")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
-	}
-
-	newConfig := rest.CopyConfig(restCfg)
-	apiConfig := restConfigToAPIConfig(newConfig)
-	curr := apiConfig.CurrentContext
-	cluster := apiConfig.Contexts[curr].Cluster
-	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
-
-	var url *url.URL
-	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
-	if err != nil {
-		log.Error().Err(err).Msg("parsing virtual workspace URL")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
-	apiConfig.Clusters[cluster].Server = url.String()
-	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
-
-	data, err := clientcmd.Write(*apiConfig)
-	if err != nil {
-		log.Error().Err(err).Msg("writing modified kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-
-	namespace := "platform-mesh-system"
-	if ic.Namespace != "" {
-		namespace = ic.Namespace
-	}
-	initializerSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ic.Secret,
-			Namespace: namespace,
-		},
-	}
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
-		initializerSecret.Data = map[string][]byte{"kubeconfig": data}
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("creating/updating initializer Secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
 
 	return ctrl.Result{}, nil
 }
@@ -350,4 +333,37 @@ func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
 	}
 
 	return clientConfig
+}
+
+// writeScopedKubeconfig creates a scoped kubeconfig for the provider connection and writes the secret.
+func (r *ProvidersecretSubroutine) writeScopedKubeconfig(
+	ctx context.Context,
+	pc corev1alpha1.ProviderConnection,
+	cfg *rest.Config,
+	hostPort string,
+	hasBaseURL bool,
+) (ctrl.Result, errors.OperatorError) {
+	log := logger.LoadLoggerFromContext(ctx)
+	if !hasBaseURL {
+		log.Error().Msg("Scoped kubeconfig requested but no base URL available (FrontProxy not set and external exposure not set)")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("scoped kubeconfig requested but no base URL"), true, true)
+	}
+	apiExportName := pc.APIExportName
+	if apiExportName == "" && pc.EndpointSliceName != nil {
+		apiExportName = *pc.EndpointSliceName
+	}
+	namespace := defaultScopedSecretNamespace
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	if err := WriteScopedKubeconfigToSecret(ctx, r.client, cfg, ProviderConnectionSpec{
+		Path:          pc.Path,
+		Secret:        pc.Secret,
+		APIExportName: apiExportName,
+	}, hostPort, namespace); err != nil {
+		log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (scoped kubeconfig)")
+	return ctrl.Result{}, nil
 }
