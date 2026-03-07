@@ -14,18 +14,23 @@ import (
 	"text/template"
 	"time"
 
+	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
+	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	v1 "k8s.io/api/apps/v1"
+	"github.com/rs/zerolog/log"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -58,7 +63,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	}
 	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
 	scheme := runtime.NewScheme()
-	utilruntime.Must(v1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
@@ -147,10 +152,6 @@ func GetWorkspaceDirs(dir string) []string {
 			if IsWorkspace(d.Name()) {
 				workspaces = append(workspaces, d.Name())
 			}
-			if err != nil {
-				return workspaces
-			}
-			workspaces = append(workspaces, d.Name())
 		}
 	}
 	return workspaces
@@ -191,41 +192,7 @@ func ListFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-func MergeJSON(a, b apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	// Unmarshal 'a'
-	var mapA map[string]interface{}
-	if len(a.Raw) > 0 {
-		if err := json.Unmarshal(a.Raw, &mapA); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapA = map[string]interface{}{}
-	}
-
-	// Unmarshal 'b'
-	var mapB map[string]interface{}
-	if len(b.Raw) > 0 {
-		if err := json.Unmarshal(b.Raw, &mapB); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapB = map[string]interface{}{}
-	}
-
-	// Merge mapB into mapA (b overwrites a on conflict)
-	for k, v := range mapB {
-		mapA[k] = v
-	}
-
-	// Marshal back to apiextensionsv1.JSON
-	mergedRaw, err := json.Marshal(mapA)
-	if err != nil {
-		return apiextensionsv1.JSON{}, err
-	}
-	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-}
-
-func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
 	services := inst.Spec.Values
 	var mapValues map[string]interface{}
 	if len(templateVars.Raw) > 0 {
@@ -260,38 +227,10 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 	mergeOCMConfig(mapValues, inst)
 
-	// Marshal back to apiextensionsv1.JSON
-	mergedRaw, err := json.Marshal(mapValues)
-	if err != nil {
-		return apiextensionsv1.JSON{}, err
-	}
-	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-
-}
-
-func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	valuesInfra := inst.Spec.InfraValues
-	var mapValues map[string]interface{}
-	if len(templateVars.Raw) > 0 {
-		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapValues = map[string]interface{}{}
-	}
-	// Unmarshal 'valuesInfra'
-	var mapValuesInfra map[string]interface{}
-	if len(valuesInfra.Raw) > 0 {
-		if err := json.Unmarshal(valuesInfra.Raw, &mapValuesInfra); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapValuesInfra = map[string]interface{}{}
-	}
-
-	// add 'valuesInfra' to mapValues
-	for k, v := range mapValuesInfra {
-		mapValues[k] = v
+	mapValues["kubeConfigEnabled"] = config.RemoteRuntime.IsEnabled()
+	if config.RemoteRuntime.IsEnabled() {
+		mapValues["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
+		mapValues["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}
 
 	// Marshal back to apiextensionsv1.JSON
@@ -300,6 +239,7 @@ func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiexte
 		return apiextensionsv1.JSON{}, err
 	}
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
+
 }
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
@@ -341,15 +281,21 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	}
 
 	values := map[string]interface{}{
-		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"baseDomain":     baseDomain,
-		"protocol":       protocol,
-		"port":           fmt.Sprintf("%d", port),
-		"baseDomainPort": baseDomainPort,
+		"iamWebhookCA":         base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
+		"baseDomain":           baseDomain,
+		"protocol":             protocol,
+		"port":                 fmt.Sprintf("%d", port),
+		"baseDomainPort":       baseDomainPort,
+		"helmReleaseNamespace": inst.Namespace,
 	}
 
 	result := apiextensionsv1.JSON{}
 	result.Raw, _ = json.Marshal(values)
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to marshal template vars")
+	}
+	result.Raw = raw
 
 	return result, nil
 }
@@ -556,13 +502,30 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 	}
 
 	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
+		c, ok := condition.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if c["type"] == conditionType && c["status"] == conditionStatus {
 			return true
 		}
 	}
 
 	return false
+}
+
+// matchesStatusFieldValue checks if a resource has a specific value at a given nested field path.
+// This is useful for resources like ArgoCD Applications that use nested status fields
+// (e.g., status.sync.status) instead of the standard conditions array.
+func matchesStatusFieldValue(resource *unstructured.Unstructured, fieldPath []string, expectedValue string) bool {
+	if resource == nil || len(fieldPath) == 0 {
+		return false
+	}
+	value, found, err := unstructured.NestedString(resource.Object, fieldPath...)
+	if err != nil || !found {
+		return false
+	}
+	return value == expectedValue
 }
 
 func unstructuredFromFile(path string, templateData map[string]any, log *logger.Logger) (unstructured.Unstructured, error) {
@@ -581,10 +544,124 @@ func unstructuredFromFile(path string, templateData map[string]any, log *logger.
 		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
 	}
 
-	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
-
 	obj := unstructured.Unstructured{Object: objMap}
 
 	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
 	return obj, err
+}
+
+func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, error) {
+	if kubeconfig == "" {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			log.Error().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
+			return nil, nil, err
+		}
+		deployClient, err := client.New(config, client.Options{Scheme: GetClientScheme()})
+		if err != nil {
+			log.Error().Err(err).Msg("unable to create in-cluster deployment client")
+			return nil, nil, err
+		}
+		return deployClient, config, nil
+	}
+
+	config, err := clientcmd.LoadFromFile(kubeconfig)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to build Config")
+		return nil, nil, err
+	}
+	cfgBytes, err := clientcmd.Write(*config)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to serialize config to bytes")
+		return nil, nil, err
+	}
+	restCfg, err := clientcmd.RESTConfigFromKubeConfig(cfgBytes)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to build rest config from kubeconfig")
+		return nil, nil, err
+	}
+	deployClient, err := client.New(restCfg, client.Options{Scheme: GetClientScheme()})
+	if err != nil {
+		log.Error().Err(err).Msg("unable to create client")
+		return nil, nil, err
+	}
+	return deployClient, restCfg, nil
+
+}
+
+func GetClientScheme() *runtime.Scheme {
+
+	var gvk = schema.GroupVersionKind{
+		Group:   "delivery.ocm.software",
+		Version: "v1alpha1",
+		Kind:    "Resource",
+	}
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
+	utilruntime.Must(certmanager.AddToScheme(scheme))
+	utilruntime.Must(fluxcdv1.AddToScheme(scheme))
+	utilruntime.Must(fluxcdv2.AddToScheme(scheme))
+
+	scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
+
+	return scheme
+}
+
+func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, inst *v1alpha1.PlatformMesh) (string, error) {
+	var configMapName, configMapNamespace string
+	if inst.Spec.ProfileConfigMap != nil {
+		configMapName = inst.Spec.ProfileConfigMap.Name
+		configMapNamespace = inst.Spec.ProfileConfigMap.Namespace
+		if configMapNamespace == "" {
+			configMapNamespace = inst.Namespace
+		}
+	} else {
+		configMapName = inst.Name + "-profile"
+		configMapNamespace = inst.Namespace
+	}
+
+	configMap := &corev1.ConfigMap{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: configMapNamespace}, configMap); err != nil {
+		return "", fmt.Errorf("failed to get profile ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
+	}
+
+	profileYAML, ok := configMap.Data["profile.yaml"]
+	if !ok {
+		return "", fmt.Errorf("profile ConfigMap %s/%s does not contain key 'profile.yaml'", configMapNamespace, configMapName)
+	}
+
+	var profile map[string]interface{}
+	if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
+		return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
+	}
+
+	if infra, ok := profile["infra"].(map[string]interface{}); ok {
+		if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
+			return strings.ToLower(dt), nil
+		}
+	}
+
+	if components, ok := profile["components"].(map[string]interface{}); ok {
+		if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
+			return strings.ToLower(dt), nil
+		}
+	}
+
+	return "fluxcd", nil
+}
+
+func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
+	// If kcp-url is explicitly configured, use it
+	if cfg.KCP.Url != "" {
+		return cfg.KCP.Url
+	}
+	if inst.Spec.Exposure == nil {
+		return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
+	}
+	kcpUrl := inst.Spec.Exposure.Protocol + "://" + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	return kcpUrl
 }

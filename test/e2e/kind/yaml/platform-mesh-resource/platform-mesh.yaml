@@ -4,8 +4,13 @@ metadata:
   name: platform-mesh
   namespace: platform-mesh-system
 spec:
+  profileConfigMap:
+    name: platform-mesh-profile
+    namespace: platform-mesh-system
   exposure:
     port: 8443
+    baseDomain: portal.localhost
+    protocol: https
   ocm:
     repo:
       name: platform-mesh
@@ -13,7 +18,11 @@ spec:
       name: platform-mesh
     referencePath: []
   featureToggles:
-   - name: "feature-enable-getting-started"
+   - name: feature-enable-getting-started
+   - name: feature-disable-email-verification
+   - name: feature-accounts-in-accounts
+   - name: feature-enable-marketplace-account
+   - name: feature-enable-marketplace-org
   values:
     keycloak:
       enabled: true
@@ -29,15 +38,7 @@ spec:
             cpu: 750m
             ephemeral-storage: 50Mi
             memory: 1Gi
-    crossplane:
-      values:
-        provider:
-          packages:
-            - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
-      dependsOn:
-        - name: kcp-operator
-          namespace: default
       values:
         cors:
           enabled: true
@@ -89,13 +90,6 @@ spec:
     portal:
       enabled: true
       values:
-        gatewayApi:
-          enabled: true
-          httpRoute:
-            parentRefs:
-            - name: k8sapi-gateway
-              sectionName: websecure
-              kind: Gateway
         extraEnvVars:
           - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
             value: https://${org-subdomain}portal.localhost:8443/iam/graphql
@@ -123,23 +117,14 @@ spec:
           auth:
             postgresPassword: password
             database: postgres
-        telemetry:
-          trace:
-            enabled: true
-            otlp:
-              endpoint: observability-opentelemetry-collector.observability.svc.cluster.local:4317
-              tls:
-                enabled: false
-    virtual-workspaces:
+    marketplace-ui:
+      enabled: false
       values:
-        virtualWorkspaceSecretName: virtual-workspaces-cert
-        deployment:
-          serverUrl: "https://frontproxy-front-proxy.platform-mesh-system:6443"
-          resourceSchemaName: "v250704-6d57f16.contentconfigurations.ui.platform-mesh.io"
-          resourceSchemaWorkspace: "root:platform-mesh-system"
-    kubernetes-graphql-gateway:
-      enabled: true
-      values:
+        hostAliases:
+          - hostnames:
+            - localhost
+            - portal.localhost
+            ip: 10.96.188.4
         cors:
           enabled: true
         gatewayApi:
@@ -156,28 +141,40 @@ spec:
                   url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
             enabled: true
     iam-service:
-      enabled: false
       values:
+        extraArgs:
+          - --no-json
         cors:
           enabled: true
         hostAliases:
           enabled: true
-        caSecret: domain-certificate-ca
-        gatewayApi:
-          enabled: true
-        istio:
-          enabled: false
-    iam-ui:
-      enabled: false
+    kubernetes-graphql-gateway:
+      enabled: true
       values:
-        gatewayApi:
-          enabled: true
         istio:
           enabled: false
-    marketplace-ui:
-      enabled: false
-      values:
         gatewayApi:
           enabled: true
-        istio:
+        hostAliases:
+          enabled: true
+        tracing:
           enabled: false
+        trust:
+          default:
+            trustedIssuer: "https://{{ .baseDomainPort }}/keycloak/realms/default"
+            jwksUrl: http://keycloak-headless.platform-mesh-system:8080/keycloak/realms/default/protocol/openid-connect/certs
+            audience: default
+        kubeConfig:
+          enabled: true
+          secretName: kubernetes-graphql-gateway-kubeconfig
+        listener:
+          virtualWorkspacesConfig:
+            enabled: true
+            content:
+              virtualWorkspaces:
+                - name: contentconfigurations
+                  url: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations"
+                  kubeconfig: /app/kubeconfig/kubeconfig
+                - name: marketplace
+                  url: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace"
+                  kubeconfig: /app/kubeconfig/kubeconfig

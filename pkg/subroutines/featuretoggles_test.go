@@ -2,6 +2,7 @@ package subroutines_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -44,7 +45,7 @@ func (s *FeaturesTestSuite) SetupTest() {
 	s.log, _ = logger.New(cfg)
 	s.testObj = subroutines.NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
-	}, "https://kcp.example.com")
+	})
 }
 
 func (s *FeaturesTestSuite) TearDownTest() {
@@ -136,4 +137,138 @@ func (s *FeaturesTestSuite) TestProcess() {
 	s.Assert().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, result)
 
+}
+
+func (s *FeaturesTestSuite) TestFinalize() {
+	result, opErr := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
+	s.Assert().Nil(opErr)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+func (s *FeaturesTestSuite) TestProcess_NoFeatureToggles() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, config.OperatorConfig{})
+	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
+	s.Assert().Nil(opErr)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+func (s *FeaturesTestSuite) TestProcess_DisableEmailVerification() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, config.OperatorConfig{})
+	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{
+				{Name: "feature-disable-email-verification"},
+			},
+		},
+	})
+	s.Assert().Nil(opErr)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+func (s *FeaturesTestSuite) TestProcess_UnknownFeatureToggle() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, config.OperatorConfig{})
+	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{
+				{Name: "feature-unknown-toggle"},
+			},
+		},
+	})
+	s.Assert().Nil(opErr)
+	s.Assert().Equal(ctrl.Result{}, result)
+}
+
+// ctxWithFeatureConfig builds a context containing an OperatorConfig with the KCP admin secret name set.
+func (s *FeaturesTestSuite) ctxWithFeatureConfig() (context.Context, config.OperatorConfig) {
+	operatorCfg := config.OperatorConfig{}
+	operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin-kubeconfig"
+	operatorCfg.KCP.Namespace = "kcp-system"
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
+	return ctx, operatorCfg
+}
+
+// mockAdminSecretNotFound sets up the client mock so that getting the KCP admin secret returns NotFound.
+func (s *FeaturesTestSuite) mockAdminSecretNotFound(secretName, namespace string) {
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: secretName, Namespace: namespace}, mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, secretName)).
+		Once()
+}
+
+// mockAdminSecretError sets up the client mock so that getting the KCP admin secret returns a generic error.
+func (s *FeaturesTestSuite) mockAdminSecretError(secretName, namespace string) {
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: secretName, Namespace: namespace}, mock.AnythingOfType("*v1.Secret")).
+		Return(fmt.Errorf("connection refused")).
+		Once()
+}
+
+func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_GettingStarted() {
+	ctx, cfg := s.ctxWithFeatureConfig()
+	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
+	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
+		},
+	})
+	s.Require().NotNil(opErr)
+}
+
+func (s *FeaturesTestSuite) TestProcess_AdminSecretError_GettingStarted() {
+	ctx, cfg := s.ctxWithFeatureConfig()
+	s.mockAdminSecretError(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
+	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
+		},
+	})
+	s.Require().NotNil(opErr)
+}
+
+func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_MarketplaceAccount() {
+	ctx, cfg := s.ctxWithFeatureConfig()
+	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
+	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-marketplace-account"}},
+		},
+	})
+	s.Require().NotNil(opErr)
+}
+
+func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_MarketplaceOrg() {
+	ctx, cfg := s.ctxWithFeatureConfig()
+	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
+	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-marketplace-org"}},
+		},
+	})
+	s.Require().NotNil(opErr)
+}
+
+func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_AccountsInAccounts() {
+	ctx, cfg := s.ctxWithFeatureConfig()
+	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
+	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-accounts-in-accounts"}},
+		},
+	})
+	s.Require().NotNil(opErr)
+}
+
+func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_AccountIamUI() {
+	ctx, cfg := s.ctxWithFeatureConfig()
+	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
+	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-account-iam-ui"}},
+		},
+	})
+	s.Require().NotNil(opErr)
 }

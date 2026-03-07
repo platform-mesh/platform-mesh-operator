@@ -1,0 +1,29 @@
+{{- if .traefikCRDs.enabled }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: chart
+    repo: helm
+  name: {{ .traefikCRDs.name }}
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+  componentRef:
+    name: {{ .ocm.component.name }}
+  interval: {{ .ocm.interval }}
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Repository
+      name: {{ .ocm.repo.name }}
+      namespace: {{ .releaseNamespace }}
+  resource:
+    byReference:
+      referencePath:
+      {{ range .ocm.referencePath }}
+        - name: {{ .name }}
+      {{ end }}
+        - name: {{ .traefikCRDs.ocmComponentName }}
+      resource:
+        name: {{ .traefikCRDs.ocmResourceName }}
+  skipVerify: {{ .ocm.skipVerify }}
+{{- end }}
