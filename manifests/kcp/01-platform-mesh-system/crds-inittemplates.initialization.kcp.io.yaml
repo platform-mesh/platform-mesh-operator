@@ -3,27 +3,17 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: inittargets.initialization.kcp.io
+  name: inittemplates.initialization.kcp.io
 spec:
   group: initialization.kcp.io
   names:
-    kind: InitTarget
-    listKind: InitTargetList
-    plural: inittargets
-    singular: inittarget
+    kind: InitTemplate
+    listKind: InitTemplateList
+    plural: inittemplates
+    singular: inittemplate
   scope: Cluster
   versions:
-    - additionalPrinterColumns:
-        - jsonPath: .spec.workspaceTypeRef.path
-          name: WSType Cluster
-          type: string
-        - jsonPath: .spec.workspaceTypeRef.name
-          name: WSType
-          type: string
-        - jsonPath: .metadata.creationTimestamp
-          name: Age
-          type: date
-      name: v1alpha1
+    - name: v1alpha1
       schema:
         openAPIV3Schema:
           properties:
@@ -46,35 +36,13 @@ spec:
               type: object
             spec:
               properties:
-                sources:
-                  items:
-                    properties:
-                      template:
-                        properties:
-                          name:
-                            type: string
-                        required:
-                          - name
-                        type: object
-                    type: object
-                  type: array
-                workspaceTypeRef:
-                  properties:
-                    name:
-                      type: string
-                    path:
-                      type: string
-                  required:
-                    - name
-                    - path
-                  type: object
+                template:
+                  type: string
               required:
-                - sources
-                - workspaceTypeRef
+                - template
               type: object
           required:
             - spec
           type: object
       served: true
       storage: true
-      subresources: {}
