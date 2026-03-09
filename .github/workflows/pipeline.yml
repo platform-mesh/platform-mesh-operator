@@ -167,7 +167,7 @@ jobs:
       commit: ${{ github.sha }}
 
   updateVersion:
-    needs: [createVersion, dockerBuildAndPush, imageOcm]
+    needs: [createVersion, dockerBuildAndPush]
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@main
     secrets: inherit
