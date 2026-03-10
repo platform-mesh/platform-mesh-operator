@@ -18,56 +18,81 @@ var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
+	// account-operator: scoped supported (APIExport).
 	{
-		Path:               "root:platform-mesh-system",
-		Secret:             "account-operator-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
+		Path:           "root:platform-mesh-system",
+		Secret:         "account-operator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+		APIExportName:  "core.platform-mesh.io",
+	},
+	// rebac: scoped; needs root:orgs access (RootOrgAccess) + get LogicalCluster + Stores. ensureRootOrgAccess is best-effort so secret is created first.
+	{
+		Path:           "root:platform-mesh-system",
+		Secret:         "rebac-authz-webhook-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+		APIExportName:  "core.platform-mesh.io",
+		ServiceAccountPermissions: &corev1alpha1.ServiceAccountPermissions{
+			RootOrgAccess:           ptr.To(true),
+			EnableGetLogicalCluster: ptr.To(true),
+			EnableStoresAccess:      ptr.To(true),
+		},
+	},
+	// security-operator: scoped supported (APIExport).
+	{
+		Path:           "root:platform-mesh-system",
+		Secret:         "security-operator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+		APIExportName:  "core.platform-mesh.io",
+	},
+	// kubernetes-graphql-gateway: needs apis.kcp.io (APIBinding) in the workspace; use admin cert (admin SA had logicalclusters forbidden at cluster scope in KCP).
+	{
+		Path:           "root:platform-mesh-system",
+		Secret:         "kubernetes-grapqhl-gateway-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminCertificate,
+	},
+	// extension-manager: scoped supported (APIExport).
+	{
+		Path:           "root:platform-mesh-system",
+		Secret:         "extension-manager-operator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+		APIExportName:  "core.platform-mesh.io",
+	},
+	// iam-service: scoped supported (APIExport); needs get logicalcluster (e.g. for workspace resolution).
+	{
+		Path:           "root:platform-mesh-system",
+		Secret:         "iam-service-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+		APIExportName:  "core.platform-mesh.io",
+		ServiceAccountPermissions: &corev1alpha1.ServiceAccountPermissions{
+			EnableGetLogicalCluster: ptr.To(true),
+		},
+	},
+	// portal: virtual workspace path, admin cert in defaults.
+	{
+		RawPath:        ptr.To("/services/contentconfigurations"),
+		Secret:         "portal-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminCertificate,
+	},
+	// security-initializer/terminator: root path, admin cert (no scoped export for root).
+	{
+		Path:           "root",
+		Secret:         "security-initializer-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminCertificate,
 	},
 	{
-		Path:               "root:platform-mesh-system",
-		Secret:             "rebac-authz-webhook-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-		APIExportName:      "core.platform-mesh.io",
+		Path:           "root",
+		Secret:         "security-terminator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminCertificate,
 	},
+	// init-agent: scoped supported (APIExport); needs initialization.kcp.io inittargets (list/watch).
 	{
-		Path:               "root:platform-mesh-system",
-		Secret:             "security-operator-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-	},
-	{
-		EndpointSliceName:  ptr.To("core.platform-mesh.io"),
-		Path:               "root:platform-mesh-system",
-		Secret:             "kubernetes-grapqhl-gateway-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-	},
-	{
-		Path:               "root:platform-mesh-system",
-		Secret:             "extension-manager-operator-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-		APIExportName:      "core.platform-mesh.io",
-	},
-	{
-		Path:               "root:platform-mesh-system",
-		Secret:             "iam-service-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-	},
-	{
-		RawPath:            ptr.To("/services/contentconfigurations"),
-		Secret:             "portal-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-	},
-	{
-		Path:               "root",
-		Secret:             "security-initializer-kubeconfig",
-		UseAdminKubeconfig: ptr.To(true),
-	},
-	{
-		Path:   "root",
-		Secret: "security-terminator-kubeconfig",
-	},
-	{
-		Path:   "root:platform-mesh-system",
-		Secret: "init-agent-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "init-agent-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+		APIExportName:  "core.platform-mesh.io",
+		ServiceAccountPermissions: &corev1alpha1.ServiceAccountPermissions{
+			EnableInitTargetsAccess: ptr.To(true),
+		},
 	},
 }
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{

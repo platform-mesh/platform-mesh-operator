@@ -45,6 +45,27 @@ func TestBuildScopedKubeconfig_roundtrip(t *testing.T) {
 	assert.Equal(t, token, loaded.AuthInfos["default-auth"].Token)
 }
 
+// TestBuildScopedKubeconfig_adminSAURLs verifies that the server URL in the kubeconfig is exactly
+// the one passed in. This covers: (1) admin SA without endpointSliceName uses BuildHostURLForScoped(hostPort, path);
+// (2) admin SA with endpointSliceName uses slice URL. Both paths end up calling BuildScopedKubeconfig(hostURL, ...).
+func TestBuildScopedKubeconfig_adminSAURLs(t *testing.T) {
+	tests := []struct {
+		name      string
+		serverURL string
+	}{
+		{"admin SA without slice (hostPort+path)", "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:platform-mesh-system"},
+		{"admin SA with slice (APIExport endpoint URL)", "https://frontproxy-front-proxy.platform-mesh-system:6443/apis/core.platform-mesh.io/export"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := subroutines.BuildScopedKubeconfig(tt.serverURL, "token", nil)
+			require.NotNil(t, cfg)
+			require.Contains(t, cfg.Clusters, "default-cluster")
+			assert.Equal(t, tt.serverURL, cfg.Clusters["default-cluster"].Server, "kubeconfig server must be the passed URL (admin SA with/without slice)")
+		})
+	}
+}
+
 func TestBuildHostURLForScoped(t *testing.T) {
 	tests := []struct {
 		name     string

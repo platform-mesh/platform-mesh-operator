@@ -314,7 +314,7 @@ func Test_ensureScopedProviderServiceAccountAndRBAC_validatesRBACResourcesCreate
 			len(crb.Subjects) == 1 && crb.Subjects[0].Name == "platform-mesh-provider-scoped"
 	}), mock.Anything).Return(nil).Once()
 
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules, "scoped")
 	require.NoError(t, err)
 	assert.Equal(t, "platform-mesh-provider-scoped", saName)
 
@@ -355,7 +355,7 @@ func Test_ensureScopedProviderServiceAccountAndRBAC_whenServiceAccountAlreadyExi
 		return ok && crb.Name == "platform-mesh-workspace-access-scoped"
 	}), mock.Anything).Return(nil).Once()
 
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules, "scoped")
 	require.NoError(t, err)
 	assert.Equal(t, "platform-mesh-provider-scoped", saName)
 	mockClient.AssertExpectations(t)
@@ -404,7 +404,7 @@ func Test_ensureScopedProviderServiceAccountAndRBAC_whenClusterRoleAlreadyExists
 		return ok && crb.Name == "platform-mesh-workspace-access-scoped"
 	}), mock.Anything).Return(nil).Once()
 
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules, "scoped")
 	require.NoError(t, err)
 	assert.Equal(t, "platform-mesh-provider-scoped", saName)
 	mockClient.AssertExpectations(t)
@@ -438,8 +438,93 @@ func Test_ensureScopedProviderServiceAccountAndRBAC_usesDefaultNamespace(t *test
 		return ok && crb.Name == "platform-mesh-workspace-access-scoped" && len(crb.Subjects) == 1 && crb.Subjects[0].Namespace == "default"
 	}), mock.Anything).Return(nil).Once()
 
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules, "scoped")
 	require.NoError(t, err)
 	assert.Equal(t, "platform-mesh-provider-scoped", saName)
 	mockClient.AssertExpectations(t)
+}
+
+// Test_sanitizeSecretNameForRBAC checks that secret names are safe for K8s resource names.
+func Test_sanitizeSecretNameForRBAC(t *testing.T) {
+	tests := []struct {
+		secret string
+		want   string
+	}{
+		{"rebac-authz-webhook-kubeconfig", "rebac-authz-webhook-kubeconfig"},
+		{"extension-manager-operator-kubeconfig", "extension-manager-operator-kubeconfig"},
+		{"UPPER_and.mixed", "upper-and-mixed"},
+		{"", "scoped"},
+		{"a", "a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.secret, func(t *testing.T) {
+			got := sanitizeSecretNameForRBAC(tt.secret)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Test_ensureScopedProviderServiceAccountAndRBAC_perProviderSuffix checks that a custom provider suffix yields per-provider SA/CR names.
+func Test_ensureScopedProviderServiceAccountAndRBAC_perProviderSuffix(t *testing.T) {
+	ctx := context.Background()
+	mockClient := new(mocks.Client)
+	rules := []rbacv1.PolicyRule{{APIGroups: []string{"foo"}, Resources: []string{"bars"}, Verbs: []string{"get"}}}
+	suffix := "rebac-authz-webhook-kubeconfig"
+	saNameWant := "platform-mesh-provider-rebac-authz-webhook-kubeconfig"
+	crNameWant := saNameWant
+	workspaceCRBWant := "platform-mesh-workspace-access-rebac-authz-webhook-kubeconfig"
+
+	mockClient.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		sa, ok := obj.(*corev1.ServiceAccount)
+		return ok && sa.Name == saNameWant
+	}), mock.Anything).Return(nil).Once()
+	mockClient.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		cr, ok := obj.(*rbacv1.ClusterRole)
+		return ok && cr.Name == crNameWant
+	}), mock.Anything).Return(nil).Once()
+	mockClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: crNameWant}, mock.AnythingOfType("*v1.ClusterRoleBinding")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "x")).Once()
+	mockClient.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		crb, ok := obj.(*rbacv1.ClusterRoleBinding)
+		return ok && crb.Name == crNameWant && crb.RoleRef.Name == crNameWant
+	}), mock.Anything).Return(nil).Once()
+	mockClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: workspaceCRBWant}, mock.AnythingOfType("*v1.ClusterRoleBinding")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "x")).Once()
+	mockClient.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		crb, ok := obj.(*rbacv1.ClusterRoleBinding)
+		return ok && crb.Name == workspaceCRBWant && crb.Subjects[0].Name == saNameWant
+	}), mock.Anything).Return(nil).Once()
+
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, mockClient, rules, suffix)
+	require.NoError(t, err)
+	assert.Equal(t, saNameWant, saName)
+	mockClient.AssertExpectations(t)
+}
+
+// Test_getExtraPolicyRulesFromFlags checks that enabled flags return the correct rule blocks.
+func Test_getExtraPolicyRulesFromFlags(t *testing.T) {
+	trueVal := true
+	falseVal := false
+	tests := []struct {
+		name     string
+		flags    *ExtraPolicyRulesFlags
+		wantLen  int
+		wantAPIs []string
+	}{
+		{"nil flags", nil, 0, nil},
+		{"both false", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &falseVal, EnableStoresAccess: &falseVal}, 0, nil},
+		{"get logical cluster only", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &trueVal}, 1, []string{"core.kcp.io"}},
+		{"stores only", &ExtraPolicyRulesFlags{EnableStoresAccess: &trueVal}, 1, []string{"core.platform-mesh.io"}},
+		{"both enabled", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &trueVal, EnableStoresAccess: &trueVal}, 2, []string{"core.kcp.io", "core.platform-mesh.io"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rules := getExtraPolicyRulesFromFlags(tt.flags)
+			assert.Len(t, rules, tt.wantLen)
+			for i, apiGroup := range tt.wantAPIs {
+				require.Greater(t, len(rules), i)
+				assert.Equal(t, []string{apiGroup}, rules[i].APIGroups)
+			}
+		})
+	}
 }

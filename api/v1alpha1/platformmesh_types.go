@@ -136,15 +136,51 @@ type SecretReference struct {
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
 
+// KubeconfigAuth values for ProviderConnection.KubeconfigAuth.
+const (
+	// KubeconfigAuthAdminCertificate uses the cert-based admin kubeconfig. No sharding.
+	KubeconfigAuthAdminCertificate = "adminCertificate"
+	// KubeconfigAuthServiceAccountScoped uses a scoped ServiceAccount token (requires apiExportName or endpointSliceName).
+	KubeconfigAuthServiceAccountScoped = "serviceAccountScoped"
+	// KubeconfigAuthServiceAccountAdmin uses an admin ServiceAccount token (broad rights in the workspace).
+	KubeconfigAuthServiceAccountAdmin = "serviceAccountAdmin"
+)
+
+// ServiceAccountPermissions specifies RBAC permission flags for provider connections that use a
+// ServiceAccount (either scoped or admin). Used for both kubeconfigAuth: serviceAccountScoped and
+// serviceAccountAdmin. For admin SA, only EnableGetLogicalCluster is supported; other flags are
+// ignored and a warning is logged if set.
+type ServiceAccountPermissions struct {
+	// RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
+	// (e.g. LogicalCluster get, Store get). Only for serviceAccountScoped; ignored for serviceAccountAdmin.
+	// +optional
+	RootOrgAccess *bool `json:"rootOrgAccess,omitempty"`
+	// EnableGetLogicalCluster grants get on core.kcp.io logicalclusters (resource "cluster"). Supported for both scoped and admin SA.
+	// +optional
+	EnableGetLogicalCluster *bool `json:"enableGetLogicalCluster,omitempty"`
+	// EnableStoresAccess grants get, list, watch on core.platform-mesh.io stores. Only for serviceAccountScoped; ignored for admin.
+	// +optional
+	EnableStoresAccess *bool `json:"enableStoresAccess,omitempty"`
+	// EnableInitTargetsAccess grants get, list, watch on initialization.kcp.io inittargets. Only for serviceAccountScoped; ignored for admin.
+	// +optional
+	EnableInitTargetsAccess *bool `json:"enableInitTargetsAccess,omitempty"`
+}
+
 type ProviderConnection struct {
-	EndpointSliceName  *string `json:"endpointSliceName,omitempty"`
-	Path               string  `json:"path,omitempty"`
-	RawPath            *string `json:"rawPath,omitempty"`
-	Secret             string  `json:"secret"`
-	External           bool    `json:"external,omitempty"`
-	Namespace          *string `json:"namespace,omitempty"`
-	UseAdminKubeconfig *bool   `json:"useAdminKubeconfig,omitempty"`
-	APIExportName      string  `json:"apiExportName,omitempty"`
+	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
+	Path              string  `json:"path,omitempty"`
+	RawPath           *string `json:"rawPath,omitempty"`
+	Secret            string  `json:"secret"`
+	External          bool    `json:"external,omitempty"`
+	Namespace         *string `json:"namespace,omitempty"`
+	// KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
+	// serviceAccountScoped (scoped SA token), or serviceAccountAdmin (admin SA token). When unset, defaults to adminCertificate.
+	KubeconfigAuth string `json:"kubeconfigAuth,omitempty"`
+	APIExportName  string `json:"apiExportName,omitempty"`
+	// ServiceAccountPermissions applies to both serviceAccountScoped and serviceAccountAdmin.
+	// For admin SA, only enableGetLogicalCluster is supported; other flags are ignored with a warning.
+	// +optional
+	ServiceAccountPermissions *ServiceAccountPermissions `json:"serviceAccountPermissions,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh

@@ -8,6 +8,7 @@ import (
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
+	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -15,6 +16,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -38,9 +40,39 @@ const (
 	scopedSAPrefix = "platform-mesh-provider-"
 	// kcpWorkspaceAccessRoleName is the pre-defined KCP ClusterRole that grants workspace content access (verb=access to "/").
 	kcpWorkspaceAccessRoleName = "system:kcp:workspace:access"
-	// scopedProviderRBACName is the fixed name suffix for the single SA/ClusterRole/CRB set used by the scoped provider flow.
-	scopedProviderRBACName = "scoped"
+	// scopedProviderRBACNameDefault is the default suffix when no provider-specific name is used (e.g. tests).
+	scopedProviderRBACNameDefault = "scoped"
+	// maxRBACNameSuffixLength limits the SA/CR name suffix so full names stay within K8s limits (253 chars). Prefix is 23 chars.
+	maxRBACNameSuffixLength = 200
 )
+
+// sanitizeSecretNameForRBAC returns a string safe for use in K8s resource names (RFC 1123 subdomain: lowercase, alphanumeric, dash).
+// Used to derive per-provider SA/ClusterRole names so each provider has its own identity and rules can be fine-grained later.
+func sanitizeSecretNameForRBAC(secret string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(secret) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r == '_' || r == '.':
+			b.WriteRune('-')
+		default:
+			// skip other chars
+		}
+	}
+	s := strings.Trim(strings.TrimSpace(b.String()), "-")
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	if len(s) > maxRBACNameSuffixLength {
+		s = s[:maxRBACNameSuffixLength]
+		s = strings.TrimRight(s, "-")
+	}
+	if s == "" {
+		return scopedProviderRBACNameDefault
+	}
+	return s
+}
 
 // buildKCPConfigForPath returns a copy of cfg with Host set to the KCP workspace path (for use when creating resources in that path).
 func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config {
@@ -54,7 +86,7 @@ func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config 
 	return out
 }
 
-// newKCPClientWithRBAC returns a controller-runtime client that can talk to the KCP workspace and has APIExport (v1alpha1 + v1alpha2), core/v1, and rbac/v1 in the scheme.
+// newKCPClientWithRBAC returns a controller-runtime client that can talk to the KCP workspace and has APIExport (v1alpha1 + v1alpha2), core.kcp.io (LogicalCluster), core/v1, and rbac/v1 in the scheme.
 func newKCPClientWithRBAC(cfg *rest.Config, workspacePath string) (client.Client, error) {
 	config := buildKCPConfigForPath(cfg, workspacePath)
 	config.QPS = 1000.0
@@ -64,6 +96,7 @@ func newKCPClientWithRBAC(cfg *rest.Config, workspacePath string) (client.Client
 	utilruntime.Must(rbacv1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha2.AddToScheme(scheme))
+	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	cl, err := client.New(config, client.Options{Scheme: scheme})
 	if err != nil {
 		return nil, fmt.Errorf("create KCP client for path %s: %w", workspacePath, err)
@@ -206,11 +239,59 @@ func hasUpdatePatchVerbs(verbs []string) bool {
 	return false
 }
 
+// Predefined rule blocks that can be enabled via ServiceAccountPermissions flags (enableGetLogicalCluster, enableStoresAccess, etc.).
+var (
+	ruleBlockGetLogicalCluster = []rbacv1.PolicyRule{
+		{
+			APIGroups:     []string{"core.kcp.io"},
+			Resources:     []string{"logicalclusters"},
+			ResourceNames: []string{"cluster"},
+			Verbs:         []string{"get"},
+		},
+	}
+	ruleBlockStoresAccess = []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{"core.platform-mesh.io"},
+			Resources: []string{"stores"},
+			Verbs:     []string{"get", "list", "watch"},
+		},
+	}
+	ruleBlockInitTargetsAccess = []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{"initialization.kcp.io"},
+			Resources: []string{"inittargets"},
+			Verbs:     []string{"get", "list", "watch"},
+		},
+	}
+)
+
+// getExtraPolicyRulesFromFlags returns the concatenated rule blocks for each enabled flag.
+func getExtraPolicyRulesFromFlags(flags *ExtraPolicyRulesFlags) []rbacv1.PolicyRule {
+	if flags == nil {
+		return nil
+	}
+	var out []rbacv1.PolicyRule
+	if flags.EnableGetLogicalCluster != nil && *flags.EnableGetLogicalCluster {
+		out = append(out, ruleBlockGetLogicalCluster...)
+	}
+	if flags.EnableStoresAccess != nil && *flags.EnableStoresAccess {
+		out = append(out, ruleBlockStoresAccess...)
+	}
+	if flags.EnableInitTargetsAccess != nil && *flags.EnableInitTargetsAccess {
+		out = append(out, ruleBlockInitTargetsAccess...)
+	}
+	return out
+}
+
 // ensureScopedProviderServiceAccountAndRBAC creates or updates a ServiceAccount, ClusterRole, ClusterRoleBinding, and a binding to system:kcp:workspace:access in the KCP workspace for the scoped provider flow.
-func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, policyRules []rbacv1.PolicyRule) (saName string, err error) {
-	saName = scopedSAPrefix + scopedProviderRBACName
-	crName := scopedClusterRolePrefix + scopedProviderRBACName
-	workspaceAccessCRBName := "platform-mesh-workspace-access-" + scopedProviderRBACName
+// providerSuffix is used to name the SA/ClusterRole per provider (e.g. sanitized secret name) so each provider has its own identity; pass "" to use the default suffix (e.g. in tests).
+func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, policyRules []rbacv1.PolicyRule, providerSuffix string) (saName string, err error) {
+	if providerSuffix == "" {
+		providerSuffix = scopedProviderRBACNameDefault
+	}
+	saName = scopedSAPrefix + providerSuffix
+	crName := scopedClusterRolePrefix + providerSuffix
+	workspaceAccessCRBName := "platform-mesh-workspace-access-" + providerSuffix
 	saNamespace := defaultScopedSANamespace
 
 	sa := &corev1.ServiceAccount{
@@ -350,13 +431,17 @@ func WriteScopedKubeconfigToSecret(ctx context.Context, k8sClient client.Client,
 	if err != nil {
 		return errors.Wrap(err, "build RBAC from APIExport")
 	}
+	if extra := getExtraPolicyRulesFromFlags(spec.ExtraPolicyRuleBlocks); len(extra) > 0 {
+		rules = append(rules, extra...)
+	}
 
 	// Create or update SA and RBAC in the export workspace (Path).
 	kcpClient, err := newKCPClientWithRBAC(cfg, spec.Path)
 	if err != nil {
 		return errors.Wrap(err, "create KCP client for SA workspace")
 	}
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpClient, rules)
+	providerSuffix := sanitizeSecretNameForRBAC(spec.Secret)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpClient, rules, providerSuffix)
 	if err != nil {
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}
@@ -410,10 +495,285 @@ func BuildScopedKubeconfig(hostURL string, token string, caData []byte) *clientc
 	}
 }
 
+// Admin SA prefix for kubeconfigAuth: serviceAccountAdmin. Each provider gets its own SA: platform-mesh-admin-<providerSuffix>.
+const adminSAPrefix = "platform-mesh-admin-"
+
+// ensureAdminServiceAccountAndRBACForProvider creates or updates a per-provider admin ServiceAccount and ClusterRole
+// (wildcard plus optional get logicalclusters) in the KCP workspace, plus workspace access binding.
+// providerSuffix is derived from the provider's secret name (e.g. sanitizeSecretNameForRBAC(secretName)) so each provider
+// has its own identity. When enableGetLogicalCluster is true, the ClusterRole includes get on core.kcp.io logicalclusters.
+func ensureAdminServiceAccountAndRBACForProvider(ctx context.Context, kcpClient client.Client, providerSuffix string, enableGetLogicalCluster bool) (saName string, err error) {
+	if providerSuffix == "" {
+		providerSuffix = scopedProviderRBACNameDefault
+	}
+	saNamespace := defaultScopedSANamespace
+	saName = adminSAPrefix + providerSuffix
+	crName := saName
+	workspaceAccessCRBName := "platform-mesh-admin-workspace-access-" + providerSuffix
+
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: saNamespace,
+			Name:      saName,
+		},
+	}
+	if err := kcpClient.Create(ctx, sa); err != nil {
+		if !kerrors.IsAlreadyExists(err) {
+			return "", fmt.Errorf("create ServiceAccount %s: %w", saName, err)
+		}
+	}
+
+	crRules := []rbacv1.PolicyRule{
+		{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}},
+		{NonResourceURLs: []string{"*"}, Verbs: []string{"*"}},
+	}
+	if enableGetLogicalCluster {
+		crRules = append(crRules, ruleBlockGetLogicalCluster...)
+	}
+
+	cr := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: crName},
+		Rules:      crRules,
+	}
+	if err := kcpClient.Create(ctx, cr); err != nil {
+		if !kerrors.IsAlreadyExists(err) {
+			return "", fmt.Errorf("create ClusterRole %s: %w", crName, err)
+		}
+		if err := kcpClient.Get(ctx, client.ObjectKey{Name: crName}, cr); err != nil {
+			return "", err
+		}
+		cr.Rules = crRules
+		if err := kcpClient.Update(ctx, cr); err != nil {
+			return "", fmt.Errorf("update ClusterRole %s: %w", crName, err)
+		}
+	}
+
+	crb := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: crName},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, crb, func() error {
+		crb.RoleRef = rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     crName,
+		}
+		crb.Subjects = []rbacv1.Subject{
+			{Kind: rbacv1.ServiceAccountKind, Namespace: saNamespace, Name: saName},
+		}
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("create or update ClusterRoleBinding %s: %w", crName, err)
+	}
+
+	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: workspaceAccessCRBName},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, workspaceAccessCRB, func() error {
+		workspaceAccessCRB.RoleRef = rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     kcpWorkspaceAccessRoleName,
+		}
+		workspaceAccessCRB.Subjects = []rbacv1.Subject{
+			{Kind: rbacv1.ServiceAccountKind, Namespace: saNamespace, Name: saName},
+		}
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("create or update ClusterRoleBinding %s: %w", workspaceAccessCRBName, err)
+	}
+	return saName, nil
+}
+
+// WriteAdminSAKubeconfigToSecret ensures the admin SA and RBAC exist in the KCP workspace, creates a token,
+// and writes the kubeconfig to a Secret. Used for kubeconfigAuth: serviceAccountAdmin.
+// The server URL is hostPort + "/clusters/" + workspacePath.
+// When enableGetLogicalCluster is true, the admin ClusterRole includes get on core.kcp.io logicalclusters (for listener etc.).
+func WriteAdminSAKubeconfigToSecret(ctx context.Context, k8sClient client.Client, cfg *rest.Config, workspacePath, secretName, hostPort, secretNamespace string, enableGetLogicalCluster bool) error {
+	hostURL, err := BuildHostURLForScoped(hostPort, workspacePath)
+	if err != nil {
+		return fmt.Errorf("build host URL for admin SA kubeconfig: %w", err)
+	}
+	return writeAdminSAKubeconfigToSecretWithHostURL(ctx, k8sClient, cfg, workspacePath, secretName, hostURL, secretNamespace, enableGetLogicalCluster)
+}
+
+// WriteAdminSAKubeconfigToSecretWithServerURL is like WriteAdminSAKubeconfigToSecret but uses the given serverURL
+// as the kubeconfig server (e.g. APIExport endpoint from APIExportEndpointSlice). Same endpoint as admin cert
+// so discovery (e.g. apis.kcp.io) is consistent.
+func WriteAdminSAKubeconfigToSecretWithServerURL(ctx context.Context, k8sClient client.Client, cfg *rest.Config, workspacePath, secretName, serverURL, secretNamespace string, enableGetLogicalCluster bool) error {
+	return writeAdminSAKubeconfigToSecretWithHostURL(ctx, k8sClient, cfg, workspacePath, secretName, serverURL, secretNamespace, enableGetLogicalCluster)
+}
+
+func writeAdminSAKubeconfigToSecretWithHostURL(ctx context.Context, k8sClient client.Client, cfg *rest.Config, workspacePath, secretName, hostURL, secretNamespace string, enableGetLogicalCluster bool) error {
+	if workspacePath == "" {
+		return fmt.Errorf("admin SA kubeconfig requires workspace path")
+	}
+	if secretName == "" {
+		return fmt.Errorf("admin SA kubeconfig requires secret name")
+	}
+	if hostURL == "" {
+		return fmt.Errorf("admin SA kubeconfig requires host URL")
+	}
+	if secretNamespace == "" {
+		secretNamespace = defaultScopedSecretNamespace
+	}
+	caData := cfg.TLSClientConfig.CAData
+	if caData == nil {
+		caData = []byte{}
+	}
+
+	kcpClient, err := newKCPClientWithRBAC(cfg, workspacePath)
+	if err != nil {
+		return errors.Wrap(err, "create KCP client for admin SA workspace")
+	}
+	providerSuffix := sanitizeSecretNameForRBAC(secretName)
+	saName, err := ensureAdminServiceAccountAndRBACForProvider(ctx, kcpClient, providerSuffix, enableGetLogicalCluster)
+	if err != nil {
+		return errors.Wrap(err, "ensure admin ServiceAccount and RBAC")
+	}
+
+	// When the gateway (or any admin SA with enableGetLogicalCluster) does get logicalclusters, KCP may evaluate
+	// the request at "cluster scope" and use root:orgs (or shard) RBAC. Ensure the workspace's cluster ID has
+	// get logicalclusters in root:orgs so the identity (presented as system:cluster:<clusterID>) is allowed.
+	if enableGetLogicalCluster {
+		var lc kcpcorev1alpha.LogicalCluster
+		if err := kcpClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &lc); err != nil {
+			return errors.Wrap(err, "get LogicalCluster cluster to resolve cluster ID for root:orgs access")
+		}
+		clusterID := strings.ReplaceAll(string(lc.UID), "-", "")
+		orgsClient, err := newKCPClientWithRBAC(cfg, "root:orgs")
+		if err != nil {
+			return errors.Wrap(err, "create KCP client for root:orgs")
+		}
+		if err := EnsureRootOrgsAccess(ctx, orgsClient, clusterID); err != nil {
+			return errors.Wrap(err, "ensure root:orgs access for get logicalcluster (cluster-scope)")
+		}
+	}
+
+	token, err := createTokenForSA(ctx, cfg, workspacePath, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
+	if err != nil {
+		return errors.Wrap(err, "create token for admin ServiceAccount")
+	}
+	kubeconfig := BuildScopedKubeconfig(hostURL, token, caData)
+	kubeconfigBytes, err := clientcmd.Write(*kubeconfig)
+	if err != nil {
+		return errors.Wrap(err, "write kubeconfig")
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: secretNamespace},
+	}
+	_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, secret, func() error {
+		secret.Data = map[string][]byte{"kubeconfig": kubeconfigBytes}
+		return nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "write provider secret")
+	}
+	return nil
+}
+
+// rootOrgsRBACNames are the names used in root:orgs for the scoped provider (e.g. rebac) cross-workspace access.
+const (
+	rootOrgsWorkspaceAccessCRBName = "platform-mesh-scoped-provider-workspace-access"
+	rootOrgsResourcesCRName        = "platform-mesh-scoped-provider-root-orgs-resources"
+	rootOrgsResourcesCRBName       = "platform-mesh-scoped-provider-root-orgs-resources"
+)
+
+// EnsureRootOrgsAccess creates or updates RBAC in the root:orgs workspace so that a scoped identity from another
+// workspace (identified by system:cluster:<clusterID>) can access root:orgs. This is required for providers like
+// rebac-authz-webhook that use a scoped kubeconfig for root:platform-mesh-system but also call root:orgs.
+// orgsClient must be a client configured for the root:orgs workspace (e.g. via buildKCPConfigForPath(cfg, "root:orgs")).
+// clusterID is the logical cluster ID of the source workspace (e.g. root:platform-mesh-system), typically the
+// LogicalCluster's metadata.uid with dashes removed; KCP exposes this as the group system:cluster:<clusterID>.
+func EnsureRootOrgsAccess(ctx context.Context, orgsClient client.Client, clusterID string) error {
+	if clusterID == "" {
+		return fmt.Errorf("clusterID is required for EnsureRootOrgsAccess")
+	}
+	groupName := "system:cluster:" + clusterID
+	subject := rbacv1.Subject{
+		Kind: rbacv1.GroupKind,
+		Name: groupName,
+	}
+
+	// 1. Bind group to system:kcp:workspace:access so the workspace content authorizer allows the request.
+	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: rootOrgsWorkspaceAccessCRBName},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, orgsClient, workspaceAccessCRB, func() error {
+		workspaceAccessCRB.RoleRef = rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     kcpWorkspaceAccessRoleName,
+		}
+		workspaceAccessCRB.Subjects = []rbacv1.Subject{subject}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("create or update ClusterRoleBinding %s in root:orgs: %w", rootOrgsWorkspaceAccessCRBName, err)
+	}
+
+	// 2. ClusterRole for LogicalCluster (get) and Store (get, list, watch).
+	cr := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: rootOrgsResourcesCRName},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups:     []string{"core.kcp.io"},
+				Resources:     []string{"logicalclusters"},
+				ResourceNames: []string{"cluster"},
+				Verbs:         []string{"get"},
+			},
+			{
+				APIGroups: []string{"core.platform-mesh.io"},
+				Resources: []string{"stores"},
+				Verbs:     []string{"get", "list", "watch"},
+			},
+		},
+	}
+	if err := orgsClient.Create(ctx, cr); err != nil {
+		if !kerrors.IsAlreadyExists(err) {
+			return fmt.Errorf("create ClusterRole %s in root:orgs: %w", rootOrgsResourcesCRName, err)
+		}
+		if err := orgsClient.Get(ctx, client.ObjectKey{Name: rootOrgsResourcesCRName}, cr); err != nil {
+			return err
+		}
+		cr.Rules = []rbacv1.PolicyRule{
+			{APIGroups: []string{"core.kcp.io"}, Resources: []string{"logicalclusters"}, ResourceNames: []string{"cluster"}, Verbs: []string{"get"}},
+			{APIGroups: []string{"core.platform-mesh.io"}, Resources: []string{"stores"}, Verbs: []string{"get", "list", "watch"}},
+		}
+		if err := orgsClient.Update(ctx, cr); err != nil {
+			return fmt.Errorf("update ClusterRole %s in root:orgs: %w", rootOrgsResourcesCRName, err)
+		}
+	}
+
+	// 3. Bind group to the resources ClusterRole.
+	resourcesCRB := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: rootOrgsResourcesCRBName},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, orgsClient, resourcesCRB, func() error {
+		resourcesCRB.RoleRef = rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     rootOrgsResourcesCRName, // bind to the ClusterRole, not the binding name
+		}
+		resourcesCRB.Subjects = []rbacv1.Subject{subject}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("create or update ClusterRoleBinding %s in root:orgs: %w", rootOrgsResourcesCRBName, err)
+	}
+	return nil
+}
+
+// ExtraPolicyRulesFlags are boolean flags that enable named rule blocks (mirrors ServiceAccountPermissions flags).
+type ExtraPolicyRulesFlags struct {
+	EnableGetLogicalCluster *bool
+	EnableStoresAccess      *bool
+	EnableInitTargetsAccess *bool
+}
+
 // ProviderConnectionSpec is the minimal spec needed for scoped kubeconfig (avoids importing api/v1alpha1 in tests).
 // Same pattern as consumers: Path = export workspace (from context), APIExportName = which export (only name in config).
 type ProviderConnectionSpec struct {
-	Path          string // KCP workspace path for the export; also where SA is created and hostURL points.
-	Secret        string
-	APIExportName string
+	Path                  string // KCP workspace path for the export; also where SA is created and hostURL points.
+	Secret                string
+	APIExportName         string
+	ExtraPolicyRuleBlocks *ExtraPolicyRulesFlags // Optional: enable named rule blocks (from ServiceAccountPermissions flags).
 }
