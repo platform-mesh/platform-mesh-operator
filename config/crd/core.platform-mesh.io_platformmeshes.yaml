@@ -128,16 +128,44 @@ spec:
                           type: string
                         external:
                           type: boolean
+                        kubeconfigAuth:
+                          description: |-
+                            KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
+                            serviceAccountScoped (scoped SA token), or serviceAccountAdmin (admin SA token). When unset, defaults to adminCertificate.
+                          type: string
                         namespace:
                           type: string
                         path:
                           type: string
                         rawPath:
                           type: string
+                        scopedKubeconfigOptions:
+                          description: |-
+                            ScopedKubeconfigOptions specifies per-provider options when using scoped kubeconfig (kubeconfigAuth: serviceAccountScoped).
+                            All flags are at the top level; each adds a predefined set of RBAC rules or behavior (see pkg/subroutines/kubeconfig_scoped.go).
+                          properties:
+                            enableGetLogicalCluster:
+                              description: EnableGetLogicalCluster grants get on core.kcp.io
+                                logicalclusters (resource "cluster") in the export
+                                workspace.
+                              type: boolean
+                            enableInitTargetsAccess:
+                              description: EnableInitTargetsAccess grants get, list,
+                                watch on initialization.kcp.io inittargets in the
+                                export workspace (for init-agent).
+                              type: boolean
+                            enableStoresAccess:
+                              description: EnableStoresAccess grants get, list, watch
+                                on core.platform-mesh.io stores in the export workspace.
+                              type: boolean
+                            rootOrgAccess:
+                              description: |-
+                                RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
+                                (e.g. LogicalCluster get, Store get). Only enable for providers that actually call root:orgs.
+                              type: boolean
+                          type: object
                         secret:
                           type: string
-                        useAdminKubeconfig:
-                          type: boolean
                       required:
                       - secret
                       type: object
@@ -182,16 +210,44 @@ spec:
                           type: string
                         external:
                           type: boolean
+                        kubeconfigAuth:
+                          description: |-
+                            KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
+                            serviceAccountScoped (scoped SA token), or serviceAccountAdmin (admin SA token). When unset, defaults to adminCertificate.
+                          type: string
                         namespace:
                           type: string
                         path:
                           type: string
                         rawPath:
                           type: string
+                        scopedKubeconfigOptions:
+                          description: |-
+                            ScopedKubeconfigOptions specifies per-provider options when using scoped kubeconfig (kubeconfigAuth: serviceAccountScoped).
+                            All flags are at the top level; each adds a predefined set of RBAC rules or behavior (see pkg/subroutines/kubeconfig_scoped.go).
+                          properties:
+                            enableGetLogicalCluster:
+                              description: EnableGetLogicalCluster grants get on core.kcp.io
+                                logicalclusters (resource "cluster") in the export
+                                workspace.
+                              type: boolean
+                            enableInitTargetsAccess:
+                              description: EnableInitTargetsAccess grants get, list,
+                                watch on initialization.kcp.io inittargets in the
+                                export workspace (for init-agent).
+                              type: boolean
+                            enableStoresAccess:
+                              description: EnableStoresAccess grants get, list, watch
+                                on core.platform-mesh.io stores in the export workspace.
+                              type: boolean
+                            rootOrgAccess:
+                              description: |-
+                                RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
+                                (e.g. LogicalCluster get, Store get). Only enable for providers that actually call root:orgs.
+                              type: boolean
+                          type: object
                         secret:
                           type: string
-                        useAdminKubeconfig:
-                          type: boolean
                       required:
                       - secret
                       type: object

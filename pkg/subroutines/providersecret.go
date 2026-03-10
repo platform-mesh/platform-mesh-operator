@@ -17,6 +17,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
@@ -70,6 +71,26 @@ const (
 	ProvidersecretSubroutineName      = "ProvidersecretSubroutine"
 	ProvidersecretSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
 )
+
+// permissionsForAdminSA returns whether the admin SA should have get logicalclusters permission.
+// Admin SA only supports EnableGetLogicalCluster; other flags are ignored and a warning is logged if set.
+func permissionsForAdminSA(ctx context.Context, pc corev1alpha1.ProviderConnection) (enableGetLogicalCluster bool) {
+	perms := pc.ServiceAccountPermissions
+	if perms == nil {
+		return true
+	}
+	log := logger.LoadLoggerFromContext(ctx)
+	unsupportedForAdmin := (perms.RootOrgAccess != nil && *perms.RootOrgAccess) ||
+		(perms.EnableStoresAccess != nil && *perms.EnableStoresAccess) ||
+		(perms.EnableInitTargetsAccess != nil && *perms.EnableInitTargetsAccess)
+	if unsupportedForAdmin {
+		log.Warn().Str("secret", pc.Secret).Msg("serviceAccountPermissions: RootOrgAccess, EnableStoresAccess and EnableInitTargetsAccess are not supported for admin SA; only enableGetLogicalCluster is used")
+	}
+	if perms.EnableGetLogicalCluster != nil {
+		return *perms.EnableGetLogicalCluster
+	}
+	return true
+}
 
 func (r *ProvidersecretSubroutine) Finalize(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
@@ -132,8 +153,10 @@ func (r *ProvidersecretSubroutine) Process(
 
 	if HasFeatureToggle(instance, "feature-enable-terminal-controller-manager") == "true" {
 		providers = append(providers, corev1alpha1.ProviderConnection{
-			Path:   "root:platform-mesh-system",
-			Secret: "terminal-controller-manager-kubeconfig",
+			Path:           "root:platform-mesh-system",
+			Secret:         "terminal-controller-manager-kubeconfig",
+			KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
+			APIExportName:  "core.platform-mesh.io",
 		})
 	}
 
@@ -178,6 +201,15 @@ func normalizeRestConfigHost(cfg *rest.Config, scheme string) {
 	}
 }
 
+// effectiveKubeconfigAuth returns the effective auth mode for the provider connection.
+// When KubeconfigAuth is set, it is used. Otherwise defaults to adminCertificate.
+func effectiveKubeconfigAuth(pc corev1alpha1.ProviderConnection) string {
+	if pc.KubeconfigAuth != "" {
+		return pc.KubeconfigAuth
+	}
+	return corev1alpha1.KubeconfigAuthAdminCertificate
+}
+
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
@@ -203,6 +235,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	}
 	hasBaseURL := operatorCfg.KCP.FrontProxyName != "" || (pc.External && instance != nil && instance.Spec.Exposure != nil && instance.Spec.Exposure.BaseDomain != "")
 
+	auth := effectiveKubeconfigAuth(pc)
 	var address *url.URL
 
 	if ptr.Deref(pc.EndpointSliceName, "") != "" {
@@ -223,10 +256,46 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
 		}
 
-		// Scoped kubeconfig only when UseAdminKubeconfig is explicitly false; default (nil/true) stays admin.
-		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
+		switch auth {
+		case corev1alpha1.KubeconfigAuthServiceAccountScoped:
+			if err := r.ensureRootOrgAccess(ctx, pc, cfg); err != nil {
+				log.Warn().Err(err).Str("secret", pc.Secret).Msg("ensureRootOrgAccess failed (e.g. rebac not ready); creating scoped kubeconfig anyway so provider can start; root:orgs RBAC will be applied on next reconcile")
+			} else {
+				log.Info().Str("secret", pc.Secret).Msg("Ensured root:orgs access for provider")
+			}
 			log.Info().Str("secret", pc.Secret).Msg("Creating scoped kubeconfig for provider connection (endpoint slice)")
 			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
+		case corev1alpha1.KubeconfigAuthServiceAccountAdmin:
+			if !hasBaseURL {
+				log.Error().Msg("Admin SA kubeconfig requested but no base URL available")
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("admin SA kubeconfig requires base URL"), true, true)
+			}
+			namespace := "platform-mesh-system"
+			if ptr.Deref(pc.Namespace, "") != "" {
+				namespace = *pc.Namespace
+			}
+			// Use same URL shape as admin cert: hostPort (in-cluster) + path from slice. The raw slice URL
+			// may be external (e.g. localhost:8443); in-cluster pods must use hostPort.
+			endpointURL := slice.Status.APIExportEndpoints[0].URL
+			sliceAddr, err := url.Parse(endpointURL)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to parse slice endpoint URL")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
+			serverURL, err := url.JoinPath(hostPort, sliceAddr.Path)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to build server URL for admin SA")
+				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			}
+			enableGetLogicalCluster := permissionsForAdminSA(ctx, pc)
+			if err := WriteAdminSAKubeconfigToSecretWithServerURL(ctx, r.client, cfg, pc.Path, pc.Secret, serverURL, namespace, enableGetLogicalCluster); err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to create admin SA kubeconfig")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			log.Info().Str("secret", pc.Secret).Str("serverURL", serverURL).Msg("Created or updated provider secret (admin SA kubeconfig with slice path)")
+			return ctrl.Result{}, nil
+		default:
+			// adminCertificate: use slice path with hostPort below
 		}
 
 		endpointURL := slice.Status.APIExportEndpoints[0].URL
@@ -236,14 +305,38 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
 	} else {
-		if pc.UseAdminKubeconfig != nil && !*pc.UseAdminKubeconfig {
+		switch auth {
+		case corev1alpha1.KubeconfigAuthServiceAccountScoped:
 			if pc.APIExportName == "" {
-				err := fmt.Errorf("scoped kubeconfig (useAdminKubeconfig: false) requires apiExportName or endpointSliceName")
+				err := fmt.Errorf("kubeconfigAuth serviceAccountScoped requires apiExportName or endpointSliceName")
 				log.Error().Err(err).Str("secret", pc.Secret).Msg("Invalid provider connection configuration")
 				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 			}
+			if err := r.ensureRootOrgAccess(ctx, pc, cfg); err != nil {
+				log.Warn().Err(err).Str("secret", pc.Secret).Msg("ensureRootOrgAccess failed (e.g. rebac not ready); creating scoped kubeconfig anyway so provider can start; root:orgs RBAC will be applied on next reconcile")
+			} else {
+				log.Info().Str("secret", pc.Secret).Msg("Ensured root:orgs access for provider")
+			}
 			log.Info().Str("secret", pc.Secret).Str("apiExportName", pc.APIExportName).Msg("Creating scoped kubeconfig for provider connection")
 			return r.writeScopedKubeconfig(ctx, pc, cfg, hostPort, hasBaseURL)
+		case corev1alpha1.KubeconfigAuthServiceAccountAdmin:
+			if !hasBaseURL {
+				log.Error().Msg("Admin SA kubeconfig requested but no base URL available")
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("admin SA kubeconfig requires base URL"), true, true)
+			}
+			namespace := "platform-mesh-system"
+			if ptr.Deref(pc.Namespace, "") != "" {
+				namespace = *pc.Namespace
+			}
+			enableGetLogicalCluster := permissionsForAdminSA(ctx, pc)
+			if err := WriteAdminSAKubeconfigToSecret(ctx, r.client, cfg, pc.Path, pc.Secret, hostPort, namespace, enableGetLogicalCluster); err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to create admin SA kubeconfig")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (admin SA kubeconfig)")
+			return ctrl.Result{}, nil
+		default:
+			// adminCertificate: build address from path
 		}
 
 		kcpUrl, err := url.Parse(cfg.Host)
@@ -336,6 +429,32 @@ func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
 }
 
 // writeScopedKubeconfig creates a scoped kubeconfig for the provider connection and writes the secret.
+// ensureRootOrgAccess ensures RBAC in root:orgs for this provider's scoped identity when RootOrgAccess is true.
+func (r *ProvidersecretSubroutine) ensureRootOrgAccess(ctx context.Context, pc corev1alpha1.ProviderConnection, cfg *rest.Config) error {
+	perms := pc.ServiceAccountPermissions
+	if perms == nil || perms.RootOrgAccess == nil || !*perms.RootOrgAccess {
+		return nil
+	}
+	sourceClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
+	if err != nil {
+		return fmt.Errorf("create KCP client for %s: %w", pc.Path, err)
+	}
+	var lc kcpcorev1alpha.LogicalCluster
+	if err := sourceClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &lc); err != nil {
+		return fmt.Errorf("get LogicalCluster cluster in %s: %w", pc.Path, err)
+	}
+	// KCP uses the logical cluster ID in the group system:cluster:<id>; typically metadata.uid without dashes.
+	clusterID := strings.ReplaceAll(string(lc.UID), "-", "")
+	orgsClient, err := r.kcpHelper.NewKcpClient(cfg, "root:orgs")
+	if err != nil {
+		return fmt.Errorf("create KCP client for root:orgs: %w", err)
+	}
+	return EnsureRootOrgsAccess(ctx, orgsClient, clusterID)
+}
+
+// writeScopedKubeconfig builds a scoped kubeconfig for pc and writes it to a Secret.
+// Data flow: CR (pc) + defaults → ProviderConnectionSpec → WriteScopedKubeconfigToSecret
+// (resolve APIExport → SA + RBAC in Path workspace → token → kubeconfig → Secret).
 func (r *ProvidersecretSubroutine) writeScopedKubeconfig(
 	ctx context.Context,
 	pc corev1alpha1.ProviderConnection,
@@ -356,11 +475,22 @@ func (r *ProvidersecretSubroutine) writeScopedKubeconfig(
 	if ptr.Deref(pc.Namespace, "") != "" {
 		namespace = *pc.Namespace
 	}
-	if err := WriteScopedKubeconfigToSecret(ctx, r.client, cfg, ProviderConnectionSpec{
+	spec := ProviderConnectionSpec{
 		Path:          pc.Path,
 		Secret:        pc.Secret,
 		APIExportName: apiExportName,
-	}, hostPort, namespace); err != nil {
+	}
+	if perms := pc.ServiceAccountPermissions; perms != nil {
+		hasExtraRules := perms.EnableGetLogicalCluster != nil || perms.EnableStoresAccess != nil || perms.EnableInitTargetsAccess != nil
+		if hasExtraRules {
+			spec.ExtraPolicyRuleBlocks = &ExtraPolicyRulesFlags{
+				EnableGetLogicalCluster: perms.EnableGetLogicalCluster,
+				EnableStoresAccess:      perms.EnableStoresAccess,
+				EnableInitTargetsAccess: perms.EnableInitTargetsAccess,
+			}
+		}
+	}
+	if err := WriteScopedKubeconfigToSecret(ctx, r.client, cfg, spec, hostPort, namespace); err != nil {
 		log.Error().Err(err).Msg("Failed to create scoped kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
