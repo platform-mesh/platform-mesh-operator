@@ -18,6 +18,7 @@ import (
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
@@ -141,8 +142,18 @@ func (r *ProvidersecretSubroutine) Process(
 		// Nothing configured -> use default providers
 		providers = DefaultProviderConnections
 	case !hasProv && hasExtraProv:
-		// Only extra providers configured - use default + extra providers
-		providers = append(DefaultProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...)
+		// Only extra providers configured - use default + extra providers.
+		// Skip default entries whose secret name appears in extra so the extra (e.g. serviceAccountAdmin) wins.
+		extraSecretNames := make(map[string]struct{})
+		for _, pc := range instance.Spec.Kcp.ExtraProviderConnections {
+			extraSecretNames[pc.Secret] = struct{}{}
+		}
+		for _, pc := range DefaultProviderConnections {
+			if _, inExtra := extraSecretNames[pc.Secret]; !inExtra {
+				providers = append(providers, pc)
+			}
+		}
+		providers = append(providers, instance.Spec.Kcp.ExtraProviderConnections...)
 	case hasProv && !hasExtraProv:
 		// Only providers configured -> use only specified providers
 		providers = instance.Spec.Kcp.ProviderConnections
@@ -443,8 +454,11 @@ func (r *ProvidersecretSubroutine) ensureRootOrgAccess(ctx context.Context, pc c
 	if err := sourceClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &lc); err != nil {
 		return fmt.Errorf("get LogicalCluster cluster in %s: %w", pc.Path, err)
 	}
-	// KCP uses the logical cluster ID in the group system:cluster:<id>; typically metadata.uid without dashes.
-	clusterID := strings.ReplaceAll(string(lc.UID), "-", "")
+	// KCP uses the name from annotation kcp.io/cluster (logicalcluster.From) for system:cluster:<id>.
+	clusterID := logicalcluster.From(&lc).String()
+	if clusterID == "" {
+		return fmt.Errorf("LogicalCluster cluster in %s has no kcp.io/cluster annotation; required for root:orgs RBAC (system:cluster:<id>)", pc.Path)
+	}
 	orgsClient, err := r.kcpHelper.NewKcpClient(cfg, "root:orgs")
 	if err != nil {
 		return fmt.Errorf("create KCP client for root:orgs: %w", err)

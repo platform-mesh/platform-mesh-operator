@@ -9,6 +9,7 @@ import (
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/errors"
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -44,6 +45,8 @@ const (
 	scopedProviderRBACNameDefault = "scoped"
 	// maxRBACNameSuffixLength limits the SA/CR name suffix so full names stay within K8s limits (253 chars). Prefix is 23 chars.
 	maxRBACNameSuffixLength = 200
+	// adminSAWorkspacePath is the KCP workspace where the admin ServiceAccount is created. Same level as admin cert (root-level identity).
+	adminSAWorkspacePath = "root"
 )
 
 // sanitizeSecretNameForRBAC returns a string safe for use in K8s resource names (RFC 1123 subdomain: lowercase, alphanumeric, dash).
@@ -621,25 +624,35 @@ func writeAdminSAKubeconfigToSecretWithHostURL(ctx context.Context, k8sClient cl
 		caData = []byte{}
 	}
 
-	kcpClient, err := newKCPClientWithRBAC(cfg, workspacePath)
+	// Admin SA is created in root (same level as admin cert) so the identity is root-level; kubeconfig server URL (hostURL) is unchanged per provider.
+	rootClient, err := newKCPClientWithRBAC(cfg, adminSAWorkspacePath)
 	if err != nil {
-		return errors.Wrap(err, "create KCP client for admin SA workspace")
+		return errors.Wrap(err, "create KCP client for admin SA workspace (root)")
 	}
 	providerSuffix := sanitizeSecretNameForRBAC(secretName)
-	saName, err := ensureAdminServiceAccountAndRBACForProvider(ctx, kcpClient, providerSuffix, enableGetLogicalCluster)
+	saName, err := ensureAdminServiceAccountAndRBACForProvider(ctx, rootClient, providerSuffix, enableGetLogicalCluster)
 	if err != nil {
 		return errors.Wrap(err, "ensure admin ServiceAccount and RBAC")
 	}
 
-	// When the gateway (or any admin SA with enableGetLogicalCluster) does get logicalclusters, KCP may evaluate
-	// the request at "cluster scope" and use root:orgs (or shard) RBAC. Ensure the workspace's cluster ID has
-	// get logicalclusters in root:orgs so the identity (presented as system:cluster:<clusterID>) is allowed.
+	// When the gateway (or any admin SA with enableGetLogicalCluster) does get logicalclusters, KCP evaluates
+	// the request at cluster scope (root:orgs) and presents the identity as system:cluster:<clusterID> where
+	// clusterID is the logical cluster the kubeconfig is targeting (workspacePath), not root. So we must bind
+	// the cluster ID of workspacePath in root:orgs, not root's cluster ID.
 	if enableGetLogicalCluster {
-		var lc kcpcorev1alpha.LogicalCluster
-		if err := kcpClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &lc); err != nil {
-			return errors.Wrap(err, "get LogicalCluster cluster to resolve cluster ID for root:orgs access")
+		providerClient, err := newKCPClientWithRBAC(cfg, workspacePath)
+		if err != nil {
+			return errors.Wrap(err, "create KCP client for provider workspace (to resolve cluster ID)")
 		}
-		clusterID := strings.ReplaceAll(string(lc.UID), "-", "")
+		var lc kcpcorev1alpha.LogicalCluster
+		if err := providerClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &lc); err != nil {
+			return errors.Wrap(err, "get LogicalCluster cluster in provider workspace to resolve cluster ID for root:orgs access")
+		}
+		// KCP uses the name from annotation kcp.io/cluster (see logicalcluster.From) for system:cluster:<id>.
+		clusterID := logicalcluster.From(&lc).String()
+		if clusterID == "" {
+			return errors.Wrap(fmt.Errorf("LogicalCluster cluster has no kcp.io/cluster annotation; required for root:orgs RBAC (system:cluster:<id>)"), "resolve cluster ID")
+		}
 		orgsClient, err := newKCPClientWithRBAC(cfg, "root:orgs")
 		if err != nil {
 			return errors.Wrap(err, "create KCP client for root:orgs")
@@ -649,7 +662,7 @@ func writeAdminSAKubeconfigToSecretWithHostURL(ctx context.Context, k8sClient cl
 		}
 	}
 
-	token, err := createTokenForSA(ctx, cfg, workspacePath, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
+	token, err := createTokenForSA(ctx, cfg, adminSAWorkspacePath, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
 	if err != nil {
 		return errors.Wrap(err, "create token for admin ServiceAccount")
 	}
@@ -680,57 +693,35 @@ const (
 )
 
 // EnsureRootOrgsAccess creates or updates RBAC in the root:orgs workspace so that a scoped identity from another
-// workspace (identified by system:cluster:<clusterID>) can access root:orgs. This is required for providers like
-// rebac-authz-webhook that use a scoped kubeconfig for root:platform-mesh-system but also call root:orgs.
-// orgsClient must be a client configured for the root:orgs workspace (e.g. via buildKCPConfigForPath(cfg, "root:orgs")).
-// clusterID is the logical cluster ID of the source workspace (e.g. root:platform-mesh-system), typically the
-// LogicalCluster's metadata.uid with dashes removed; KCP exposes this as the group system:cluster:<clusterID>.
+// workspace (system:cluster:<clusterID>) can access root:orgs (workspace access + get logicalcluster "cluster" + stores).
+// orgsClient must be a client configured for the root:orgs workspace.
 func EnsureRootOrgsAccess(ctx context.Context, orgsClient client.Client, clusterID string) error {
 	if clusterID == "" {
 		return fmt.Errorf("clusterID is required for EnsureRootOrgsAccess")
 	}
-	groupName := "system:cluster:" + clusterID
-	subject := rbacv1.Subject{
-		Kind: rbacv1.GroupKind,
-		Name: groupName,
-	}
+	subject := rbacv1.Subject{Kind: rbacv1.GroupKind, Name: "system:cluster:" + clusterID}
 
-	// 1. Bind group to system:kcp:workspace:access so the workspace content authorizer allows the request.
-	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: rootOrgsWorkspaceAccessCRBName},
-	}
+	// 1. Workspace access binding
+	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: rootOrgsWorkspaceAccessCRBName}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, orgsClient, workspaceAccessCRB, func() error {
-		workspaceAccessCRB.RoleRef = rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     kcpWorkspaceAccessRoleName,
-		}
+		workspaceAccessCRB.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: kcpWorkspaceAccessRoleName}
 		workspaceAccessCRB.Subjects = []rbacv1.Subject{subject}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("create or update ClusterRoleBinding %s in root:orgs: %w", rootOrgsWorkspaceAccessCRBName, err)
+		return err
 	}
 
-	// 2. ClusterRole for LogicalCluster (get) and Store (get, list, watch).
+	// 2. ClusterRole for logicalcluster "cluster" and stores
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{Name: rootOrgsResourcesCRName},
 		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups:     []string{"core.kcp.io"},
-				Resources:     []string{"logicalclusters"},
-				ResourceNames: []string{"cluster"},
-				Verbs:         []string{"get"},
-			},
-			{
-				APIGroups: []string{"core.platform-mesh.io"},
-				Resources: []string{"stores"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
+			{APIGroups: []string{"core.kcp.io"}, Resources: []string{"logicalclusters"}, ResourceNames: []string{"cluster"}, Verbs: []string{"get"}},
+			{APIGroups: []string{"core.platform-mesh.io"}, Resources: []string{"stores"}, Verbs: []string{"get", "list", "watch"}},
 		},
 	}
 	if err := orgsClient.Create(ctx, cr); err != nil {
 		if !kerrors.IsAlreadyExists(err) {
-			return fmt.Errorf("create ClusterRole %s in root:orgs: %w", rootOrgsResourcesCRName, err)
+			return err
 		}
 		if err := orgsClient.Get(ctx, client.ObjectKey{Name: rootOrgsResourcesCRName}, cr); err != nil {
 			return err
@@ -740,24 +731,18 @@ func EnsureRootOrgsAccess(ctx context.Context, orgsClient client.Client, cluster
 			{APIGroups: []string{"core.platform-mesh.io"}, Resources: []string{"stores"}, Verbs: []string{"get", "list", "watch"}},
 		}
 		if err := orgsClient.Update(ctx, cr); err != nil {
-			return fmt.Errorf("update ClusterRole %s in root:orgs: %w", rootOrgsResourcesCRName, err)
+			return err
 		}
 	}
 
-	// 3. Bind group to the resources ClusterRole.
-	resourcesCRB := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: rootOrgsResourcesCRBName},
-	}
+	// 3. Bind group to the resources ClusterRole
+	resourcesCRB := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: rootOrgsResourcesCRBName}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, orgsClient, resourcesCRB, func() error {
-		resourcesCRB.RoleRef = rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     rootOrgsResourcesCRName, // bind to the ClusterRole, not the binding name
-		}
+		resourcesCRB.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: rootOrgsResourcesCRName}
 		resourcesCRB.Subjects = []rbacv1.Subject{subject}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("create or update ClusterRoleBinding %s in root:orgs: %w", rootOrgsResourcesCRBName, err)
+		return err
 	}
 	return nil
 }
