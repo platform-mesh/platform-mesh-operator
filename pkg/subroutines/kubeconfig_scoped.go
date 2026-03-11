@@ -635,6 +635,27 @@ func writeAdminSAKubeconfigToSecretWithHostURL(ctx context.Context, k8sClient cl
 		return errors.Wrap(err, "ensure admin ServiceAccount and RBAC")
 	}
 
+	// When the kubeconfig targets a non-root workspace (e.g. root:platform-mesh-system), the admin SA lives in root
+	// but requests go to that workspace; KCP rewrites the identity to system:cluster:<root's cluster ID> there.
+	// Grant that identity access to apis.kcp.io and discovery in the provider workspace so the listener can list APIBindings etc.
+	if workspacePath != "" && workspacePath != adminSAWorkspacePath {
+		var rootLC kcpcorev1alpha.LogicalCluster
+		if err := rootClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &rootLC); err != nil {
+			return errors.Wrap(err, "get LogicalCluster cluster in root to resolve root cluster ID for provider workspace access")
+		}
+		rootClusterID := logicalcluster.From(&rootLC).String()
+		if rootClusterID == "" {
+			return errors.Wrap(fmt.Errorf("LogicalCluster cluster in root has no kcp.io/cluster annotation; required for provider workspace RBAC (system:cluster:<id>)"), "resolve root cluster ID")
+		}
+		providerClient, err := newKCPClientWithRBAC(cfg, workspacePath)
+		if err != nil {
+			return errors.Wrap(err, "create KCP client for provider workspace")
+		}
+		if err := EnsureProviderWorkspaceAccessForRootCluster(ctx, providerClient, rootClusterID); err != nil {
+			return errors.Wrap(err, "ensure provider workspace access for root cluster (apis.kcp.io)")
+		}
+	}
+
 	// When the gateway (or any admin SA with enableGetLogicalCluster) does get logicalclusters, KCP evaluates
 	// the request at cluster scope (root:orgs) and presents the identity as system:cluster:<clusterID> where
 	// clusterID is the logical cluster the kubeconfig is targeting (workspacePath), not root. So we must bind
@@ -648,7 +669,7 @@ func writeAdminSAKubeconfigToSecretWithHostURL(ctx context.Context, k8sClient cl
 		if err := providerClient.Get(ctx, types.NamespacedName{Name: "cluster"}, &lc); err != nil {
 			return errors.Wrap(err, "get LogicalCluster cluster in provider workspace to resolve cluster ID for root:orgs access")
 		}
-		// KCP uses the name from annotation kcp.io/cluster (see logicalcluster.From) for system:cluster:<id>.
+		// KCP uses the logical cluster name (kcp.io/cluster annotation) for system:cluster:<id>.
 		clusterID := logicalcluster.From(&lc).String()
 		if clusterID == "" {
 			return errors.Wrap(fmt.Errorf("LogicalCluster cluster has no kcp.io/cluster annotation; required for root:orgs RBAC (system:cluster:<id>)"), "resolve cluster ID")
@@ -685,12 +706,41 @@ func writeAdminSAKubeconfigToSecretWithHostURL(ctx context.Context, k8sClient cl
 	return nil
 }
 
+// providerWorkspaceRootClusterCRBName is the ClusterRoleBinding in the provider workspace (e.g. root:platform-mesh-system)
+// that binds system:cluster:<root's cluster ID> to the built-in cluster-admin ClusterRole. Used when the admin SA
+// (which lives in root) connects to a non-root workspace: KCP rewrites the identity to that group.
+const providerWorkspaceRootClusterCRBName = "platform-mesh-admin-root-cluster-access"
+
 // rootOrgsRBACNames are the names used in root:orgs for the scoped provider (e.g. rebac) cross-workspace access.
+// We bind system:cluster:<id> to workspace access and to cluster-admin (bootstrap policy) so no custom ClusterRole
+// is required; KCP docs state cluster-admin is defined in system:admin and applies to every workspace including root:orgs.
 const (
 	rootOrgsWorkspaceAccessCRBName = "platform-mesh-scoped-provider-workspace-access"
 	rootOrgsResourcesCRName        = "platform-mesh-scoped-provider-root-orgs-resources"
 	rootOrgsResourcesCRBName       = "platform-mesh-scoped-provider-root-orgs-resources"
+	rootOrgsClusterAdminCRBName    = "platform-mesh-scoped-provider-root-orgs-cluster-admin"
 )
+
+// EnsureProviderWorkspaceAccessForRootCluster ensures the root-origin identity (system:cluster:<rootClusterID>) has
+// full access in the provider workspace by binding it to the built-in cluster-admin ClusterRole. Required when the
+// admin SA lives in root but the kubeconfig targets a child workspace: KCP rewrites the identity to
+// system:cluster:<root's cluster ID> in that workspace. KCP provides cluster-admin in each workspace (Kubernetes
+// convention), so we don't create or maintain a custom ClusterRole.
+func EnsureProviderWorkspaceAccessForRootCluster(ctx context.Context, providerClient client.Client, rootClusterID string) error {
+	if rootClusterID == "" {
+		return fmt.Errorf("rootClusterID is required for EnsureProviderWorkspaceAccessForRootCluster")
+	}
+	subject := rbacv1.Subject{Kind: rbacv1.GroupKind, Name: "system:cluster:" + rootClusterID}
+	crb := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: providerWorkspaceRootClusterCRBName}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, providerClient, crb, func() error {
+		crb.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "cluster-admin"}
+		crb.Subjects = []rbacv1.Subject{subject}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
 
 // EnsureRootOrgsAccess creates or updates RBAC in the root:orgs workspace so that a scoped identity from another
 // workspace (system:cluster:<clusterID>) can access root:orgs (workspace access + get logicalcluster "cluster" + stores).
@@ -735,11 +785,22 @@ func EnsureRootOrgsAccess(ctx context.Context, orgsClient client.Client, cluster
 		}
 	}
 
-	// 3. Bind group to the resources ClusterRole
+	// 3. Bind group to the resources ClusterRole (minimal: logicalclusters, stores)
 	resourcesCRB := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: rootOrgsResourcesCRBName}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, orgsClient, resourcesCRB, func() error {
 		resourcesCRB.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: rootOrgsResourcesCRName}
 		resourcesCRB.Subjects = []rbacv1.Subject{subject}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// 4. Bind group to built-in cluster-admin so all cluster-scope and resource access is granted without maintaining rules.
+	// KCP Bootstrap Policy Authorizer defines cluster-admin in system:admin; it applies to every workspace including root:orgs.
+	clusterAdminCRB := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: rootOrgsClusterAdminCRBName}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, orgsClient, clusterAdminCRB, func() error {
+		clusterAdminCRB.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "cluster-admin"}
+		clusterAdminCRB.Subjects = []rbacv1.Subject{subject}
 		return nil
 	}); err != nil {
 		return err
