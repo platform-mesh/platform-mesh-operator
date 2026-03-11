@@ -44,7 +44,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		KubeconfigAuth: corev1alpha1.KubeconfigAuthServiceAccountScoped,
 		APIExportName:  "core.platform-mesh.io",
 	},
-	// kubernetes-graphql-gateway: needs apis.kcp.io (APIBinding) in the workspace; use admin cert (admin SA had logicalclusters forbidden at cluster scope in KCP).
+	// kubernetes-graphql-gateway: needs get logicalclusters in root:orgs; admin SA works when root:orgs RBAC uses provider workspace cluster ID (see kubeconfig_scoped.go).
 	{
 		Path:           "root:platform-mesh-system",
 		Secret:         "kubernetes-grapqhl-gateway-kubeconfig",
