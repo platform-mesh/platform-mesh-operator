@@ -46,8 +46,8 @@ func TestBuildScopedKubeconfig_roundtrip(t *testing.T) {
 }
 
 // TestBuildScopedKubeconfig_adminSAURLs verifies that the server URL in the kubeconfig is exactly
-// the one passed in. This covers: (1) admin SA without endpointSliceName uses BuildHostURLForScoped(hostPort, path);
-// (2) admin SA with endpointSliceName uses slice URL. Both paths end up calling BuildScopedKubeconfig(hostURL, ...).
+// the one passed in. Admin SA always uses workspace URL (BuildHostURLForScoped(hostPort, path));
+// endpointSliceName is ignored for admin SA. The second case is a legacy slice-URL shape for BuildScopedKubeconfig only.
 func TestBuildScopedKubeconfig_adminSAURLs(t *testing.T) {
 	tests := []struct {
 		name      string

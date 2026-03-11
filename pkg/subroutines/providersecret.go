@@ -285,25 +285,19 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			if ptr.Deref(pc.Namespace, "") != "" {
 				namespace = *pc.Namespace
 			}
-			// Use same URL shape as admin cert: hostPort (in-cluster) + path from slice. The raw slice URL
-			// may be external (e.g. localhost:8443); in-cluster pods must use hostPort.
-			endpointURL := slice.Status.APIExportEndpoints[0].URL
-			sliceAddr, err := url.Parse(endpointURL)
+			// Use same URL shape as admin cert without slice: hostPort + /clusters/ + Path (workspace URL).
+			adminSAHostURL, err := BuildHostURLForScoped(hostPort, pc.Path)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to parse slice endpoint URL")
-				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to build admin SA kubeconfig server URL")
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("build admin SA server URL: %w", err), false, false)
 			}
-			serverURL, err := url.JoinPath(hostPort, sliceAddr.Path)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to build server URL for admin SA")
-				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-			}
+			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Str("serverURL", adminSAHostURL).Msg("Creating admin SA kubeconfig with workspace URL (same as admin cert)")
 			enableGetLogicalCluster := permissionsForAdminSA(ctx, pc)
-			if err := WriteAdminSAKubeconfigToSecretWithServerURL(ctx, r.client, cfg, pc.Path, pc.Secret, serverURL, namespace, enableGetLogicalCluster); err != nil {
+			if err := WriteAdminSAKubeconfigToSecret(ctx, r.client, cfg, pc.Path, pc.Secret, hostPort, namespace, enableGetLogicalCluster); err != nil {
 				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to create admin SA kubeconfig")
 				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 			}
-			log.Info().Str("secret", pc.Secret).Str("serverURL", serverURL).Msg("Created or updated provider secret (admin SA kubeconfig with slice path)")
+			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Str("serverURL", adminSAHostURL).Msg("Created or updated provider secret (admin SA kubeconfig with workspace URL)")
 			return ctrl.Result{}, nil
 		default:
 			// adminCertificate: use slice path with hostPort below
@@ -339,12 +333,18 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			if ptr.Deref(pc.Namespace, "") != "" {
 				namespace = *pc.Namespace
 			}
+			adminSAHostURL, err := BuildHostURLForScoped(hostPort, pc.Path)
+			if err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to build admin SA kubeconfig server URL")
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("build admin SA server URL: %w", err), false, false)
+			}
+			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Str("serverURL", adminSAHostURL).Msg("Creating admin SA kubeconfig with workspace URL (same as admin cert)")
 			enableGetLogicalCluster := permissionsForAdminSA(ctx, pc)
 			if err := WriteAdminSAKubeconfigToSecret(ctx, r.client, cfg, pc.Path, pc.Secret, hostPort, namespace, enableGetLogicalCluster); err != nil {
 				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to create admin SA kubeconfig")
 				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 			}
-			log.Info().Str("secret", pc.Secret).Msg("Created or updated provider secret (admin SA kubeconfig)")
+			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Str("serverURL", adminSAHostURL).Msg("Created or updated provider secret (admin SA kubeconfig)")
 			return ctrl.Result{}, nil
 		default:
 			// adminCertificate: build address from path
