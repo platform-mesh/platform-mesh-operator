@@ -5,7 +5,7 @@ metadata:
   name: authorization.platform-mesh.io
 spec:
   latestResourceSchemas:
-  - v260310-c5ff50b.apiexportpolicies.authorization.platform-mesh.io
+  - v260313-c8b198d.apiexportpolicies.core.platform-mesh.io
   permissionClaims:
     - resource: logicalclusters
       group: core.kcp.io
