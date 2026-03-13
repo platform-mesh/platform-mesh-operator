@@ -139,33 +139,34 @@ spec:
                           type: string
                         rawPath:
                           type: string
-                        scopedKubeconfigOptions:
+                        secret:
+                          type: string
+                        serviceAccountPermissions:
                           description: |-
-                            ScopedKubeconfigOptions specifies per-provider options when using scoped kubeconfig (kubeconfigAuth: serviceAccountScoped).
-                            All flags are at the top level; each adds a predefined set of RBAC rules or behavior (see pkg/subroutines/kubeconfig_scoped.go).
+                            ServiceAccountPermissions applies to both serviceAccountScoped and serviceAccountAdmin.
+                            For admin SA, only enableGetLogicalCluster is supported; other flags are ignored with a warning.
                           properties:
                             enableGetLogicalCluster:
                               description: EnableGetLogicalCluster grants get on core.kcp.io
-                                logicalclusters (resource "cluster") in the export
-                                workspace.
+                                logicalclusters (resource "cluster"). Supported for
+                                both scoped and admin SA.
                               type: boolean
                             enableInitTargetsAccess:
                               description: EnableInitTargetsAccess grants get, list,
-                                watch on initialization.kcp.io inittargets in the
-                                export workspace (for init-agent).
+                                watch on initialization.kcp.io inittargets. Only for
+                                serviceAccountScoped; ignored for admin.
                               type: boolean
                             enableStoresAccess:
                               description: EnableStoresAccess grants get, list, watch
-                                on core.platform-mesh.io stores in the export workspace.
+                                on core.platform-mesh.io stores. Only for serviceAccountScoped;
+                                ignored for admin.
                               type: boolean
                             rootOrgAccess:
                               description: |-
                                 RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
-                                (e.g. LogicalCluster get, Store get). Only enable for providers that actually call root:orgs.
+                                (e.g. LogicalCluster get, Store get). Only for serviceAccountScoped; ignored for serviceAccountAdmin.
                               type: boolean
                           type: object
-                        secret:
-                          type: string
                       required:
                       - secret
                       type: object
@@ -221,33 +222,34 @@ spec:
                           type: string
                         rawPath:
                           type: string
-                        scopedKubeconfigOptions:
+                        secret:
+                          type: string
+                        serviceAccountPermissions:
                           description: |-
-                            ScopedKubeconfigOptions specifies per-provider options when using scoped kubeconfig (kubeconfigAuth: serviceAccountScoped).
-                            All flags are at the top level; each adds a predefined set of RBAC rules or behavior (see pkg/subroutines/kubeconfig_scoped.go).
+                            ServiceAccountPermissions applies to both serviceAccountScoped and serviceAccountAdmin.
+                            For admin SA, only enableGetLogicalCluster is supported; other flags are ignored with a warning.
                           properties:
                             enableGetLogicalCluster:
                               description: EnableGetLogicalCluster grants get on core.kcp.io
-                                logicalclusters (resource "cluster") in the export
-                                workspace.
+                                logicalclusters (resource "cluster"). Supported for
+                                both scoped and admin SA.
                               type: boolean
                             enableInitTargetsAccess:
                               description: EnableInitTargetsAccess grants get, list,
-                                watch on initialization.kcp.io inittargets in the
-                                export workspace (for init-agent).
+                                watch on initialization.kcp.io inittargets. Only for
+                                serviceAccountScoped; ignored for admin.
                               type: boolean
                             enableStoresAccess:
                               description: EnableStoresAccess grants get, list, watch
-                                on core.platform-mesh.io stores in the export workspace.
+                                on core.platform-mesh.io stores. Only for serviceAccountScoped;
+                                ignored for admin.
                               type: boolean
                             rootOrgAccess:
                               description: |-
                                 RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
-                                (e.g. LogicalCluster get, Store get). Only enable for providers that actually call root:orgs.
+                                (e.g. LogicalCluster get, Store get). Only for serviceAccountScoped; ignored for serviceAccountAdmin.
                               type: boolean
                           type: object
-                        secret:
-                          type: string
                       required:
                       - secret
                       type: object
