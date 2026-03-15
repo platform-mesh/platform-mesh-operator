@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,7 +78,7 @@ func (r *DeploymentSubroutine) SetImageVersionStore(store *ImageVersionStore) {
 	r.imageVersionStore = store
 }
 
-// getProfileConfigMap ensures the profile ConfigMap exists, creating a default one if needed.
+// getProfileConfigMap returns the profile ConfigMap for the given instance.
 func (r *DeploymentSubroutine) getProfileConfigMap(ctx context.Context, inst *v1alpha1.PlatformMesh) (*corev1.ConfigMap, error) {
 	var configMapName, configMapNamespace string
 	if inst.Spec.ProfileConfigMap != nil {
@@ -114,7 +113,7 @@ func (r *DeploymentSubroutine) getProfileConfigMap(ctx context.Context, inst *v1
 	return nil, err
 }
 
-// loadProfileSections  returns infra and components profile sections as separate YAML strings
+// loadProfileSections returns infra and components profile sections as separate YAML strings
 func (r *DeploymentSubroutine) loadProfileSections(ctx context.Context, inst *v1alpha1.PlatformMesh) (infraProfile string, componentsProfile string, err error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -688,7 +687,7 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 
 	// Calculate sync waves for ArgoCD Applications based on dependsOn
 	if deploymentTech == "argocd" {
-		if err := calculateSyncWaves(mergedServices, inst.Namespace); err != nil {
+		if err := calculateSyncWaves(mergedServices); err != nil {
 			log.Warn().Err(err).Msg("Failed to calculate sync waves, continuing without sync wave annotations")
 		}
 	}
@@ -722,7 +721,7 @@ func getBaseDomainFromInstance(inst *v1alpha1.PlatformMesh) string {
 
 // calculateSyncWaves calculates ArgoCD sync waves based on dependsOn relationships
 // Services with no dependencies get wave 0, services depending on wave N get wave N+1
-func calculateSyncWaves(services map[string]interface{}, defaultNamespace string) error {
+func calculateSyncWaves(services map[string]interface{}) error {
 	if services == nil {
 		return nil
 	}
@@ -1047,73 +1046,16 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 		return errors.NewOperatorError(err, true, true)
 	}
 
-	// Determine which template to render based on deploymentTechnology from infra profile
 	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
 	if !ok {
-		deploymentTech = "fluxcd" // default
+		deploymentTech = "fluxcd"
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
-	err = filepath.WalkDir(r.gotemplatesInfraDir+"/infra", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml") {
-			return nil
-		}
+	skipFile := deploymentTechFileFilter(deploymentTech, log)
+	postProcess := r.argoHelmReleasePostProcess(ctx, log)
 
-		// Conditionally render templates based on deploymentTechnology
-		fileName := d.Name()
-		if deploymentTech == "argocd" && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
-			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
-			return nil
-		}
-		if deploymentTech == "fluxcd" && strings.HasPrefix(fileName, "application") {
-			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
-			return nil
-		}
-
-		log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Rendering infra template")
-
-		// Read and render template
-		obj, err := r.renderTemplateFile(path, tmplVars, log)
-		if err != nil {
-			return errors.Wrap(err, "Failed to render template: %s", path)
-		}
-
-		if obj == nil {
-			// Template rendered empty, skip
-			return nil
-		}
-
-		// For ArgoCD Applications, preserve existing repoURL and targetRevision if they're already set
-		// (not placeholder values) to avoid overwriting values set by ResourceSubroutine
-		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
-			r.preserveExistingArgoSourceFields(ctx, obj.Object, obj.GetName(), obj.GetNamespace(), log)
-
-			// Merge Resource-managed image versions into helm values
-			r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
-		}
-
-		// For FluxCD HelmReleases, merge Resource-managed image versions into spec.values
-		if obj.GetKind() == "HelmRelease" && obj.GetAPIVersion() == "helm.toolkit.fluxcd.io/v2" {
-			r.mergeImageVersionsIntoHelmReleaseValues(obj, obj.GetName(), obj.GetNamespace(), log)
-		}
-
-		// Apply the rendered manifest
-		if err := r.clientInfra.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
-			return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to render and apply infra templates")
-		return errors.NewOperatorError(err, false, true)
-	}
-
-	return nil
+	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/infra", tmplVars, r.clientInfra, log, "infra", skipFile, postProcess)
 }
 
 // renderAndApplyRuntimeTemplates renders all templates in gotemplates/infra/runtime and applies them to the runtime cluster.
@@ -1126,7 +1068,7 @@ func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Contex
 		return errors.NewOperatorError(err, true, true)
 	}
 
-	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/runtime", tmplVars, r.clientRuntime, log, "runtime")
+	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/runtime", tmplVars, r.clientRuntime, log, "runtime", nil, nil)
 }
 
 // renderAndApplyComponentsInfraTemplates renders gotemplates/components/infra with profile-components.yaml
@@ -1140,103 +1082,20 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 		return errors.NewOperatorError(err, true, true)
 	}
 
-	// Determine which template to render based on deploymentTechnology
 	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
 	if !ok {
-		deploymentTech = "fluxcd" // default
+		deploymentTech = "fluxcd"
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
-	err = filepath.WalkDir(r.gotemplatesComponentsDir+"/infra", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml") {
-			return nil
-		}
+	skipFile := deploymentTechFileFilter(deploymentTech, log)
+	postProcess := r.argoHelmReleasePostProcess(ctx, log)
 
-		// Conditionally render templates based on deploymentTechnology
-		fileName := d.Name()
-		if deploymentTech == "argocd" && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
-			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
-			return nil
-		}
-		if deploymentTech == "fluxcd" && strings.HasPrefix(fileName, "application") {
-			log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
-			return nil
-		}
-
-		log.Debug().Str("path", path).Str("deploymentTechnology", deploymentTech).Msg("Rendering components infra template")
-
-		tplBytes, err := os.ReadFile(path)
-		if err != nil {
-			return errors.Wrap(err, "Failed to read components infra template file: %s", path)
-		}
-
-		tpl, err := template.New(filepath.Base(path)).Funcs(templateFuncMap()).Parse(string(tplBytes))
-		if err != nil {
-			return errors.Wrap(err, "Failed to parse components infra template: %s", path)
-		}
-
-		var rendered bytes.Buffer
-		if err := tpl.Execute(&rendered, tmplVars); err != nil {
-			return errors.Wrap(err, "Failed to execute components infra template: %s", path)
-		}
-
-		renderedStr := strings.TrimSpace(rendered.String())
-		if renderedStr == "" {
-			log.Debug().Str("path", path).Msg("Components infra template rendered empty, skipping")
-			return nil
-		}
-
-		// Split multi-doc YAML
-		docs := strings.Split(renderedStr, "\n---")
-		for _, doc := range docs {
-			doc = strings.TrimSpace(doc)
-			if doc == "" {
-				continue
-			}
-			var objMap map[string]interface{}
-			if err := yaml.Unmarshal([]byte(doc), &objMap); err != nil {
-				return errors.Wrap(err, "Failed to unmarshal rendered components infra YAML from template %s. Output:\n%s", path, doc)
-			}
-			obj := unstructured.Unstructured{Object: objMap}
-
-			// For ArgoCD Applications, preserve existing repoURL and targetRevision if they're already set
-			// (not placeholder values) to avoid overwriting values set by ResourceSubroutine
-			if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
-				r.preserveExistingArgoSourceFields(ctx, objMap, obj.GetName(), obj.GetNamespace(), log)
-
-				// Merge Resource-managed image versions into helm values
-				r.mergeImageVersionsIntoHelmValues(objMap, obj.GetName(), obj.GetNamespace(), log)
-			}
-
-			// For FluxCD HelmReleases, merge Resource-managed image versions into spec.values
-			if obj.GetKind() == "HelmRelease" && obj.GetAPIVersion() == "helm.toolkit.fluxcd.io/v2" {
-				r.mergeImageVersionsIntoHelmReleaseValues(&obj, obj.GetName(), obj.GetNamespace(), log)
-			}
-
-			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
-			// This bypasses client-side schema validation and uses server-side validation instead
-			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.clientInfra.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
-				return errors.Wrap(err, "Failed to apply rendered components infra manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to render and apply components infra templates")
-		return errors.NewOperatorError(err, false, true)
-	}
-
-	return nil
+	return r.renderAndApplyTemplates(ctx, r.gotemplatesComponentsDir+"/infra", tmplVars, r.clientInfra, log, "components-infra", skipFile, postProcess)
 }
 
 // renderAndApplyComponentsRuntimeTemplates renders gotemplates/components/runtime with profile-components.yaml
-// and applies the resulting manifests to the infra cluster (OCM Resources).
+// and applies the resulting manifests to the runtime cluster (OCM Resources).
 func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -1246,67 +1105,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx cont
 		return errors.NewOperatorError(err, true, true)
 	}
 
-	err = filepath.WalkDir(r.gotemplatesComponentsDir+"/runtime", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml") {
-			return nil
-		}
-
-		log.Debug().Str("path", path).Msg("Rendering components runtime template")
-
-		tplBytes, err := os.ReadFile(path)
-		if err != nil {
-			return errors.Wrap(err, "Failed to read components runtime template file: %s", path)
-		}
-
-		tpl, err := template.New(filepath.Base(path)).Funcs(templateFuncMap()).Parse(string(tplBytes))
-		if err != nil {
-			return errors.Wrap(err, "Failed to parse components runtime template: %s", path)
-		}
-
-		var rendered bytes.Buffer
-		if err := tpl.Execute(&rendered, tmplVars); err != nil {
-			return errors.Wrap(err, "Failed to execute components runtime template: %s", path)
-		}
-
-		renderedStr := strings.TrimSpace(rendered.String())
-		if renderedStr == "" {
-			log.Debug().Str("path", path).Msg("Components runtime template rendered empty, skipping")
-			return nil
-		}
-
-		// Split multi-doc YAML
-		docs := strings.Split(renderedStr, "\n---")
-		for _, doc := range docs {
-			doc = strings.TrimSpace(doc)
-			if doc == "" {
-				continue
-			}
-			var objMap map[string]interface{}
-			if err := yaml.Unmarshal([]byte(doc), &objMap); err != nil {
-				return errors.Wrap(err, "Failed to unmarshal rendered components runtime YAML from template %s. Output:\n%s", path, doc)
-			}
-			obj := unstructured.Unstructured{Object: objMap}
-
-			// Apply the rendered manifest using Server-Side Apply with field manager via dynamic client
-			// This bypasses client-side schema validation and uses server-side validation instead
-			// This allows Kubernetes to merge fields managed by other subroutines (e.g., Resource subroutine)
-			if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
-				return errors.Wrap(err, "Failed to apply rendered components runtime manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to render and apply components runtime templates")
-		return errors.NewOperatorError(err, false, true)
-	}
-
-	return nil
+	return r.renderAndApplyTemplates(ctx, r.gotemplatesComponentsDir+"/runtime", tmplVars, r.clientRuntime, log, "components-runtime", nil, nil)
 }
 
 func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMesh) {

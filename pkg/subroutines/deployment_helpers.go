@@ -39,7 +39,9 @@ func updateObjectMetadata(existing, desired *unstructured.Unstructured) {
 	}
 }
 
-// renderAndApplyTemplates is a generic function to render and apply templates from a directory.
+// renderAndApplyTemplates renders and applies all YAML templates in a directory.
+// skipFile, if non-nil, is called for each file; returning true skips that file.
+// postProcessObj, if non-nil, is called on each rendered object before applying.
 func (r *DeploymentSubroutine) renderAndApplyTemplates(
 	ctx context.Context,
 	dir string,
@@ -47,6 +49,8 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 	k8sClient client.Client,
 	log *logger.Logger,
 	templateType string,
+	skipFile func(fileName string) bool,
+	postProcessObj func(ctx context.Context, obj *unstructured.Unstructured) error,
 ) errors.OperatorError {
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -57,20 +61,27 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 			return nil
 		}
 
-		// Read and render template
-		obj, err := r.renderTemplateFile(path, tmplVars, log)
+		if skipFile != nil && skipFile(d.Name()) {
+			return nil
+		}
+
+		// Read and render template (supports multi-document YAML)
+		objs, err := r.renderTemplateFile(path, tmplVars, log)
 		if err != nil {
 			return errors.Wrap(err, "Failed to render template: %s", path)
 		}
 
-		if obj == nil {
-			// Template rendered empty, skip
-			return nil
-		}
+		for _, obj := range objs {
+			if postProcessObj != nil {
+				if err := postProcessObj(ctx, obj); err != nil {
+					return errors.Wrap(err, "Failed to post-process rendered object from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+				}
+			}
 
-		// Apply the rendered manifest
-		if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
-			return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+			// Apply the rendered manifest
+			if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
+				return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+			}
 		}
 
 		return nil
@@ -84,9 +95,10 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 	return nil
 }
 
-// renderTemplateFile reads a template file, renders it, and returns an unstructured object.
-// Returns nil if the template renders empty.
-func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[string]interface{}, log *logger.Logger) (*unstructured.Unstructured, error) {
+// renderTemplateFile reads a template file, renders it, and returns all unstructured objects.
+// Supports multi-document YAML (documents separated by "---").
+// Returns an empty slice if the template renders empty.
+func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[string]interface{}, log *logger.Logger) ([]*unstructured.Unstructured, error) {
 	templateBytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to read template file")
@@ -108,12 +120,20 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 		return nil, nil
 	}
 
-	var objMap map[string]interface{}
-	if err := yaml.Unmarshal(rendered.Bytes(), &objMap); err != nil {
-		return nil, errors.Wrap(err, "Failed to unmarshal rendered YAML (size: %d bytes)", len(rendered.Bytes()))
+	docs := strings.Split(renderedStr, "\n---")
+	var objs []*unstructured.Unstructured
+	for _, doc := range docs {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
+		var objMap map[string]interface{}
+		if err := yaml.Unmarshal([]byte(doc), &objMap); err != nil {
+			return nil, errors.Wrap(err, "Failed to unmarshal rendered YAML from template %s (size: %d bytes)", path, len(doc))
+		}
+		objs = append(objs, &unstructured.Unstructured{Object: objMap})
 	}
-
-	return &unstructured.Unstructured{Object: objMap}, nil
+	return objs, nil
 }
 
 // helper: functions for Helm-like templates in components gotemplates
@@ -242,5 +262,37 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 				log.Debug().Str("app", name).Msg("Preserving existing targetRevision from ResourceSubroutine")
 			}
 		}
+	}
+}
+
+// deploymentTechFileFilter returns a function that skips template files not matching the active deployment technology.
+// For argocd: skips helmrelease and kustomization files.
+// For fluxcd: skips application files.
+func deploymentTechFileFilter(deploymentTech string, log *logger.Logger) func(fileName string) bool {
+	return func(fileName string) bool {
+		if deploymentTech == "argocd" && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
+			log.Debug().Str("file", fileName).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
+			return true
+		}
+		if deploymentTech == "fluxcd" && strings.HasPrefix(fileName, "application") {
+			log.Debug().Str("file", fileName).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
+			return true
+		}
+		return false
+	}
+}
+
+// argoHelmReleasePostProcess returns a post-process function that preserves ArgoCD source fields
+// and merges Resource-managed image versions before applying manifests to the infra cluster.
+func (r *DeploymentSubroutine) argoHelmReleasePostProcess(ctx context.Context, log *logger.Logger) func(ctx context.Context, obj *unstructured.Unstructured) error {
+	return func(ctx context.Context, obj *unstructured.Unstructured) error {
+		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
+			r.preserveExistingArgoSourceFields(ctx, obj.Object, obj.GetName(), obj.GetNamespace(), log)
+			r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
+		}
+		if obj.GetKind() == "HelmRelease" && obj.GetAPIVersion() == "helm.toolkit.fluxcd.io/v2" {
+			r.mergeImageVersionsIntoHelmReleaseValues(obj, obj.GetName(), obj.GetNamespace(), log)
+		}
+		return nil
 	}
 }

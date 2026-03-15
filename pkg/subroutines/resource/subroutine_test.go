@@ -1338,7 +1338,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_HelmRepository() {
 		}).Once()
 
 	// ArgoCD Application Patch
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
@@ -1495,7 +1495,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ImageArtifact_HelmValuesUpdate() {
 		}).Once()
 
 	// ArgoCD Application Patch for Helm values
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
@@ -1623,7 +1623,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIImageReference() {
 		}).Once()
 
 	// ArgoCD Application Patch
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
@@ -1683,7 +1683,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo() {
 		}).Once()
 
 	// ArgoCD Application Patch
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)
@@ -1746,7 +1746,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_ComponentVersionFa
 		}).Once()
 
 	// ArgoCD Application Patch - should update targetRevision to component version v2.0.0
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			// Verify the patch content
 			patchData, err := patch.Data(obj)
@@ -1829,7 +1829,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_ResourceVersionFal
 		}).Once()
 
 	// ArgoCD Application Patch - should update targetRevision to resource version 3.0.0
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			patchData, err := patch.Data(obj)
 			s.Require().NoError(err)
@@ -1911,7 +1911,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_GitRepo_CommitFallback() {
 		}).Once()
 
 	// ArgoCD Application Patch - should update targetRevision to commit abc123def456
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			patchData, err := patch.Data(obj)
 			s.Require().NoError(err)
@@ -2030,7 +2030,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIWithPrefix() {
 		}).Once()
 
 	// ArgoCD Application Patch - verify oci:// prefix is stripped from repoURL
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			patchData, err := patch.Data(obj)
 			s.Require().NoError(err)
@@ -2109,7 +2109,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_OCIAlternativePath() {
 		}).Once()
 
 	// ArgoCD Application Patch - verify alternative path imageReference is used
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			patchData, err := patch.Data(obj)
 			s.Require().NoError(err)
@@ -2302,7 +2302,7 @@ func (s *ResourceTestSuite) Test_ArgoCD_ChartArtifact_PatchFailure() {
 		}).Once()
 
 	// ArgoCD Application Patch - returns error
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed")).Once()
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch failed")).Once()
 
 	subroutine := subroutines.NewResourceSubroutine(clientMock, &config.OperatorConfig{}, nil)
 	result, err := subroutine.Process(ctx, inst)

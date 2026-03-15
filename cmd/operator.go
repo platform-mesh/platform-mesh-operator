@@ -89,11 +89,12 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg.RemoteRuntime.IsEnabled() {
 		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
+		var err error
 		_, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
-	}
-	if err != nil {
-		setupLog.Error(err, "unable to create PlatformMesh client")
-		os.Exit(1)
+		if err != nil {
+			setupLog.Error(err, "unable to create PlatformMesh client")
+			os.Exit(1)
+		}
 	}
 	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", restCfg.Host))
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
@@ -117,20 +118,22 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	var clientInfra client.Client
+	log.Info().Msg("Manager successfully created")
+
 	restCfgInfra := ctrl.GetConfigOrDie()
 	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
-	clientInfra, err = client.New(restCfgInfra, client.Options{Scheme: subroutines.GetClientScheme()})
+	clientInfra, err := client.New(restCfgInfra, client.Options{Scheme: subroutines.GetClientScheme()})
 	if err != nil {
 		setupLog.Error(err, "unable to create Infra client")
 		os.Exit(1)
 	}
 	if operatorCfg.RemoteInfra.IsEnabled() {
-		clientInfra, _, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
-		if err != nil {
-			setupLog.Error(err, "unable to create Infra client")
+		var infraErr error
+		clientInfra, _, infraErr = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
+		if infraErr != nil {
+			setupLog.Error(infraErr, "unable to create Infra client")
 			os.Exit(1)
 		}
 	}

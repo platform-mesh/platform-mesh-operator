@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -233,17 +232,19 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 		return ctrl.Result{}, nil
 	}
 
-	patch := map[string]interface{}{
-		"spec": map[string]interface{}{
-			"source": map[string]interface{}{
-				"targetRevision": targetRevision,
-				"repoURL":        repoURL,
-			},
-		},
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(argocdApplicationGvk)
+	patchObj.SetName(inst.GetName())
+	patchObj.SetNamespace(inst.GetNamespace())
+	if err := unstructured.SetNestedField(patchObj.Object, targetRevision, "spec", "source", "targetRevision"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
-	patchBytes, _ := json.Marshal(patch)
+	if err := unstructured.SetNestedField(patchObj.Object, repoURL, "spec", "source", "repoURL"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
 
-	if err := r.client.Patch(ctx, existingApp, client.RawPatch(types.MergePatchType, patchBytes)); err != nil {
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
 		log.Error().Err(err).Msg("Failed to update ArgoCD Application")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -355,16 +356,16 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	patch := map[string]interface{}{
-		"spec": map[string]interface{}{
-			"source": map[string]interface{}{
-				"helm": map[string]interface{}{"values": updatedValues},
-			},
-		},
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(argocdApplicationGvk)
+	patchObj.SetName(appName)
+	patchObj.SetNamespace(appNamespace)
+	if err := unstructured.SetNestedField(patchObj.Object, updatedValues, "spec", "source", "helm", "values"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
-	patchBytes, _ := json.Marshal(patch)
 
-	if err := r.client.Patch(ctx, existingApp, client.RawPatch(types.MergePatchType, patchBytes)); err != nil {
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -602,6 +603,14 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Cont
 	if len(platformMeshList.Items) == 0 {
 		log.Warn().Str("namespace", namespace).Msg("No PlatformMesh instances found in namespace, trying direct ConfigMap lookup")
 		return r.getDeploymentTechnologyFromConfigMapDirect(ctx, namespace, log)
+	}
+
+	if len(platformMeshList.Items) > 1 {
+		names := make([]string, len(platformMeshList.Items))
+		for i, item := range platformMeshList.Items {
+			names[i] = item.Name
+		}
+		log.Warn().Strs("platformMeshInstances", names).Str("namespace", namespace).Msg("Multiple PlatformMesh instances found in namespace, using first one")
 	}
 
 	pm := platformMeshList.Items[0]
