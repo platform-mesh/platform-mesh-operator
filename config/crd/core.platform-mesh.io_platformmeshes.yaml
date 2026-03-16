@@ -131,7 +131,8 @@ spec:
                         kubeconfigAuth:
                           description: |-
                             KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
-                            serviceAccountScoped (scoped SA token), or serviceAccountAdmin (admin SA token). When unset, defaults to adminCertificate.
+                            serviceAccountScoped (scoped SA token), serviceAccountAdmin (admin SA token), or adminKubeconfig
+                            (directly from kubeconfig-kcp-admin with host/scheme rewrite). When unset, defaults to adminCertificate.
                           type: string
                         namespace:
                           type: string
@@ -160,6 +161,11 @@ spec:
                               description: EnableStoresAccess grants get, list, watch
                                 on core.platform-mesh.io stores. Only for serviceAccountScoped;
                                 ignored for admin.
+                              type: boolean
+                            enableWorkspaceTypesAccess:
+                              description: |-
+                                EnableWorkspaceTypesAccess grants get, list, watch on tenancy.kcp.io workspacetypes.
+                                Only for serviceAccountScoped; ignored for admin.
                               type: boolean
                             rootOrgAccess:
                               description: |-
@@ -214,7 +220,8 @@ spec:
                         kubeconfigAuth:
                           description: |-
                             KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
-                            serviceAccountScoped (scoped SA token), or serviceAccountAdmin (admin SA token). When unset, defaults to adminCertificate.
+                            serviceAccountScoped (scoped SA token), serviceAccountAdmin (admin SA token), or adminKubeconfig
+                            (directly from kubeconfig-kcp-admin with host/scheme rewrite). When unset, defaults to adminCertificate.
                           type: string
                         namespace:
                           type: string
@@ -243,6 +250,11 @@ spec:
                               description: EnableStoresAccess grants get, list, watch
                                 on core.platform-mesh.io stores. Only for serviceAccountScoped;
                                 ignored for admin.
+                              type: boolean
+                            enableWorkspaceTypesAccess:
+                              description: |-
+                                EnableWorkspaceTypesAccess grants get, list, watch on tenancy.kcp.io workspacetypes.
+                                Only for serviceAccountScoped; ignored for admin.
                               type: boolean
                             rootOrgAccess:
                               description: |-
