@@ -110,15 +110,6 @@ tasks:
   docker-build:
     cmds:
       - docker build .
-  docker:build:
-    desc: "Build container image"
-    vars:
-      CONTAINER_RUNTIME: '{{.CONTAINER_RUNTIME | default "docker"}}'
-      IMAGE_TAG: '{{.IMAGE_TAG | default "latest"}}'
-      IMAGE_NAME: '{{.IMAGE_NAME | default "ghcr.io/platform-mesh/platform-mesh-operator"}}'
-    cmds:
-      - echo "Building image {{.IMAGE_NAME}}:{{.IMAGE_TAG}} using {{.CONTAINER_RUNTIME}}"
-      - "{{.CONTAINER_RUNTIME}} build -t {{.IMAGE_NAME}}:{{.IMAGE_TAG}} ."
   docker:kind:
     desc: "Build container image with current tag from kind cluster and load it"
     vars:
