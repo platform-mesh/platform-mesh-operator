@@ -52,7 +52,7 @@ jobs:
         run: |
           GITHUB_WORKFLOW=ci task test ADDITIONAL_COMMAND_ARGS="-covermode=atomic -coverpkg=./..."
       - name: Install Code Coverage
-        run: go install github.com/vladopajic/go-test-coverage/v2@latest
+        run: go install github.com/vladopajic/go-test-coverage/v2@v2.18.3
       - name: Check Test Coverage
         if: ${{ inputs.useLocalCoverageConfig == false }}
         run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out
