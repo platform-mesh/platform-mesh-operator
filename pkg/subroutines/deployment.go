@@ -227,13 +227,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
 
 		if !found || syncStatus != "Synced" {
-			log.Info().Str("deploymentTechnology", deploymentTech).
-				Str("syncStatus", syncStatus).Msg("cert-manager Application is not synced..")
 			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not synced"), true, false)
 		}
 		if !healthFound || healthStatus != "Healthy" {
-			log.Info().Str("deploymentTechnology", deploymentTech).
-				Str("healthStatus", healthStatus).Msg("cert-manager Application is not healthy..")
 			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not healthy"), true, false)
 		}
 	}
@@ -241,7 +237,6 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	if deploymentTech == "fluxcd" {
 		// For FluxCD HelmReleases, check Ready condition
 		if !matchesConditionWithStatus(rel, "Ready", "True") {
-			log.Info().Str("deploymentTechnology", deploymentTech).Msg("cert-manager Release is not ready..")
 			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
 		}
 	}
@@ -282,21 +277,15 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
 
 			if !found || syncStatus != "Synced" {
-				log.Info().Str("deploymentTechnology", deploymentTech).
-					Str("syncStatus", syncStatus).Msg("istio-istiod Application is not synced..")
 				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not synced"), true, false)
 			}
 			if !healthFound || healthStatus != "Healthy" {
-				log.Info().Str("deploymentTechnology", deploymentTech).
-					Str("healthStatus", healthStatus).Msg("istio-istiod Application is not healthy..")
 				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not healthy"), true, false)
 			}
 		}
 
 		if deploymentTech == "fluxcd" {
 			// For FluxCD HelmReleases, check Ready condition
-			if !matchesConditionWithStatus(rel, "Ready", "True") {
-				log.Info().Str("deploymentTechnology", deploymentTech).Msg("istio-istiod Release is not ready..")
 				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
 			}
 		}
@@ -325,7 +314,6 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	// Wait for root shard to be ready
 	err = r.clientRuntime.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
-		log.Info().Msg("RootShard is not ready..")
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, false)
 	}
 
@@ -334,7 +322,6 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	// Wait for root shard to be ready
 	err = r.clientRuntime.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
-		log.Info().Msg("FrontProxy is not ready..")
 		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, false)
 	}
 	return ctrl.Result{}, nil
