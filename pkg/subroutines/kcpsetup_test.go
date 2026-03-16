@@ -605,76 +605,201 @@ func (s *KcpsetupTestSuite) TestProcess() {
 }
 
 func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
-	// mocks
-	mockKcpClient := new(mocks.Client)
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Times(3)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	tests := []struct {
+		name              string
+		setupMocks        func(*mocks.KcpHelper, *mocks.Client, *mocks.Client)
+		expectedInventory map[string]string
+		expectError       bool
+	}{
+		{
+			name: "success - all APIExports found",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(rootClient, nil).Once()
+				helper.EXPECT().NewKcpClient(mock.Anything, "root:platform-mesh-system").Return(pmSystemClient, nil).Once()
 
-	apiexport := &kcpapiv1alpha.APIExport{
-		Status: kcpapiv1alpha.APIExportStatus{
-			IdentityHash: "hash1",
+				apiexport := &kcpapiv1alpha.APIExport{Status: kcpapiv1alpha.APIExportStatus{IdentityHash: "hash1"}}
+				systemApiexport := &kcpapiv1alpha.APIExport{Status: kcpapiv1alpha.APIExportStatus{IdentityHash: "system-hash"}}
+
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "shards.core.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "topology.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				pmSystemClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "system.platform-mesh.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *systemApiexport
+						return nil
+					}).Once()
+			},
+			expectedInventory: map[string]string{
+				"apiExportRootTenancyKcpIoIdentityHash":     "hash1",
+				"apiExportRootShardsKcpIoIdentityHash":      "hash1",
+				"apiExportRootTopologyKcpIoIdentityHash":    "hash1",
+				"apiExportSystemPlatformMeshIoIdentityHash": "system-hash",
+			},
+			expectError: false,
+		},
+		{
+			name: "system.platform-mesh.io error - uses empty hash",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(rootClient, nil).Once()
+				helper.EXPECT().NewKcpClient(mock.Anything, "root:platform-mesh-system").Return(pmSystemClient, nil).Once()
+
+				apiexport := &kcpapiv1alpha.APIExport{Status: kcpapiv1alpha.APIExportStatus{IdentityHash: "hash1"}}
+
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "shards.core.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "topology.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				pmSystemClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "system.platform-mesh.io"}, mock.Anything).
+					Return(errors.New("any error")).Once()
+			},
+			expectedInventory: map[string]string{
+				"apiExportRootTenancyKcpIoIdentityHash":     "hash1",
+				"apiExportRootShardsKcpIoIdentityHash":      "hash1",
+				"apiExportRootTopologyKcpIoIdentityHash":    "hash1",
+				"apiExportSystemPlatformMeshIoIdentityHash": "",
+			},
+			expectError: false,
+		},
+		{
+			name: "topology.kcp.io error",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(rootClient, nil).Once()
+
+				apiexport := &kcpapiv1alpha.APIExport{Status: kcpapiv1alpha.APIExportStatus{IdentityHash: "hash1"}}
+
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "shards.core.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "topology.kcp.io"}, mock.Anything).
+					Return(errors.New("error")).Once()
+			},
+			expectedInventory: map[string]string{
+				"apiExportRootTenancyKcpIoIdentityHash": "hash1",
+				"apiExportRootShardsKcpIoIdentityHash":  "hash1",
+			},
+			expectError: true,
+		},
+		{
+			name: "shards.core.kcp.io error",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(rootClient, nil).Once()
+
+				apiexport := &kcpapiv1alpha.APIExport{Status: kcpapiv1alpha.APIExportStatus{IdentityHash: "hash1"}}
+
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "shards.core.kcp.io"}, mock.Anything).
+					Return(errors.New("error")).Once()
+			},
+			expectedInventory: map[string]string{
+				"apiExportRootTenancyKcpIoIdentityHash": "hash1",
+			},
+			expectError: true,
+		},
+		{
+			name: "tenancy.kcp.io error",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(rootClient, nil).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.Anything).
+					Return(errors.New("error")).Once()
+			},
+			expectedInventory: map[string]string{},
+			expectError:       true,
+		},
+		{
+			name: "NewKcpClient error for root",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(nil, errors.New("Error")).Once()
+			},
+			expectedInventory: map[string]string{},
+			expectError:       true,
+		},
+		{
+			name: "NewKcpClient error for platform-mesh-system",
+			setupMocks: func(helper *mocks.KcpHelper, rootClient *mocks.Client, pmSystemClient *mocks.Client) {
+				helper.EXPECT().NewKcpClient(mock.Anything, "root").Return(rootClient, nil).Once()
+				helper.EXPECT().NewKcpClient(mock.Anything, "root:platform-mesh-system").Return(nil, errors.New("failed to create pm-system client")).Once()
+
+				apiexport := &kcpapiv1alpha.APIExport{Status: kcpapiv1alpha.APIExportStatus{IdentityHash: "hash1"}}
+
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "shards.core.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+				rootClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "topology.kcp.io"}, mock.Anything).
+					RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+						*o.(*kcpapiv1alpha.APIExport) = *apiexport
+						return nil
+					}).Once()
+			},
+			expectedInventory: map[string]string{
+				"apiExportRootTenancyKcpIoIdentityHash":  "hash1",
+				"apiExportRootShardsKcpIoIdentityHash":   "hash1",
+				"apiExportRootTopologyKcpIoIdentityHash": "hash1",
+			},
+			expectError: true,
 		},
 	}
-	mockKcpClient.EXPECT().Get(
-		mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*kcpapiv1alpha.APIExport) = *apiexport
-			return nil
-		}).Times(2)
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*kcpapiv1alpha.APIExport) = *apiexport
-			return errors.New("error")
-		}).Once()
 
-	inventory, err := s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
-	s.Assert().Error(err)
-	s.Assert().Equal(map[string]string{
-		"apiExportRootTenancyKcpIoIdentityHash": "hash1",
-		"apiExportRootShardsKcpIoIdentityHash":  "hash1",
-	}, inventory)
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			mockKcpClient := new(mocks.Client)
+			mockPmSystemClient := new(mocks.Client)
+			mockedKcpHelper := new(mocks.KcpHelper)
 
-	// test error 2
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*kcpapiv1alpha.APIExport) = *apiexport
-			return nil
-		}).Once()
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*kcpapiv1alpha.APIExport) = *apiexport
-			return errors.New("error")
-		}).Once()
+			tt.setupMocks(mockedKcpHelper, mockKcpClient, mockPmSystemClient)
 
-	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
-	s.Assert().Error(err)
-	s.Assert().Equal(map[string]string{
-		"apiExportRootTenancyKcpIoIdentityHash": "hash1",
-	}, inventory)
+			s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
-	// test error 3
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*kcpapiv1alpha.APIExport) = *apiexport
-			return errors.New("error")
-		}).Once()
+			inventory, err := s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
 
-	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
-	s.Assert().Error(err)
-	s.Assert().Equal(map[string]string{}, inventory)
-
-	// test error 4
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(nil, errors.New("Error")).Once()
-	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
-	s.Assert().Error(err)
-	s.Assert().Equal(map[string]string{}, inventory)
+			if tt.expectError {
+				s.Assert().Error(err)
+			} else {
+				s.Assert().NoError(err)
+			}
+			s.Assert().Equal(tt.expectedInventory, inventory)
+		})
+	}
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
