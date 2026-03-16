@@ -286,6 +286,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 
 		if deploymentTech == "fluxcd" {
 			// For FluxCD HelmReleases, check Ready condition
+			if !matchesConditionWithStatus(rel, "Ready", "True") {
 				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
 			}
 		}
