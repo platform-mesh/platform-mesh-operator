@@ -12,7 +12,6 @@ spec:
   - v260112-5925c7e.authorizationmodels.core.platform-mesh.io
   - v250718-a64f278.stores.core.platform-mesh.io
   - v260213-fbdf981.invites.core.platform-mesh.io
-  - v260217-2c67392.identityproviderconfigurations.core.platform-mesh.io
   permissionClaims:
     - all: true
       group: tenancy.kcp.io
@@ -22,6 +21,10 @@ spec:
       group: tenancy.kcp.io
       identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
       resource: workspacetypes
+    - all: true
+      group: core.platform-mesh.io
+      identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
+      resource: identityproviderconfigurations
     - resource: apibindings
       group: apis.kcp.io
       all: true
