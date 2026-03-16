@@ -144,6 +144,8 @@ const (
 	KubeconfigAuthServiceAccountScoped = "serviceAccountScoped"
 	// KubeconfigAuthServiceAccountAdmin uses an admin ServiceAccount token (broad rights in the workspace).
 	KubeconfigAuthServiceAccountAdmin = "serviceAccountAdmin"
+	// KubeconfigAuthAdminKubeconfig reuses kubeconfig-kcp-admin directly (cert-based), rewriting only host/scheme.
+	KubeconfigAuthAdminKubeconfig = "adminKubeconfig"
 )
 
 // ServiceAccountPermissions specifies RBAC permission flags for provider connections that use a
@@ -164,6 +166,10 @@ type ServiceAccountPermissions struct {
 	// EnableInitTargetsAccess grants get, list, watch on initialization.kcp.io inittargets. Only for serviceAccountScoped; ignored for admin.
 	// +optional
 	EnableInitTargetsAccess *bool `json:"enableInitTargetsAccess,omitempty"`
+	// EnableWorkspaceTypesAccess grants get, list, watch on tenancy.kcp.io workspacetypes.
+	// Only for serviceAccountScoped; ignored for admin.
+	// +optional
+	EnableWorkspaceTypesAccess *bool `json:"enableWorkspaceTypesAccess,omitempty"`
 }
 
 type ProviderConnection struct {
@@ -174,7 +180,8 @@ type ProviderConnection struct {
 	External          bool    `json:"external,omitempty"`
 	Namespace         *string `json:"namespace,omitempty"`
 	// KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
-	// serviceAccountScoped (scoped SA token), or serviceAccountAdmin (admin SA token). When unset, defaults to adminCertificate.
+	// serviceAccountScoped (scoped SA token), serviceAccountAdmin (admin SA token), or adminKubeconfig
+	// (directly from kubeconfig-kcp-admin with host/scheme rewrite). When unset, defaults to adminCertificate.
 	KubeconfigAuth string `json:"kubeconfigAuth,omitempty"`
 	APIExportName  string `json:"apiExportName,omitempty"`
 	// ServiceAccountPermissions applies to both serviceAccountScoped and serviceAccountAdmin.

@@ -34,8 +34,7 @@ import (
 )
 
 // AdminKubeconfigSecretName is the secret created by kcp-operator with key "kubeconfig".
-// For serviceAccountAdmin, we use it as source of truth for the server path (e.g. /clusters/root),
-// while still using an admin SA token for authentication.
+// For adminKubeconfig auth, it is used as source kubeconfig for credentials and cluster entries.
 const AdminKubeconfigSecretName = "kubeconfig-kcp-admin"
 
 // HelmGetter is an interface for getting Helm releases
@@ -156,7 +155,7 @@ func (r *ProvidersecretSubroutine) Process(
 		})
 	}
 
-	// Build kcp kubeonfig
+	// Build KCP kubeconfig.
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
@@ -183,8 +182,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 	return ProvidersecretSubroutineName
 }
 
-// normalizeRestConfigHost ensures cfg.Host has a scheme so that url.Parse(cfg.Host) yields a valid host (e.g. "example.com" -> "https://example.com").
-// scheme is the protocol from the PlatformMesh exposure (see baseDomainPortProtocol), or "https" when not set.
+// normalizeRestConfigHost ensures cfg.Host includes a scheme.
 func normalizeRestConfigHost(cfg *rest.Config, scheme string) {
 	if cfg == nil || cfg.Host == "" {
 		return
@@ -197,13 +195,48 @@ func normalizeRestConfigHost(cfg *rest.Config, scheme string) {
 	}
 }
 
-// effectiveKubeconfigAuth returns the effective auth mode for the provider connection.
-// When KubeconfigAuth is set, it is used. Otherwise defaults to adminCertificate.
+// effectiveKubeconfigAuth applies the default auth mode.
 func effectiveKubeconfigAuth(pc corev1alpha1.ProviderConnection) string {
 	if pc.KubeconfigAuth != "" {
 		return pc.KubeconfigAuth
 	}
 	return corev1alpha1.KubeconfigAuthAdminCertificate
+}
+
+func providerConnectionNamespace(pc corev1alpha1.ProviderConnection) string {
+	namespace := "platform-mesh-system"
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+	return namespace
+}
+
+func providerPermissionFlags(pc corev1alpha1.ProviderConnection) (enableGetLogicalCluster, enableWorkspaceTypesAccess bool) {
+	if pc.ServiceAccountPermissions == nil {
+		return false, false
+	}
+	if pc.ServiceAccountPermissions.EnableGetLogicalCluster != nil {
+		enableGetLogicalCluster = *pc.ServiceAccountPermissions.EnableGetLogicalCluster
+	}
+	if pc.ServiceAccountPermissions.EnableWorkspaceTypesAccess != nil {
+		enableWorkspaceTypesAccess = *pc.ServiceAccountPermissions.EnableWorkspaceTypesAccess
+	}
+	return enableGetLogicalCluster, enableWorkspaceTypesAccess
+}
+
+func loadAdminKubeconfigFromSecret(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+) ([]byte, error) {
+	adminSecret, err := GetSecret(k8sClient, AdminKubeconfigSecretName, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("read %s/%s: %w", namespace, AdminKubeconfigSecretName, err)
+	}
+	if adminSecret == nil || len(adminSecret.Data["kubeconfig"]) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing key kubeconfig", namespace, AdminKubeconfigSecretName)
+	}
+	return adminSecret.Data["kubeconfig"], nil
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
@@ -266,24 +299,40 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 				log.Error().Msg("Admin kubeconfig requested but no base URL available")
 				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("admin kubeconfig requires base URL"), true, true)
 			}
-			namespace := "platform-mesh-system"
-			if ptr.Deref(pc.Namespace, "") != "" {
-				namespace = *pc.Namespace
-			}
-			enableGetLogicalCluster := false
-			if pc.ServiceAccountPermissions != nil && pc.ServiceAccountPermissions.EnableGetLogicalCluster != nil {
-				enableGetLogicalCluster = *pc.ServiceAccountPermissions.EnableGetLogicalCluster
-			}
-			serverURL, buildErr := url.JoinPath(hostPort, address.Path)
+			namespace := providerConnectionNamespace(pc)
+			enableGetLogicalCluster, enableWorkspaceTypesAccess := providerPermissionFlags(pc)
+			serverURL, buildErr := BuildHostURLForScoped(hostPort, pc.Path)
 			if buildErr != nil {
-				log.Error().Err(buildErr).Str("secret", pc.Secret).Msg("Failed to build admin SA server URL from endpoint slice")
+				log.Error().Err(buildErr).Str("secret", pc.Secret).Msg("Failed to build admin SA server URL from workspace path")
 				return ctrl.Result{}, errors.NewOperatorError(buildErr, false, false)
 			}
-			if err := WriteAdminSAKubeconfigToSecretWithServerURL(ctx, r.client, cfg, pc.Path, pc.Secret, serverURL, namespace, enableGetLogicalCluster); err != nil {
+			if err := writeAdminSAKubeconfigToSecretWithServerURL(ctx, r.client, cfg, pc.Path, pc.Secret, serverURL, namespace, enableGetLogicalCluster, enableWorkspaceTypesAccess); err != nil {
 				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write provider secret from admin ServiceAccount kubeconfig")
 				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 			}
 			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Str("serverURL", serverURL).Msg("Created or updated provider secret from admin ServiceAccount kubeconfig (endpoint slice)")
+			return ctrl.Result{}, nil
+		case corev1alpha1.KubeconfigAuthAdminKubeconfig:
+			adminKubeconfigData, err := loadAdminKubeconfigFromSecret(ctx, r.client, operatorCfg.KCP.Namespace)
+			if err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kubeconfig-kcp-admin for provider")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			if err := writeProviderSecretFromAdminKubeconfig(
+				ctx,
+				r.client,
+				adminKubeconfigData,
+				hostPort,
+				pc.Path,
+				ptr.Deref(pc.RawPath, ""),
+				cfg.CAData,
+				pc.Secret,
+				providerConnectionNamespace(pc),
+			); err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write provider secret from kubeconfig-kcp-admin")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Msg("Created or updated provider secret directly from kubeconfig-kcp-admin (endpoint slice)")
 			return ctrl.Result{}, nil
 		default:
 			// adminCertificate: use slice path with hostPort below
@@ -315,16 +364,9 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 				log.Error().Msg("Admin kubeconfig requested but no base URL available")
 				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("admin kubeconfig requires base URL"), true, true)
 			}
-			namespace := "platform-mesh-system"
-			if ptr.Deref(pc.Namespace, "") != "" {
-				namespace = *pc.Namespace
-			}
-			enableGetLogicalCluster := false
-			if pc.ServiceAccountPermissions != nil && pc.ServiceAccountPermissions.EnableGetLogicalCluster != nil {
-				enableGetLogicalCluster = *pc.ServiceAccountPermissions.EnableGetLogicalCluster
-			}
-			operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-			serverURL, serverErr := BuildServerURLFromAdminKubeconfig(ctx, r.client, operatorCfg.KCP.Namespace, hostPort, pc.Path)
+			namespace := providerConnectionNamespace(pc)
+			enableGetLogicalCluster, enableWorkspaceTypesAccess := providerPermissionFlags(pc)
+			serverURL, serverErr := buildServerURLFromAdminKubeconfig(ctx, r.client, operatorCfg.KCP.Namespace, hostPort, pc.Path)
 			if serverErr != nil {
 				log.Warn().Err(serverErr).Str("secret", pc.Secret).Msg("Failed to derive server URL from kubeconfig-kcp-admin; falling back to scoped path URL")
 				serverURL = ""
@@ -337,11 +379,33 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 				}
 				serverURL = fallbackURL
 			}
-			if err := WriteAdminSAKubeconfigToSecretWithServerURL(ctx, r.client, cfg, pc.Path, pc.Secret, serverURL, namespace, enableGetLogicalCluster); err != nil {
+			if err := writeAdminSAKubeconfigToSecretWithServerURL(ctx, r.client, cfg, pc.Path, pc.Secret, serverURL, namespace, enableGetLogicalCluster, enableWorkspaceTypesAccess); err != nil {
 				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write provider secret from admin ServiceAccount kubeconfig")
 				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 			}
 			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Str("serverURL", serverURL).Msg("Created or updated provider secret from admin ServiceAccount kubeconfig")
+			return ctrl.Result{}, nil
+		case corev1alpha1.KubeconfigAuthAdminKubeconfig:
+			adminKubeconfigData, err := loadAdminKubeconfigFromSecret(ctx, r.client, operatorCfg.KCP.Namespace)
+			if err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kubeconfig-kcp-admin for provider")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			if err := writeProviderSecretFromAdminKubeconfig(
+				ctx,
+				r.client,
+				adminKubeconfigData,
+				hostPort,
+				pc.Path,
+				ptr.Deref(pc.RawPath, ""),
+				cfg.CAData,
+				pc.Secret,
+				providerConnectionNamespace(pc),
+			); err != nil {
+				log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write provider secret from kubeconfig-kcp-admin")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			}
+			log.Info().Str("secret", pc.Secret).Str("path", pc.Path).Msg("Created or updated provider secret directly from kubeconfig-kcp-admin")
 			return ctrl.Result{}, nil
 		default:
 			// adminCertificate: build address from path
@@ -402,17 +466,14 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	return ctrl.Result{}, nil
 }
 
-// BuildServerURLFromAdminKubeconfig reads kubeconfig-kcp-admin and returns the server URL with
+// buildServerURLFromAdminKubeconfig reads kubeconfig-kcp-admin and returns the server URL with
 // host/scheme rewritten to hostPort while preserving the original path (e.g. /clusters/root).
-func BuildServerURLFromAdminKubeconfig(ctx context.Context, k8sClient client.Client, namespace, hostPort, workspacePath string) (string, error) {
-	adminSecret, err := GetSecret(k8sClient, AdminKubeconfigSecretName, namespace)
+func buildServerURLFromAdminKubeconfig(ctx context.Context, k8sClient client.Client, namespace, hostPort, workspacePath string) (string, error) {
+	adminKubeconfigData, err := loadAdminKubeconfigFromSecret(ctx, k8sClient, namespace)
 	if err != nil {
-		return "", fmt.Errorf("read %s/%s: %w", namespace, AdminKubeconfigSecretName, err)
+		return "", err
 	}
-	if adminSecret == nil || len(adminSecret.Data["kubeconfig"]) == 0 {
-		return "", fmt.Errorf("secret %s/%s missing key kubeconfig", namespace, AdminKubeconfigSecretName)
-	}
-	cfg, err := clientcmd.Load(adminSecret.Data["kubeconfig"])
+	cfg, err := clientcmd.Load(adminKubeconfigData)
 	if err != nil {
 		return "", fmt.Errorf("load admin kubeconfig: %w", err)
 	}
@@ -421,8 +482,7 @@ func BuildServerURLFromAdminKubeconfig(ctx context.Context, k8sClient client.Cli
 		return "", fmt.Errorf("parse hostPort %q: %w", hostPort, err)
 	}
 
-	// Prefer the server of current-context cluster from kubeconfig-kcp-admin (usually /clusters/root),
-	// then named "default", then any valid cluster entry.
+	// Try current-context cluster first, then default, then any valid cluster.
 	orderedClusterNames := make([]string, 0, len(cfg.Clusters)+2)
 	if cfg.CurrentContext != "" {
 		if ctxRef, ok := cfg.Contexts[cfg.CurrentContext]; ok && ctxRef != nil && ctxRef.Cluster != "" {
@@ -452,6 +512,13 @@ func BuildServerURLFromAdminKubeconfig(ctx context.Context, k8sClient client.Cli
 		}
 		parsedServer.Scheme = baseURL.Scheme
 		parsedServer.Host = baseURL.Host
+		if workspacePath != "" {
+			// Prefer configured workspace path over source kubeconfig path.
+			scopedURL, joinErr := BuildHostURLForScoped(baseURL.Scheme+"://"+baseURL.Host, workspacePath)
+			if joinErr == nil {
+				return scopedURL, nil
+			}
+		}
 		return parsedServer.String(), nil
 	}
 
@@ -466,10 +533,10 @@ func BuildServerURLFromAdminKubeconfig(ctx context.Context, k8sClient client.Cli
 // writeProviderSecretFromAdminKubeconfig writes the provider secret using the given admin kubeconfig
 // (e.g. from secret kubeconfig-kcp-admin).
 //
-// Important: keep the path from the source kubeconfig and only rewrite scheme/host to front-proxy.
-// The kcp-operator secret contains a full kubeconfig (typically /clusters/root); replacing only
-// hostname follows that source-of-truth and avoids changing cluster/workspace path semantics.
-func writeProviderSecretFromAdminKubeconfig(ctx context.Context, k8sClient client.Client, kubeconfigData []byte, hostPort, workspacePath, providerSecretName, providerSecretNamespace string) error {
+// Important: prefer the provider's configured target path (RawPath or Path) over the source kubeconfig path.
+// This keeps provider secrets aligned with PlatformMesh ProviderConnection configuration while still
+// using kubeconfig-kcp-admin as source for credentials and CA data.
+func writeProviderSecretFromAdminKubeconfig(ctx context.Context, k8sClient client.Client, kubeconfigData []byte, hostPort, workspacePath, rawPath string, frontProxyCAData []byte, providerSecretName, providerSecretNamespace string) error {
 	cfg, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
 		return fmt.Errorf("load admin kubeconfig: %w", err)
@@ -480,19 +547,45 @@ func writeProviderSecretFromAdminKubeconfig(ctx context.Context, k8sClient clien
 		return fmt.Errorf("parse hostPort %q: %w", hostPort, err)
 	}
 
+	targetServerURL := ""
+	if rawPath != "" {
+		targetServerURL, err = url.JoinPath(hostPort, rawPath)
+		if err != nil {
+			return fmt.Errorf("build server URL from rawPath %q: %w", rawPath, err)
+		}
+	} else if workspacePath != "" {
+		targetServerURL, err = BuildHostURLForScoped(hostPort, workspacePath)
+		if err != nil {
+			return fmt.Errorf("build server URL for workspace path %q: %w", workspacePath, err)
+		}
+	}
+
 	for name, c := range cfg.Clusters {
 		if c == nil {
+			continue
+		}
+		if len(frontProxyCAData) > 0 {
+			c.CertificateAuthorityData = frontProxyCAData
+			c.CertificateAuthority = ""
+			c.InsecureSkipTLSVerify = false
+		}
+		if targetServerURL != "" {
+			c.Server = targetServerURL
 			continue
 		}
 
 		parsedServer, err := url.Parse(c.Server)
 		if err != nil || parsedServer.Host == "" {
-			// Fallback for malformed or host-less entries: build a deterministic workspace URL.
-			serverURL, buildErr := BuildHostURLForScoped(hostPort, workspacePath)
-			if buildErr != nil {
-				return fmt.Errorf("build fallback server URL for cluster %q: %w", name, buildErr)
+			// Fallback for malformed or host-less entries: use hostPort directly when no target path is configured.
+			if workspacePath != "" {
+				serverURL, buildErr := BuildHostURLForScoped(hostPort, workspacePath)
+				if buildErr != nil {
+					return fmt.Errorf("build fallback server URL for cluster %q: %w", name, buildErr)
+				}
+				c.Server = serverURL
+			} else {
+				c.Server = hostPort
 			}
-			c.Server = serverURL
 			continue
 		}
 
@@ -571,7 +664,18 @@ func (r *ProvidersecretSubroutine) ensureRootOrgAccess(ctx context.Context, pc c
 	if err != nil {
 		return fmt.Errorf("create KCP client for root:orgs: %w", err)
 	}
-	return EnsureRootOrgsAccess(ctx, orgsClient, clusterID)
+	if err := EnsureRootOrgsAccess(ctx, orgsClient, clusterID); err != nil {
+		return err
+	}
+
+	// Scoped kubeconfigs authenticate as the provider ServiceAccount user.
+	// Ensure that exact SA identity has root:orgs workspace and cluster-admin bindings as well.
+	providerSuffix := sanitizeSecretNameForRBAC(pc.Secret)
+	saName := scopedSAPrefix + providerSuffix
+	if err := ensureRootOrgsAccessForServiceAccount(ctx, orgsClient, defaultScopedSANamespace, saName, providerSuffix); err != nil {
+		return err
+	}
+	return nil
 }
 
 // writeScopedKubeconfig builds a scoped kubeconfig for pc and writes it to a Secret.
@@ -603,12 +707,13 @@ func (r *ProvidersecretSubroutine) writeScopedKubeconfig(
 		APIExportName: apiExportName,
 	}
 	if perms := pc.ServiceAccountPermissions; perms != nil {
-		hasExtraRules := perms.EnableGetLogicalCluster != nil || perms.EnableStoresAccess != nil || perms.EnableInitTargetsAccess != nil
+		hasExtraRules := perms.EnableGetLogicalCluster != nil || perms.EnableStoresAccess != nil || perms.EnableInitTargetsAccess != nil || perms.EnableWorkspaceTypesAccess != nil
 		if hasExtraRules {
 			spec.ExtraPolicyRuleBlocks = &ExtraPolicyRulesFlags{
-				EnableGetLogicalCluster: perms.EnableGetLogicalCluster,
-				EnableStoresAccess:      perms.EnableStoresAccess,
-				EnableInitTargetsAccess: perms.EnableInitTargetsAccess,
+				EnableGetLogicalCluster:    perms.EnableGetLogicalCluster,
+				EnableStoresAccess:         perms.EnableStoresAccess,
+				EnableInitTargetsAccess:    perms.EnableInitTargetsAccess,
+				EnableWorkspaceTypesAccess: perms.EnableWorkspaceTypesAccess,
 			}
 		}
 	}

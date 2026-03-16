@@ -22,6 +22,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -86,6 +87,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
+	utilruntime.Must(rbacv1.AddToScheme(scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme))
 
 	cl, err := client.New(config, client.Options{

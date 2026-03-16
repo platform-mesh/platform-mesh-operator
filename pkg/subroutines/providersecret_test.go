@@ -244,7 +244,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			}
 			return nil
 		},
-	).Once()
+	).Times(2)
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -1100,7 +1100,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Times(2)
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -1206,7 +1206,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Times(2)
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -1763,7 +1763,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Times(2)
 
 	providers := append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...)
 	// Setup mock expectations for each provider connection

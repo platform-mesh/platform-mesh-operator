@@ -516,6 +516,7 @@ func Test_getExtraPolicyRulesFromFlags(t *testing.T) {
 		{"get logical cluster only", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &trueVal}, 1, []string{"core.kcp.io"}},
 		{"stores only", &ExtraPolicyRulesFlags{EnableStoresAccess: &trueVal}, 1, []string{"core.platform-mesh.io"}},
 		{"both enabled", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &trueVal, EnableStoresAccess: &trueVal}, 2, []string{"core.kcp.io", "core.platform-mesh.io"}},
+		{"workspace types only", &ExtraPolicyRulesFlags{EnableWorkspaceTypesAccess: &trueVal}, 1, []string{"tenancy.kcp.io"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
