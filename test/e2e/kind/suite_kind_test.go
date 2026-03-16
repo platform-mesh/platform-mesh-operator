@@ -81,8 +81,10 @@ func checkClusterExists(clusterName string) (bool, error) {
 		return false, fmt.Errorf("failed to get Kind clusters: %w", err)
 	}
 
-	if strings.Contains(string(output), clusterName) {
-		return true, nil
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == clusterName {
+			return true, nil
+		}
 	}
 	return false, nil
 }
