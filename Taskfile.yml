@@ -26,7 +26,7 @@ tasks:
   setup:go-test-coverage:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/go-test-coverage || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vladopajic/go-test-coverage/v2@latest
+      - test -s {{.LOCAL_BIN}}/go-test-coverage || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vladopajic/go-test-coverage/v2@v2.18.3
   setup:kustomize:
     internal: true
     cmds:
