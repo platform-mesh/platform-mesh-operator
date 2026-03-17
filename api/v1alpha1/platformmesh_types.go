@@ -137,11 +137,12 @@ type SecretReference struct {
 }
 
 const (
-	KubeconfigAuthAdminCertificate = "adminCertificate"
-	KubeconfigAuthAdminKubeconfig  = "adminKubeconfig"
+	KubeconfigAuthAdminKubeconfig = "adminKubeconfig"
 )
 
 type ProviderConnection struct {
+	// EndpointSliceName is reserved for scoped kubeconfig (e.g. apiExport endpoint discovery).
+	// Not used when only adminKubeconfig auth is supported; keep for merge with scoped-provider-kubeconfig.
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
 	Path              string  `json:"path,omitempty"`
 	RawPath           *string `json:"rawPath,omitempty"`
