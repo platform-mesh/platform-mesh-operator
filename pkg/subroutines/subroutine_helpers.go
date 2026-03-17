@@ -484,7 +484,7 @@ func ApplyManifestFromFile(
 		}
 	}
 
-	if obj.GetKind() == "ApiExport" && obj.GetName() == "core.platform-mesh.io" {
+	if obj.GetKind() == "APIExport" && obj.GetName() == "core.platform-mesh.io" {
 		apiExport := kcpapiv1alpha.APIExport{}
 		err = k8sClient.Get(ctx, types.NamespacedName{Name: "system.platform-mesh.io"}, &apiExport)
 		if err != nil {
