@@ -126,6 +126,8 @@ spec:
                           type: string
                         external:
                           type: boolean
+                        kubeconfigAuth:
+                          type: string
                         namespace:
                           type: string
                         path:
@@ -176,6 +178,8 @@ spec:
                           type: string
                         external:
                           type: boolean
+                        kubeconfigAuth:
+                          type: string
                         namespace:
                           type: string
                         path:
