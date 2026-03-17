@@ -1,6 +1,6 @@
 module github.com/platform-mesh/platform-mesh-operator
 
-go 1.25.1
+go 1.26.0
 
 replace sigs.k8s.io/controller-runtime => github.com/kcp-dev/controller-runtime v0.19.0-kcp.1
 
