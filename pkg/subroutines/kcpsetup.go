@@ -341,23 +341,6 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, conf
 	}
 	inventory["apiExportRootTopologyKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
-	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
-	if err != nil {
-		log.Err(err).Msg("Failed to create kcp client for platform-mesh-system workspace")
-		return inventory, errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
-	}
-
-	// Try to get system.platform-mesh.io APIExport, but don't fail here with error,
-	// system.platform-mesh.io will be created earlier and if something is wrong with apiexport
-	// pm-operator will catch it while waiting for workspace readyness
-	err = pmSystemClient.Get(ctx, types.NamespacedName{Name: "system.platform-mesh.io"}, &apiExport)
-	if err != nil {
-		log.Err(err).Msg("getting APIExport system.platform-mesh.io, use empty identity hash")
-		inventory["apiExportSystemPlatformMeshIoIdentityHash"] = ""
-	} else {
-		inventory["apiExportSystemPlatformMeshIoIdentityHash"] = apiExport.Status.IdentityHash
-	}
-
 	return inventory, nil
 }
 
