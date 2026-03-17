@@ -1,6 +1,6 @@
 module github.com/platform-mesh/platform-mesh-operator
 
-go 1.26.1
+go 1.26.0
 
 replace sigs.k8s.io/controller-runtime => github.com/kcp-dev/controller-runtime v0.19.0-kcp.1
 
@@ -17,7 +17,7 @@ replace (
 require (
 	github.com/cert-manager/cert-manager v1.20.0
 	github.com/creasty/defaults v1.8.0
-	github.com/fluxcd/helm-controller/api v1.5.2
+	github.com/fluxcd/helm-controller/api v1.5.3
 	github.com/fluxcd/source-controller/api v1.8.1
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.28.3
