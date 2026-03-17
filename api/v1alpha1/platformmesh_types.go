@@ -136,6 +136,11 @@ type SecretReference struct {
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
 
+const (
+	KubeconfigAuthAdminCertificate = "adminCertificate"
+	KubeconfigAuthAdminKubeconfig  = "adminKubeconfig"
+)
+
 type ProviderConnection struct {
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
 	Path              string  `json:"path,omitempty"`
@@ -143,6 +148,7 @@ type ProviderConnection struct {
 	Secret            string  `json:"secret"`
 	External          bool    `json:"external,omitempty"`
 	Namespace         *string `json:"namespace,omitempty"`
+	KubeconfigAuth    string  `json:"kubeconfigAuth,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh

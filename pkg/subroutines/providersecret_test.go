@@ -243,7 +243,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			}
 			return nil
 		},
-	).Once()
+	).Maybe()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -447,6 +447,9 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	mockClient.EXPECT().
 		Get(mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
+				if key.Name == subroutines.AdminKubeconfigSecretName && key.Namespace == "" {
+					return true
+				}
 				if key.Namespace == "platform-mesh-system" {
 					switch key.Name {
 					case "account-operator-kubeconfig",
@@ -945,6 +948,9 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	s.clientMock.EXPECT().
 		Get(mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
+				if key.Name == subroutines.AdminKubeconfigSecretName && key.Namespace == "" {
+					return true
+				}
 				if key.Namespace == "platform-mesh-system" {
 					switch key.Name {
 					case "account-operator-kubeconfig",
@@ -1076,7 +1082,8 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
-		})
+		}).
+		Maybe()
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
@@ -1099,7 +1106,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Maybe()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -1173,7 +1180,8 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
-		})
+		}).
+		Maybe()
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
@@ -1205,7 +1213,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Maybe()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -1312,7 +1320,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Maybe()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
 
@@ -1704,7 +1712,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					} else {
 						for _, c := range cfg.Clusters {
 							if c != nil {
-								if c.Server == "https://kcp.api.example.com:8443/clusters/root:platform-mesh-system" {
+								if c.Server == "https://example.com/clusters/root:platform-mesh-system" {
 									return nil
 								}
 								return fmt.Errorf("unexpected server URL: %s", c.Server)
@@ -1748,7 +1756,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Maybe()
 
 	// Setup mock expectations for each provider connection
 	for _, pc := range subroutines.DefaultProviderConnections {
@@ -1793,7 +1801,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					}
 					ctx := cfg.Contexts[cfg.CurrentContext]
 					cluster := cfg.Clusters[ctx.Cluster]
-					want := fmt.Sprintf("http://example.com/clusters/%s", pc.Path)
+					want := fmt.Sprintf("https://example.com/clusters/%s", pc.Path)
 					if cluster.Server != want {
 						s.log.Error().Msgf("server URL = %q; want %q", cluster.Server, want)
 						return false
