@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"path"
 	"strings"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -13,10 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/rest"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
 
-	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
@@ -49,26 +46,16 @@ func (g DefaultHelmGetter) GetRelease(ctx context.Context, cli client.Client, na
 	return getHelmRelease(ctx, cli, name, ns)
 }
 
-func NewProviderSecretSubroutine(
-	client client.Client,
-	helper KcpHelper,
-	helm HelmGetter,
-	kcpUrl string,
-) *ProvidersecretSubroutine {
-	sub := &ProvidersecretSubroutine{
-		client:    client,
-		kcpUrl:    kcpUrl,
-		kcpHelper: helper,
-		helm:      helm,
+func NewProviderSecretSubroutine(client client.Client, kcpUrl string) *ProvidersecretSubroutine {
+	return &ProvidersecretSubroutine{
+		client: client,
+		kcpUrl: kcpUrl,
 	}
-	return sub
 }
 
 type ProvidersecretSubroutine struct {
-	client    client.Client
-	kcpHelper KcpHelper
-	kcpUrl    string
-	helm      HelmGetter
+	client client.Client
+	kcpUrl string
 }
 
 const (
@@ -82,8 +69,8 @@ func (r *ProvidersecretSubroutine) Finalize(
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
-// Process builds the KCP kubeconfig, ensures root:orgs RBAC when any provider uses adminKubeconfig auth,
-// then writes a provider secret per connection (from admin kubeconfig or from certificate).
+// Process builds the KCP kubeconfig, ensures root:orgs RBAC when any provider uses admin kubeconfig auth,
+// then writes a provider secret per connection using the kcp admin secret.
 func (r *ProvidersecretSubroutine) Process(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
@@ -109,7 +96,7 @@ func (r *ProvidersecretSubroutine) Process(
 
 	frontProxy := &unstructured.Unstructured{}
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
-	// Wait for root shard to be ready
+	// Wait for front proxy to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
@@ -196,12 +183,12 @@ func normalizeRestConfigHost(cfg *rest.Config, scheme string) {
 	}
 }
 
-// effectiveKubeconfigAuth applies the default auth mode.
+// effectiveKubeconfigAuth returns the auth mode; default is KubeconfigAuthAdminKubeconfig.
 func effectiveKubeconfigAuth(pc corev1alpha1.ProviderConnection) string {
 	if pc.KubeconfigAuth != "" {
 		return pc.KubeconfigAuth
 	}
-	return corev1alpha1.KubeconfigAuthAdminCertificate
+	return corev1alpha1.KubeconfigAuthAdminKubeconfig
 }
 
 // ensureRootOrgsAccessIfAdminKubeconfigUsed ensures root:orgs RBAC once when any provider uses adminKubeconfig auth (idempotent).
@@ -272,8 +259,8 @@ func (r *ProvidersecretSubroutine) writeProviderSecretFromAdminKubeconfigForConn
 	return ctrl.Result{}, nil
 }
 
-// HandleProviderConnection writes the provider secret for one connection.
-// For adminKubeconfig auth it uses the kcp admin secret; otherwise it uses certificate auth and the given cfg.
+// HandleProviderConnection writes the provider secret for one connection using the kcp admin secret.
+// Only KubeconfigAuthAdminKubeconfig is supported; certificate auth is no longer supported.
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
@@ -283,6 +270,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	normalizeRestConfigHost(cfg, scheme)
 
 	auth := effectiveKubeconfigAuth(pc)
+	if auth != corev1alpha1.KubeconfigAuthAdminKubeconfig {
+		err := fmt.Errorf("unsupported kubeconfigAuth %q; only %s is supported", auth, corev1alpha1.KubeconfigAuthAdminKubeconfig)
+		log.Error().Err(err).Str("secret", pc.Secret).Msg("Provider connection uses unsupported auth")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
 
 	hostPort := fmt.Sprintf("%s://%s-front-proxy.%s:%s", scheme, operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External {
@@ -296,86 +288,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 	}
 
-	if auth == corev1alpha1.KubeconfigAuthAdminKubeconfig {
-		return r.writeProviderSecretFromAdminKubeconfigForConnection(ctx, hostPort, pc, cfg)
-	}
-
-	var address *url.URL
-	if ptr.Deref(pc.EndpointSliceName, "") != "" {
-		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to create KCP client")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
-
-		var slice kcpapiv1alpha.APIExportEndpointSlice
-		err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
-
-		if len(slice.Status.APIExportEndpoints) == 0 {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("no endpoints in slice"), true, false)
-		}
-
-		endpointURL := slice.Status.APIExportEndpoints[0].URL
-		address, err = url.Parse(endpointURL)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse endpoint URL")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
-	} else {
-		kcpUrl, err := url.Parse(cfg.Host)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse KCP URL")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-		}
-		if ptr.Deref(pc.RawPath, "") != "" {
-			kcpUrl.Path = *pc.RawPath
-		} else {
-			kcpUrl.Path = path.Join("clusters", pc.Path)
-		}
-		address = kcpUrl
-	}
-
-	newConfig := rest.CopyConfig(cfg)
-	host, err := url.JoinPath(hostPort, address.Path)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to join path for provider connection")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-	newConfig.Host = host
-
-	apiConfig := restConfigToAPIConfig(newConfig)
-	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to write kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-
-	namespace := providerConnectionNamespace(pc)
-	providerSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pc.Secret,
-			Namespace: namespace,
-		},
-	}
-
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
-		providerSecret.Data = map[string][]byte{
-			"kubeconfig": kcpConfigBytes,
-		}
-		return nil
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
-	}
-
-	log.Debug().Str("secret", pc.Secret).Msg("Created or updated provider secret")
-
-	return ctrl.Result{}, nil
+	return r.writeProviderSecretFromAdminKubeconfigForConnection(ctx, hostPort, pc, cfg)
 }
 
 func buildHostURLForScoped(hostPort, workspacePath string) (string, error) {
@@ -456,38 +369,4 @@ func writeProviderSecretFromAdminKubeconfig(ctx context.Context, k8sClient clien
 		return nil
 	})
 	return err
-}
-
-func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
-	if restCfg == nil {
-		return nil
-	}
-
-	clientConfig := &clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{
-			"default-cluster": {
-				Server:                   restCfg.Host,
-				CertificateAuthorityData: restCfg.CAData,
-				InsecureSkipTLSVerify:    restCfg.Insecure,
-			},
-		},
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"default-auth": {
-				Token:                 restCfg.BearerToken,
-				ClientCertificateData: restCfg.CertData,
-				ClientKeyData:         restCfg.KeyData,
-				Username:              restCfg.Username,
-				Password:              restCfg.Password,
-			},
-		},
-		Contexts: map[string]*clientcmdapi.Context{
-			"default-context": {
-				Cluster:  "default-cluster",
-				AuthInfo: "default-auth",
-			},
-		},
-		CurrentContext: "default-context",
-	}
-
-	return clientConfig
 }
