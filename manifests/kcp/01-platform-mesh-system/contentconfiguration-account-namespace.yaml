@@ -37,9 +37,8 @@ spec:
                           "context": {
                               "resourceDefinition": {
                                   "version": "v1",
-                                  "plural": "namespaces",
-                                  "singular": "namespace",
-                                  "kind": "Namespace",
+                                  "entityCollection": "Namespaces",
+                                  "entity": "Namespace",
                                   "scope": "Cluster",
                                   "namespace": null,
                                   "ui": {
