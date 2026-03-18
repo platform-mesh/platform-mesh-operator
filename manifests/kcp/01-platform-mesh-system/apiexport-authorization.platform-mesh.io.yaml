@@ -1,0 +1,14 @@
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIExport
+metadata:
+  creationTimestamp: null
+  name: authorization.platform-mesh.io
+spec:
+  latestResourceSchemas:
+  - v260313-c8b198d.apiexportpolicies.core.platform-mesh.io
+  permissionClaims:
+    - resource: logicalclusters
+      group: core.kcp.io
+      all: true
+      identityHash: ""
+status: {}
