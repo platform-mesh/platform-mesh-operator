@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - repository.yaml
   - component.yaml
+  - ocm-resolver-config.yaml

@@ -8,15 +8,18 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 var ociRepoGvk = schema.GroupVersionKind{
@@ -43,12 +46,29 @@ var helmReleaseGvk = schema.GroupVersionKind{
 	Kind:    "HelmRelease",
 }
 
-type ResourceSubroutine struct {
-	mgr manager.Manager
+var argocdApplicationGvk = schema.GroupVersionKind{
+	Group:   "argoproj.io",
+	Version: "v1alpha1",
+	Kind:    "Application",
 }
 
-func NewResourceSubroutine(mgr manager.Manager) *ResourceSubroutine {
-	return &ResourceSubroutine{mgr: mgr}
+var resourceFieldManager = "platform-mesh-resource"
+
+type ResourceSubroutine struct {
+	client            client.Client // infra client for creating FluxCD resources
+	clientRuntime     client.Client // runtime client for reading profile ConfigMaps
+	cfg               *config.OperatorConfig
+	imageVersionStore *subroutines.ImageVersionStore
+}
+
+func NewResourceSubroutine(client client.Client, cfg *config.OperatorConfig, imageVersionStore *subroutines.ImageVersionStore) *ResourceSubroutine {
+	return &ResourceSubroutine{client: client, clientRuntime: client, cfg: cfg, imageVersionStore: imageVersionStore}
+}
+
+// SetRuntimeClient sets the runtime client for reading profile ConfigMaps
+// This should be called after creation if a different client is needed for the runtime cluster
+func (r *ResourceSubroutine) SetRuntimeClient(clientRuntime client.Client) {
+	r.clientRuntime = clientRuntime
 }
 
 func (r *ResourceSubroutine) GetName() string {
@@ -90,9 +110,41 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	inst := runtimeObj.(*unstructured.Unstructured)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("name", r.GetName())
 
+	deploymentTech, err := r.getDeploymentTechnologyFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		log.Error().Err(err).Str("namespace", inst.GetNamespace()).Msg("Failed to determine deploymentTechnology from profile")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	if deploymentTech == "" {
+		log.Warn().Str("namespace", inst.GetNamespace()).Msg("deploymentTechnology not configured in profile, defaulting to fluxcd")
+		deploymentTech = "fluxcd"
+	}
+	log.Debug().Str("deploymentTechnology", deploymentTech).Str("resource", inst.GetName()).Str("namespace", inst.GetNamespace()).Msg("Checking deployment technology for Resource")
+
 	repo := getMetadataValue(inst, "repo")
 	artifact := getMetadataValue(inst, "artifact")
 
+	if deploymentTech == "argocd" {
+		// argocd logic
+		if artifact == "chart" {
+			log.Debug().Msg("Update ArgoCD Application targetRevision and repoURL for chart artifact")
+			result, err := r.updateArgoCDApplication(ctx, inst, log)
+			if err != nil {
+				return result, err
+			}
+		} else if artifact == "image" {
+			log.Debug().Msg("Update ArgoCD Application Helm values (image.tag) for image artifact")
+			result, err := r.updateArgoCDApplicationHelmValues(ctx, inst, log)
+			if err != nil {
+				return result, err
+			}
+		} else {
+			log.Warn().Str("artifact", artifact).Msg("ArgoCD is enabled but artifact is not 'chart' or 'image', skipping")
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// fluxcd logic
 	if repo == "oci" && artifact == "chart" {
 		log.Debug().Msg("Create/Update OCI Repo")
 		result, err := r.updateOciRepo(ctx, inst, log)
@@ -130,90 +182,278 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 }
 
 func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(helmReleaseGvk)
+	name, namespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), inst.GetNamespace())
+	updatePath := append([]string{"spec", "values"}, parsePath(getMetadataValue(inst, "path"), "image.tag")...)
+	versionPath := parsePath(getMetadataValue(inst, "version-path"), "status.resource.version")
 
-	obj.SetName(inst.GetName())
-	obj.SetNamespace(inst.GetNamespace())
-
-	forVal := getMetadataValue(inst, "for")
-	log.Info().Msgf("Update Helm Release with Image Tag: %s", forVal)
-	if forVal != "" {
-		forValElems := strings.Split(forVal, "/")
-		if len(forValElems) == 2 {
-			obj.SetNamespace(forValElems[0])
-			obj.SetName(forValElems[1])
-		} else {
-			obj.SetName(forVal)
-		}
+	version, found, _ := unstructured.NestedString(inst.Object, versionPath...)
+	if !found || version == "" {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("version not available at path %v", versionPath), true, false)
 	}
 
-	pathLabelStr := getMetadataValue(inst, "path")
-	updatePath := []string{"spec", "values", "image", "tag"}
-	if pathLabelStr != "" {
-		pathElems := strings.Split(pathLabelStr, ".")
-		updatePath = []string{"spec", "values"}
-		updatePath = append(updatePath, pathElems...)
-	}
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(helmReleaseGvk)
+	patchObj.SetName(name)
+	patchObj.SetNamespace(namespace)
 
-	versionPathStr := getMetadataValue(inst, "version-path")
-	versionPath := []string{"status", "resource", "version"}
-	if versionPathStr != "" {
-		versionPathElems := strings.Split(versionPathStr, ".")
-		versionPath = []string{}
-		versionPath = append(versionPath, versionPathElems...)
-	}
-
-	version, found, err := unstructured.NestedString(inst.Object, versionPath...)
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get version from Resource status")
-	}
-
-	err = r.mgr.GetClient().Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, obj)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
-
-	err = unstructured.SetNestedField(obj.Object, version, updatePath...)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
+	if err := unstructured.SetNestedField(patchObj.Object, version, updatePath...); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.mgr.GetClient().Update(ctx, obj)
-	if err != nil {
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+
+	helmValuesPath := strings.Join(updatePath[2:], ".")
+	r.storeImageVersion(namespace, name, helmValuesPath, version)
 	return ctrl.Result{}, nil
 }
 
-func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(helmReleaseGvk)
-	obj.SetName(inst.GetName())
-	obj.SetNamespace(inst.GetNamespace())
+func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
+	repoURL, targetRevision, chartType, err := r.resolveArgoCDSource(inst)
+	if err != nil {
+		log.Info().Err(err).Msg("Failed to resolve ArgoCD source")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	log.Debug().Str("repoURL", repoURL).Str("targetRevision", targetRevision).Str("type", chartType).Msg("Resolved ArgoCD source")
 
-	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get version from Resource status")
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(argocdApplicationGvk)
+	if err := r.client.Get(ctx, client.ObjectKey{Name: inst.GetName(), Namespace: inst.GetNamespace()}, existingApp); err != nil {
+		log.Info().Err(err).Msg("Application not found, waiting for DeploymentSubroutine to create it")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("application %s/%s not found", inst.GetNamespace(), inst.GetName()), true, false)
 	}
 
-	err = r.mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(inst), obj)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	currentRevision, _, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
+	currentRepoURL, _, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "repoURL")
+	if currentRevision == targetRevision && currentRepoURL == repoURL {
+		return ctrl.Result{}, nil
 	}
 
-	err = unstructured.SetNestedField(obj.Object, version, "spec", "chart", "spec", "version")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(argocdApplicationGvk)
+	patchObj.SetName(inst.GetName())
+	patchObj.SetNamespace(inst.GetNamespace())
+	if err := unstructured.SetNestedField(patchObj.Object, targetRevision, "spec", "source", "targetRevision"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+	if err := unstructured.SetNestedField(patchObj.Object, repoURL, "spec", "source", "repoURL"); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	err = r.mgr.GetClient().Update(ctx, obj)
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to update ArgoCD Application")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	log.Info().
+		Str("application", inst.GetName()).
+		Str("repoURL", repoURL).
+		Str("targetRevision", targetRevision).
+		Str("previousRevision", currentRevision).
+		Msg("Updated ArgoCD Application")
+	return ctrl.Result{}, nil
+}
+
+func (r *ResourceSubroutine) resolveArgoCDSource(inst *unstructured.Unstructured) (repoURL, targetRevision, chartType string, err error) {
+	getString := func(path ...string) string {
+		val, _, _ := unstructured.NestedString(inst.Object, path...)
+		return val
+	}
+
+	// Helm repository
+	if helmRepo := getString("status", "resource", "access", "helmRepository"); helmRepo != "" {
+		version := getString("status", "resource", "version")
+		if version == "" {
+			return "", "", "", fmt.Errorf("version not found for helm chart")
+		}
+		return helmRepo, version, "helm", nil
+	}
+
+	// Git repository
+	if gitRepo := getString("status", "resource", "access", "repoUrl"); gitRepo != "" {
+		revision := firstNonEmpty(
+			getString("status", "resource", "access", "ref"),
+			getString("status", "component", "version"),
+			getString("status", "resource", "version"),
+			getString("status", "resource", "access", "commit"),
+		)
+		if revision == "" {
+			return "", "", "", fmt.Errorf("no ref, version, or commit found for git chart")
+		}
+		return gitRepo, revision, "git", nil
+	}
+
+	// OCI image reference
+	imageRef := getString("status", "resource", "access", "imageReference")
+	if imageRef == "" {
+		imageRef = getString("status", "resource", "imageReference")
+	}
+	if imageRef == "" {
+		return "", "", "", fmt.Errorf("no helmRepository, repoUrl, or imageReference found")
+	}
+
+	repoURL, err = extractOCIRepoURL(imageRef)
 	if err != nil {
+		return "", "", "", err
+	}
+
+	version := getString("status", "resource", "version")
+	if version == "" {
+		return "", "", "", fmt.Errorf("version not found for OCI chart")
+	}
+	return repoURL, version, "oci", nil
+}
+
+func extractOCIRepoURL(imageRef string) (string, error) {
+	imageRef = strings.TrimPrefix(imageRef, "oci://")
+	baseURL := strings.Split(imageRef, ":")[0]
+	lastSlash := strings.LastIndex(baseURL, "/")
+	if lastSlash == -1 {
+		return "", fmt.Errorf("invalid imageReference format: %s", imageRef)
+	}
+	return baseURL[:lastSlash], nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
+	appName, appNamespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), inst.GetNamespace())
+	updatePath := parsePath(getMetadataValue(inst, "path"), "image.tag")
+	pathStr := strings.Join(updatePath, ".")
+
+	version, found, _ := unstructured.NestedString(inst.Object, "status", "resource", "version")
+	if !found {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("version not found"), true, false)
+	}
+
+	existingApp := &unstructured.Unstructured{}
+	existingApp.SetGroupVersionKind(argocdApplicationGvk)
+	if err := r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp); err != nil {
+		log.Info().Err(err).Str("application", appName).Msg("Application not found, waiting for creation")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("application %s/%s not found", appNamespace, appName), true, false)
+	}
+
+	existingValues, _, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "helm", "values")
+	currentTag := getValueFromYAML(existingValues, updatePath)
+	if currentTag == version {
+		r.storeImageVersion(appNamespace, appName, pathStr, version)
+		return ctrl.Result{}, nil
+	}
+
+	updatedValues, err := subroutines.SetHelmValues(existingValues, []subroutines.ImageVersion{{Path: pathStr, Version: version}})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(argocdApplicationGvk)
+	patchObj.SetName(appName)
+	patchObj.SetNamespace(appNamespace)
+	if err := unstructured.SetNestedField(patchObj.Object, updatedValues, "spec", "source", "helm", "values"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	log.Info().Str("application", appName).Str("path", pathStr).Str("version", version).Msg("Updated ArgoCD Application helm values")
+	r.storeImageVersion(appNamespace, appName, pathStr, version)
+	return ctrl.Result{}, nil
+}
+
+func (r *ResourceSubroutine) storeImageVersion(namespace, name, path, version string) {
+	if r.imageVersionStore != nil {
+		r.imageVersionStore.Set(namespace, name, path, version)
+	}
+}
+
+func parseNamespacedName(forVal, defaultName, defaultNamespace string) (name, namespace string) {
+	if forVal == "" {
+		return defaultName, defaultNamespace
+	}
+	if parts := strings.Split(forVal, "/"); len(parts) == 2 {
+		return parts[1], parts[0]
+	}
+	return forVal, defaultNamespace
+}
+
+func parsePath(pathStr, defaultPath string) []string {
+	if pathStr == "" {
+		return strings.Split(defaultPath, ".")
+	}
+	return strings.Split(pathStr, ".")
+}
+
+func getValueFromYAML(yamlStr string, path []string) string {
+	if yamlStr == "" {
+		return ""
+	}
+	var m map[string]interface{}
+	if err := yaml.Unmarshal([]byte(yamlStr), &m); err != nil {
+		return ""
+	}
+	val, _ := getNestedString(m, path...)
+	return val
+}
+
+// getNestedString retrieves a nested string value from a map using a path
+func getNestedString(m map[string]interface{}, path ...string) (string, bool) {
+	if len(path) == 0 {
+		return "", false
+	}
+	current := m
+	for _, key := range path[:len(path)-1] {
+		val, ok := current[key]
+		if !ok {
+			return "", false
+		}
+		if valMap, ok := val.(map[string]interface{}); ok {
+			current = valMap
+		} else {
+			return "", false
+		}
+	}
+	lastKey := path[len(path)-1]
+	val, ok := current[lastKey]
+	if !ok {
+		return "", false
+	}
+	if strVal, ok := val.(string); ok {
+		return strVal, true
+	}
+	return "", false
+}
+
+func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
+	version, found, _ := unstructured.NestedString(inst.Object, "status", "resource", "version")
+	if !found || version == "" {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("version not available"), true, false)
+	}
+
+	patchObj := &unstructured.Unstructured{}
+	patchObj.SetGroupVersionKind(helmReleaseGvk)
+	patchObj.SetName(inst.GetName())
+	patchObj.SetNamespace(inst.GetNamespace())
+
+	if err := unstructured.SetNestedField(patchObj.Object, version, "spec", "chart", "spec", "version"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+
+	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -221,34 +461,21 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 }
 
 func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
-	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "helmRepository")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	url, found, _ := unstructured.NestedString(inst.Object, "status", "resource", "access", "helmRepository")
+	if !found || url == "" {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("helmRepository not available"), true, false)
 	}
 
-	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
-		err := unstructured.SetNestedField(obj.Object, url, "spec", "url")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+	_ = unstructured.SetNestedField(obj.Object, url, "spec", "url")
+	_ = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
+	_ = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
+
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply HelmRepository")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
@@ -256,12 +483,20 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 
 func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
-	if err != nil || !found {
+	if err != nil || !found || version == "" {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
+		if err == nil {
+			err = fmt.Errorf("version not available in Resource status")
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "imageReference")
-	if err != nil || !found {
+	if err != nil || !found || url == "" {
 		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+		if err == nil {
+			err = fmt.Errorf("imageReference not available in Resource status")
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	url = strings.TrimPrefix(url, "oci://")
@@ -283,31 +518,30 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	obj.SetGroupVersionKind(ociRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
-		err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, url, "spec", "url")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
-		if err != nil {
-			return err
-		}
-		err = unstructured.SetNestedMap(obj.Object, map[string]interface{}{
-			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
-			"operation": "copy",
-		}, "spec", "layerSelector")
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+
+	// Set desired fields
+	if err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, url, "spec", "url"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "generic", "spec", "provider"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedMap(obj.Object, map[string]interface{}{
+		"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+		"operation": "copy",
+	}, "spec", "layerSelector"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply OCIRepository")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
@@ -315,45 +549,124 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 
 func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	commit, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "commit")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get version from Resource status")
+	if err != nil || !found || commit == "" {
+		log.Info().Err(err).Msg("Failed to get commit from Resource status")
+		if err == nil {
+			err = fmt.Errorf("commit not available in Resource status")
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "repoUrl")
-	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+	if err != nil || !found || url == "" {
+		log.Info().Err(err).Msg("Failed to get repoUrl from Resource status")
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("repoUrl not available in Resource status"), true, false)
 	}
 
-	// Update or create oci repo
-	log.Info().Msg("Processing OCI Chart Resource")
+	// Update or create git repo
+	log.Info().Msg("Processing Git Repository Resource")
 	obj := &unstructured.Unstructured{}
 
 	obj.SetGroupVersionKind(gitRepoGvk)
 	obj.SetName(inst.GetName())
 	obj.SetNamespace(inst.GetNamespace())
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
+	// Set desired fields
+	if err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, url, "spec", "url"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if err := unstructured.SetNestedField(obj.Object, "5m", "spec", "timeout"); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
 
-		err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit")
-		if err != nil {
-			return err
-		}
-
-		err = unstructured.SetNestedField(obj.Object, url, "spec", "url")
-		if err != nil {
-			return err
-		}
-
-		err = unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval")
-		if err != nil {
-			return err
-		}
-
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply GitRepository")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
+	platformMeshList := &v1alpha1.PlatformMeshList{}
+	if err := r.clientRuntime.List(ctx, platformMeshList, client.InNamespace(namespace)); err != nil {
+		log.Warn().Err(err).Str("namespace", namespace).Msg("Failed to list PlatformMesh instances, trying direct ConfigMap lookup")
+		return r.getDeploymentTechnologyFromConfigMapDirect(ctx, namespace, log)
+	}
+
+	if len(platformMeshList.Items) == 0 {
+		log.Warn().Str("namespace", namespace).Msg("No PlatformMesh instances found in namespace, trying direct ConfigMap lookup")
+		return r.getDeploymentTechnologyFromConfigMapDirect(ctx, namespace, log)
+	}
+
+	if len(platformMeshList.Items) > 1 {
+		names := make([]string, len(platformMeshList.Items))
+		for i, item := range platformMeshList.Items {
+			names[i] = item.Name
+		}
+		log.Warn().Strs("platformMeshInstances", names).Str("namespace", namespace).Msg("Multiple PlatformMesh instances found in namespace, using first one")
+	}
+
+	pm := platformMeshList.Items[0]
+	log.Info().Str("namespace", namespace).Str("platformMesh", pm.Name).Msg("Found PlatformMesh instance, reading deploymentTechnology from profile")
+
+	deploymentTech, err := subroutines.GetDeploymentTechnologyFromProfile(ctx, r.clientRuntime, &pm)
+	if err != nil {
+		log.Error().Err(err).Str("platformMesh", pm.Name).Msg("Failed to read deploymentTechnology from profile")
+		return "", err
+	}
+	log.Info().Str("deploymentTechnology", deploymentTech).Str("platformMesh", pm.Name).Str("configMap", pm.Name+"-profile").Msg("Read deploymentTechnology from profile")
+	return deploymentTech, nil
+}
+
+func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
+	configMapNames := []string{"platform-mesh-profile", "platform-mesh-system-profile"}
+
+	for _, cmName := range configMapNames {
+		configMap := &corev1.ConfigMap{}
+		if err := r.clientRuntime.Get(ctx, types.NamespacedName{Name: cmName, Namespace: namespace}, configMap); err != nil {
+			log.Debug().Err(err).Str("configMap", cmName).Str("namespace", namespace).Msg("ConfigMap not found, trying next")
+			continue
+		}
+
+		log.Info().Str("configMap", cmName).Str("namespace", namespace).Msg("Found ConfigMap, reading profile.yaml")
+
+		profileYAML, ok := configMap.Data["profile.yaml"]
+		if !ok {
+			log.Warn().Str("configMap", cmName).Msg("ConfigMap found but profile.yaml key missing")
+			continue
+		}
+
+		var profile map[string]interface{}
+		if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
+			return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", namespace, cmName, err)
+		}
+
+		// Check infra section first
+		if infra, ok := profile["infra"].(map[string]interface{}); ok {
+			if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
+				log.Info().Str("deploymentTechnology", strings.ToLower(dt)).Str("configMap", cmName).Str("section", "infra").Msg("Read deploymentTechnology from profile ConfigMap (direct lookup)")
+				return strings.ToLower(dt), nil
+			}
+		}
+
+		// Check components section
+		if components, ok := profile["components"].(map[string]interface{}); ok {
+			if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
+				log.Info().Str("deploymentTechnology", strings.ToLower(dt)).Str("configMap", cmName).Str("section", "components").Msg("Read deploymentTechnology from profile ConfigMap (direct lookup)")
+				return strings.ToLower(dt), nil
+			}
+		}
+
+		log.Debug().Str("configMap", cmName).Msg("Profile ConfigMap found but deploymentTechnology not configured")
+		return "", nil
+	}
+
+	return "", fmt.Errorf("no profile ConfigMap found in namespace %s (tried: %v)", namespace, configMapNames)
 }

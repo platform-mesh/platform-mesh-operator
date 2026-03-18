@@ -1,0 +1,18 @@
+{{- if .etcdDruid.enabled }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Repository
+metadata:
+  name: gardener-releases
+  namespace: {{ .releaseNamespace }}
+spec:
+  repositorySpec:
+    baseUrl: {{ .etcdDruid.ocm.repo.baseUrl }}
+    type: OCIRegistry
+  ocmConfig:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: {{ .etcdDruid.ocm.resolverConfig.name }}
+      namespace: {{ .releaseNamespace }}
+      policy: Propagate
+  interval: 1m
+{{- end }}

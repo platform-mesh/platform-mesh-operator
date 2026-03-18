@@ -48,13 +48,14 @@ jobs:
           echo "WORKFLOW_GITHUB_PAT=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
       - name: Test task
         if: ${{ inputs.useTask == true }}
+        env: ${{ fromJSON(inputs.envArgs != '' && inputs.envArgs || '{}') }}
         run: |
-          task cover
+          GITHUB_WORKFLOW=ci task test ADDITIONAL_COMMAND_ARGS="-covermode=atomic -coverpkg=./..."
       - name: Install Code Coverage
-        run: go install github.com/vladopajic/go-test-coverage/v2@latest
+        run: go install github.com/vladopajic/go-test-coverage/v2@v2.18.3
       - name: Check Test Coverage
-        run: go-test-coverage --threshold-file ${{ inputs. coverageThresholdFile }} --threshold-package ${{ inputs. coverageThresholdPackage }} --threshold-total ${{ inputs. coverageThresholdTotal }} --profile cover.out
         if: ${{ inputs.useLocalCoverageConfig == false }}
+        run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out
       - name: Check Test Coverage with Config
-        run: go-test-coverage --threshold-file ${{ inputs. coverageThresholdFile }} --threshold-package ${{ inputs. coverageThresholdPackage }} --threshold-total ${{ inputs. coverageThresholdTotal }} --profile cover.out --config ./.testcoverage.yml
         if: ${{ inputs.useLocalCoverageConfig == true }}
+        run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out --config ./.testcoverage.yml

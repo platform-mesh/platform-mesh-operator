@@ -1,0 +1,52 @@
+{{ $values := .values }}
+{{- range $service, $config := .values.services }}
+{{- if and $config.enabled (not $config.skipHelmRelease) -}}
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: {{ $service}}
+  namespace: {{ $.releaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+spec:
+{{- if $.kubeConfigEnabled }}
+  kubeConfig:
+    secretRef:
+      name: {{ $.kubeConfigSecretName }}
+      key: {{ $.kubeConfigSecretKey }}
+{{- end }}
+  {{- if $config.helmRepo }}
+  chart:
+    spec:
+      chart: {{ $config.chart | default $service }}
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: {{ $service }}
+  {{- else if $config.gitRepo }}
+  chart:
+    spec:
+      chart: {{ $config.path | default $service }}
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: GitRepository
+        name: {{ $service }}
+  {{- else }}
+  chartRef:
+    kind: OCIRepository
+    name: {{ $service }}
+    namespace: {{ $.releaseNamespace }}
+  {{- end }}
+  interval: 1m
+  releaseName: {{ $service}}
+  targetNamespace: {{ $config.targetNamespace | default $.releaseNamespace }}
+  {{- if $config.dependsOn }}
+  dependsOn:
+{{ toYaml $config.dependsOn | nindent 4 }}
+  {{- end }}
+  timeout: 15m
+  values:
+{{ toYaml $config.values | nindent 4 }}
+---
+{{ end -}}
+{{ end -}}
