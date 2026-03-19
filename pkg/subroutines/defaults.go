@@ -17,47 +17,59 @@ var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core
 var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
+
+// Default provider kubeconfigs are generated from kubeconfig-kcp-admin.
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "account-operator-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "account-operator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "rebac-authz-webhook-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "rebac-authz-webhook-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "security-operator-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "security-operator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
-		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "kubernetes-grapqhl-gateway-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "extension-manager-operator-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "extension-manager-operator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "iam-service-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "iam-service-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		RawPath: ptr.To("/services/contentconfigurations"),
-		Secret:  "portal-kubeconfig",
+		Path:           "root:orgs",
+		RawPath:        ptr.To("/services/contentconfigurations"),
+		Secret:         "portal-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root",
-		Secret: "security-initializer-kubeconfig",
+		Path:           "root",
+		Secret:         "security-initializer-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root",
-		Secret: "security-terminator-kubeconfig",
+		Path:           "root",
+		Secret:         "security-terminator-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "init-agent-kubeconfig",
+		Path:           "root:platform-mesh-system",
+		Secret:         "init-agent-kubeconfig",
+		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 }
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
