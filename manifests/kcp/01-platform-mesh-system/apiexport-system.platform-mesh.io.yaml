@@ -2,16 +2,10 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIExport
 metadata:
   creationTimestamp: null
-  name: core.platform-mesh.io
+  name: system.platform-mesh.io
 spec:
   latestResourceSchemas:
-  - v260126-7c674ee.accountinfos.core.platform-mesh.io
-  - v260109-82344be.accounts.core.platform-mesh.io
-  - v250704-6d57f16.contentconfigurations.ui.platform-mesh.io
-  - v250725-732d200.providermetadatas.ui.platform-mesh.io
-  - v260112-5925c7e.authorizationmodels.core.platform-mesh.io
-  - v250718-a64f278.stores.core.platform-mesh.io
-  - v260213-fbdf981.invites.core.platform-mesh.io
+  - v260217-2c67392.identityproviderconfigurations.core.platform-mesh.io
   permissionClaims:
     - all: true
       group: tenancy.kcp.io
@@ -21,10 +15,6 @@ spec:
       group: tenancy.kcp.io
       identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
       resource: workspacetypes
-    - all: true
-      group: core.platform-mesh.io
-      identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
-      resource: identityproviderconfigurations
     - resource: apibindings
       group: apis.kcp.io
       all: true
