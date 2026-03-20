@@ -136,13 +136,20 @@ type SecretReference struct {
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
 
+const (
+	KubeconfigAuthAdminKubeconfig = "adminKubeconfig"
+)
+
 type ProviderConnection struct {
+	// EndpointSliceName is reserved for scoped kubeconfig (e.g. apiExport endpoint discovery).
+	// Not used when only adminKubeconfig auth is supported; keep for merge with scoped-provider-kubeconfig.
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
 	Path              string  `json:"path,omitempty"`
 	RawPath           *string `json:"rawPath,omitempty"`
 	Secret            string  `json:"secret"`
 	External          bool    `json:"external,omitempty"`
 	Namespace         *string `json:"namespace,omitempty"`
+	KubeconfigAuth    string  `json:"kubeconfigAuth,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh
