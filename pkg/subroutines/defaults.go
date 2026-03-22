@@ -18,7 +18,7 @@ var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 
-// Default provider connections use the kcp admin secret (KubeconfigAuthAdminKubeconfig).
+// Default provider connections; kubeconfig auth uses kubeconfig-kcp-admin (README).
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		Path:           "root:platform-mesh-system",
@@ -36,9 +36,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		// EndpointSliceName kept for scoped kubeconfig merge; not read by current flow.
+		// GraphQL: path root + endpointSliceName so listener sees APIBindings under orgs (README).
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		Path:              "root:platform-mesh-system",
+		Path:              "root",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 		KubeconfigAuth:    corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},

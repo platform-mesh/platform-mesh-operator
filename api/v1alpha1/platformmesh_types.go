@@ -137,19 +137,21 @@ type SecretReference struct {
 }
 
 const (
+	// KubeconfigAuthAdminKubeconfig is the value "adminKubeconfig" (default when empty). Identity comes from kubeconfig-kcp-admin; see README.
 	KubeconfigAuthAdminKubeconfig = "adminKubeconfig"
 )
 
 type ProviderConnection struct {
-	// EndpointSliceName is reserved for scoped kubeconfig (e.g. apiExport endpoint discovery).
-	// Not used when only adminKubeconfig auth is supported; keep for merge with scoped-provider-kubeconfig.
+	// EndpointSliceName names the APIExport / APIExportEndpointSlice in root:platform-mesh-system (e.g. core.platform-mesh.io).
+	// With admin kubeconfig, the operator may set the written kubeconfig server from export status; see README.
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
 	Path              string  `json:"path,omitempty"`
 	RawPath           *string `json:"rawPath,omitempty"`
 	Secret            string  `json:"secret"`
 	External          bool    `json:"external,omitempty"`
 	Namespace         *string `json:"namespace,omitempty"`
-	KubeconfigAuth    string  `json:"kubeconfigAuth,omitempty"`
+	// KubeconfigAuth: empty or adminKubeconfig.
+	KubeconfigAuth string `json:"kubeconfigAuth,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh

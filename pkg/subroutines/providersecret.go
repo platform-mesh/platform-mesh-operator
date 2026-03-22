@@ -17,6 +17,7 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/tools/clientcmd"
@@ -26,12 +27,16 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	logicalcluster "github.com/kcp-dev/logicalcluster/v3"
 )
 
 const AdminKubeconfigSecretName = "kubeconfig-kcp-admin"
 
-// AdminKubeconfigSecretName is the secret created by kcp-operator with key "kubeconfig".
-// For adminKubeconfig auth it is used as the source kubeconfig for credentials and cluster entries.
+// Workspace that hosts platform-mesh APIExports (e.g. core.platform-mesh.io).
+const platformMeshAPIExportWorkspace = "root:platform-mesh-system"
 
 // HelmGetter is an interface for getting Helm releases.
 type HelmGetter interface {
@@ -69,8 +74,7 @@ func (r *ProvidersecretSubroutine) Finalize(
 	return ctrl.Result{}, nil // TODO: Implement
 }
 
-// Process builds the KCP kubeconfig, ensures root:orgs RBAC when any provider uses admin kubeconfig auth,
-// then writes a provider secret per connection using the kcp admin secret.
+// Process builds the KCP kubeconfig and writes a provider secret per connection using the kcp admin secret.
 func (r *ProvidersecretSubroutine) Process(
 	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
 ) (ctrl.Result, errors.OperatorError) {
@@ -147,7 +151,6 @@ func (r *ProvidersecretSubroutine) Process(
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
-	ensureRootOrgsAccessIfAdminKubeconfigUsed(ctx, cfg, providers, instance)
 
 	var errs []error
 	for _, pc := range providers {
@@ -191,23 +194,6 @@ func effectiveKubeconfigAuth(pc corev1alpha1.ProviderConnection) string {
 	return corev1alpha1.KubeconfigAuthAdminKubeconfig
 }
 
-// ensureRootOrgsAccessIfAdminKubeconfigUsed ensures root:orgs RBAC once when any provider uses adminKubeconfig auth (idempotent).
-func ensureRootOrgsAccessIfAdminKubeconfigUsed(ctx context.Context, cfg *rest.Config, providers []corev1alpha1.ProviderConnection, instance *corev1alpha1.PlatformMesh) {
-	log := logger.LoadLoggerFromContext(ctx)
-	_, _, _, scheme := baseDomainPortProtocol(instance)
-	normalizeRestConfigHost(cfg, scheme)
-	for _, pc := range providers {
-		if effectiveKubeconfigAuth(pc) == corev1alpha1.KubeconfigAuthAdminKubeconfig {
-			if err := EnsureRootOrgsAccessForProviderWorkspace(ctx, cfg); err != nil {
-				log.Warn().Err(err).Msg("EnsureRootOrgsAccessForProviderWorkspace failed (e.g. rebac not ready); root:orgs RBAC will be applied on next reconcile")
-			} else {
-				log.Info().Msg("Ensured root:orgs access for provider workspace")
-			}
-			break
-		}
-	}
-}
-
 func providerConnectionNamespace(pc corev1alpha1.ProviderConnection) string {
 	namespace := "platform-mesh-system"
 	if ptr.Deref(pc.Namespace, "") != "" {
@@ -231,7 +217,127 @@ func loadAdminKubeconfigFromSecret(
 	return adminSecret.Data["kubeconfig"], nil
 }
 
-// writeProviderSecretFromAdminKubeconfigForConnection loads the admin kubeconfig secret and writes the provider secret.
+// resolveAPIExportVirtualWorkspaceRawPath builds /services/apiexport/<cluster>/<export> for kubeconfig server paths.
+// Overridden in tests via export_test.go.
+var resolveAPIExportVirtualWorkspaceRawPath = apiExportVirtualWorkspaceRawPathImpl
+
+func apiExportVirtualWorkspaceRawPathImpl(ctx context.Context, baseCfg *rest.Config, sliceOrExportName string) (string, error) {
+	name := strings.TrimSpace(sliceOrExportName)
+	if name == "" {
+		return "", fmt.Errorf("APIExportEndpointSlice/APIExport name is empty")
+	}
+	h := Helper{}
+
+	kcpCl, err := h.NewKcpClient(rest.CopyConfig(baseCfg), platformMeshAPIExportWorkspace)
+	if err != nil {
+		return "", fmt.Errorf("kcp client for %s: %w", platformMeshAPIExportWorkspace, err)
+	}
+
+	export := kcpapiv1alpha.APIExport{}
+	exportErr := kcpCl.Get(ctx, types.NamespacedName{Name: name}, &export)
+	if exportErr == nil {
+		for _, vw := range export.Status.VirtualWorkspaces {
+			if p, ok := parseValidAPIExportVirtualWorkspaceURL(vw.URL, name); ok {
+				return p, nil
+			}
+		}
+	}
+
+	var endpointSlice kcpapiv1alpha.APIExportEndpointSlice
+	sliceErr := kcpCl.Get(ctx, types.NamespacedName{Name: name}, &endpointSlice)
+	if sliceErr == nil {
+		for _, ep := range endpointSlice.Status.APIExportEndpoints {
+			if p, ok := parseValidAPIExportVirtualWorkspaceURL(ep.URL, name); ok {
+				return p, nil
+			}
+		}
+	} else if sliceErr != nil && !apierrors.IsNotFound(sliceErr) {
+		return "", fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", name, platformMeshAPIExportWorkspace, sliceErr)
+	}
+
+	if p, ok := tryAPIExportVirtualWorkspacePathFromWorkspace(ctx, &h, baseCfg, platformMeshAPIExportWorkspace, name); ok {
+		return p, nil
+	}
+
+	if exportErr != nil {
+		if sliceErr != nil && apierrors.IsNotFound(sliceErr) {
+			return "", fmt.Errorf("get APIExport %q in %s: %w", name, platformMeshAPIExportWorkspace, exportErr)
+		}
+		return "", fmt.Errorf("get APIExport %q in %s: %w", name, platformMeshAPIExportWorkspace, exportErr)
+	}
+	if export.Status.IdentityHash != "" && logicalcluster.Name(export.Status.IdentityHash).IsValid() {
+		return fmt.Sprintf("/services/apiexport/%s/%s", export.Status.IdentityHash, name), nil
+	}
+	return "", fmt.Errorf("APIExport %q: no usable virtual-workspace path (workspace cluster, endpoint URL, or valid identityHash)", name)
+}
+
+func parentWorkspacePath(workspacePath string) (parent, leaf string, ok bool) {
+	p := strings.TrimSpace(workspacePath)
+	if p == "" {
+		return "", "", false
+	}
+	i := strings.LastIndex(p, ":")
+	if i <= 0 || i == len(p)-1 {
+		return "", "", false
+	}
+	parent, leaf = p[:i], p[i+1:]
+	if parent == "" || leaf == "" {
+		return "", "", false
+	}
+	return parent, leaf, true
+}
+
+func tryAPIExportVirtualWorkspacePathFromWorkspace(
+	ctx context.Context, h *Helper, baseCfg *rest.Config, exportWorkspacePath, exportName string,
+) (string, bool) {
+	parent, leaf, ok := parentWorkspacePath(exportWorkspacePath)
+	if !ok {
+		return "", false
+	}
+	parentCl, err := h.NewKcpClient(rest.CopyConfig(baseCfg), parent)
+	if err != nil {
+		return "", false
+	}
+	var ws kcptenancyv1alpha.Workspace
+	if err := parentCl.Get(ctx, types.NamespacedName{Name: leaf}, &ws); err != nil {
+		return "", false
+	}
+	seg := strings.TrimSpace(ws.Spec.Cluster)
+	if seg == "" || !logicalcluster.Name(seg).IsValid() {
+		return "", false
+	}
+	return fmt.Sprintf("/services/apiexport/%s/%s", seg, exportName), true
+}
+
+func parseValidAPIExportVirtualWorkspaceURL(rawURL, exportName string) (string, bool) {
+	raw := strings.TrimSpace(rawURL)
+	if raw == "" {
+		return "", false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Path == "" || parsed.Path == "/" {
+		return "", false
+	}
+	path := strings.TrimSuffix(parsed.Path, "/")
+	const pfx = "/services/apiexport/"
+	if !strings.HasPrefix(path, pfx) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(path, pfx)
+	parts := strings.SplitN(rest, "/", 3)
+	if len(parts) < 2 {
+		return "", false
+	}
+	clusterSeg, exportSeg := parts[0], parts[1]
+	if exportSeg != exportName {
+		return "", false
+	}
+	if !logicalcluster.Name(clusterSeg).IsValid() {
+		return "", false
+	}
+	return pfx + clusterSeg + "/" + exportSeg, true
+}
+
 func (r *ProvidersecretSubroutine) writeProviderSecretFromAdminKubeconfigForConnection(
 	ctx context.Context, hostPort string, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
@@ -242,13 +348,28 @@ func (r *ProvidersecretSubroutine) writeProviderSecretFromAdminKubeconfigForConn
 		log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kubeconfig-kcp-admin for provider")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
+
+	workspacePath := pc.Path
+	rawPath := ptr.Deref(pc.RawPath, "")
+	if rawPath == "" && pc.EndpointSliceName != nil {
+		if name := strings.TrimSpace(*pc.EndpointSliceName); name != "" {
+			rp, err := resolveAPIExportVirtualWorkspaceRawPath(ctx, cfg, name)
+			if err != nil {
+				log.Warn().Err(err).Str("secret", pc.Secret).Str("apiExport", name).Msg("APIExport path not ready, requeue")
+				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+			}
+			rawPath = rp
+			workspacePath = ""
+		}
+	}
+
 	if err := writeProviderSecretFromAdminKubeconfig(
 		ctx,
 		r.client,
 		adminKubeconfigData,
 		hostPort,
-		pc.Path,
-		ptr.Deref(pc.RawPath, ""),
+		workspacePath,
+		rawPath,
 		cfg.CAData,
 		pc.Secret,
 		providerConnectionNamespace(pc),
@@ -259,8 +380,7 @@ func (r *ProvidersecretSubroutine) writeProviderSecretFromAdminKubeconfigForConn
 	return ctrl.Result{}, nil
 }
 
-// HandleProviderConnection writes the provider secret for one connection using the kcp admin secret.
-// Only KubeconfigAuthAdminKubeconfig is supported; certificate auth is no longer supported.
+// HandleProviderConnection writes one provider secret from kubeconfig-kcp-admin. cfg is for export path resolution and optional CA override.
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (ctrl.Result, errors.OperatorError) {
@@ -268,13 +388,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	_, _, _, scheme := baseDomainPortProtocol(instance)
 	normalizeRestConfigHost(cfg, scheme)
-
-	auth := effectiveKubeconfigAuth(pc)
-	if auth != corev1alpha1.KubeconfigAuthAdminKubeconfig {
-		err := fmt.Errorf("unsupported kubeconfigAuth %q; only %s is supported", auth, corev1alpha1.KubeconfigAuthAdminKubeconfig)
-		log.Error().Err(err).Str("secret", pc.Secret).Msg("Provider connection uses unsupported auth")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
-	}
 
 	hostPort := fmt.Sprintf("%s://%s-front-proxy.%s:%s", scheme, operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External {
@@ -288,6 +401,14 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 	}
 
+	auth := effectiveKubeconfigAuth(pc)
+	if auth != corev1alpha1.KubeconfigAuthAdminKubeconfig {
+		err := fmt.Errorf("unsupported kubeconfigAuth %q; only %s is supported (secret %s)",
+			auth, corev1alpha1.KubeconfigAuthAdminKubeconfig, AdminKubeconfigSecretName)
+		log.Error().Err(err).Str("secret", pc.Secret).Msg("Provider connection uses unsupported kubeconfigAuth")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+
 	return r.writeProviderSecretFromAdminKubeconfigForConnection(ctx, hostPort, pc, cfg)
 }
 
@@ -295,12 +416,7 @@ func buildHostURLForScoped(hostPort, workspacePath string) (string, error) {
 	return url.JoinPath(hostPort, "clusters", workspacePath)
 }
 
-// writeProviderSecretFromAdminKubeconfig writes the provider secret using the given admin kubeconfig
-// (e.g. from secret kubeconfig-kcp-admin).
-//
-// Important: prefer the provider's configured target path (RawPath or Path) over the source kubeconfig path.
-// This keeps provider secrets aligned with PlatformMesh ProviderConnection configuration while still
-// using kubeconfig-kcp-admin as source for credentials and CA data.
+// writeProviderSecretFromAdminKubeconfig copies auth from admin kubeconfig and sets cluster server from Path/RawPath.
 func writeProviderSecretFromAdminKubeconfig(ctx context.Context, k8sClient client.Client, kubeconfigData []byte, hostPort, workspacePath, rawPath string, frontProxyCAData []byte, providerSecretName, providerSecretNamespace string) error {
 	cfg, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
@@ -329,6 +445,7 @@ func writeProviderSecretFromAdminKubeconfig(ctx context.Context, k8sClient clien
 		if c == nil {
 			continue
 		}
+		// Non-empty frontProxyCAData: trust front-proxy CA; else keep CA from kubeconfig-kcp-admin.
 		if len(frontProxyCAData) > 0 {
 			c.CertificateAuthorityData = frontProxyCAData
 			c.CertificateAuthority = ""

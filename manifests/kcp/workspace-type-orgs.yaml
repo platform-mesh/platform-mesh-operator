@@ -3,7 +3,12 @@ kind: WorkspaceType
 metadata:
   name: orgs
 spec:
+  # Per-org WorkspaceTypes under orgs need tenancy and topology (README).
   defaultAPIBindings:
+    - export: tenancy.kcp.io
+      path: root
+    - export: topology.kcp.io
+      path: root
     - export: core.platform-mesh.io
       path: root:platform-mesh-system
     - export: system.platform-mesh.io

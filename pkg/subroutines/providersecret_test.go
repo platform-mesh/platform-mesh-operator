@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 
@@ -39,9 +41,10 @@ type ProvidersecretTestSuite struct {
 	suite.Suite
 	testObj *subroutines.ProvidersecretSubroutine
 	// mocks
-	clientMock *mocks.Client
-	scheme     *runtime.Scheme
-	log        *logger.Logger
+	clientMock           *mocks.Client
+	scheme               *runtime.Scheme
+	log                  *logger.Logger
+	apiExportPathRestore func()
 }
 
 func TestProvidersecretTestSuite(t *testing.T) {
@@ -65,9 +68,19 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 	suite.clientMock.EXPECT().Scheme().Return(suite.scheme).Maybe()
 
 	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, "")
+
+	suite.apiExportPathRestore = subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(_ context.Context, _ *rest.Config, apiExportName string) (string, error) {
+			return "/services/apiexport/stubhash/" + apiExportName, nil
+		},
+	)
 }
 
 func (suite *ProvidersecretTestSuite) TearDownTest() {
+	if suite.apiExportPathRestore != nil {
+		suite.apiExportPathRestore()
+		suite.apiExportPathRestore = nil
+	}
 	// clear mocks
 	suite.clientMock = nil
 
@@ -917,6 +930,13 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 }
 
 func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", fmt.Errorf("no APIExport endpoint slice")
+		},
+	)
+	defer restoreFail()
+
 	instance := s.getBaseInstance()
 	// mock getting rootShard and frontproxy
 	secret := &corev1.Secret{
@@ -1008,6 +1028,13 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 }
 
 func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", fmt.Errorf("APIExport %q has no status.identityHash yet", "test-endpoint")
+		},
+	)
+	defer restoreFail()
+
 	instance := s.getBaseInstance()
 	// mock getting rootShard and frontproxy
 	secret := &corev1.Secret{
@@ -1098,6 +1125,13 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 }
 
 func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", fmt.Errorf("invalid endpoint slice URL")
+		},
+	)
+	defer restoreFail()
+
 	instance := s.getBaseInstance()
 	// mock getting rootShard and frontproxy
 	secret := &corev1.Secret{
@@ -1590,7 +1624,16 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					}
 					ctx := cfg.Contexts[cfg.CurrentContext]
 					cluster := cfg.Clusters[ctx.Cluster]
-					want := fmt.Sprintf("https://example.com/clusters/%s", pc.Path)
+					var want string
+					switch {
+					case ptr.Deref(pc.RawPath, "") != "":
+						want = "https://example.com" + ptr.Deref(pc.RawPath, "")
+					case pc.EndpointSliceName != nil && strings.TrimSpace(*pc.EndpointSliceName) != "":
+						n := strings.TrimSpace(*pc.EndpointSliceName)
+						want = fmt.Sprintf("https://example.com/services/apiexport/stubhash/%s", n)
+					default:
+						want = fmt.Sprintf("https://example.com/clusters/%s", pc.Path)
+					}
 					if cluster.Server != want {
 						s.log.Error().Msgf("server URL = %q; want %q", cluster.Server, want)
 						return false

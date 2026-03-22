@@ -90,6 +90,18 @@ spec:
       secret: auxiliary-kubeconfig
 ```
 
+#### Provider secrets and KCP API exports
+
+Workload kubeconfigs (account-operator, graphql gateway, etc.) are built from the **`kubeconfig-kcp-admin`** secret that kcp-operator creates. The operator copies identity from that kubeconfig and rewrites each cluster **`server`** from the `PlatformMesh` provider connection (`path`, `rawPath`, or derived path).
+
+If **`endpointSliceName`** is set (for example **`core.platform-mesh.io`** for kubernetes-graphql-gateway), the operator looks up the **`APIExport`** / **`APIExportEndpointSlice`** in **`root:platform-mesh-system`** and, when possible, sets **`server`** to a **`/services/apiexport/...`** path from KCP status (`virtualWorkspaces` or `apiExportEndpoints` URLs). If the published URL uses a path segment that is not a valid logical cluster name, it may fall back to the **`Workspace`** **`spec.cluster`** for that export workspace, or to **`identityHash`** only when that value is valid.
+
+The **Wait** subroutine repeats the same check for **`core.platform-mesh.io`** so reconciliation does not finish before that path is usable.
+
+Default **graphql** wiring uses **`path: root`** together with **`endpointSliceName: core.platform-mesh.io`** so the listener can reconcile **`APIBinding`** objects under org workspaces.
+
+**WorkspaceType** manifests under **`manifests/kcp/`** add bindings for **`system.platform-mesh.io`** (org), and **`tenancy.kcp.io`** / **`topology.kcp.io`** on **`orgs`**, so IPC and account-operator child types have the APIs they need.
+
 #### Initializer Connections
 
 Initializer connections are used to set up workspaces with specific types:

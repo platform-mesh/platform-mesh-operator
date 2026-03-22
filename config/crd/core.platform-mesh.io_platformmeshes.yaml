@@ -123,6 +123,7 @@ spec:
                     items:
                       properties:
                         endpointSliceName:
+                          description: APIExport/APIExportEndpointSlice name in root:platform-mesh-system; used for virtual-workspace kubeconfig paths when using admin kubeconfig. See operator README.
                           type: string
                         external:
                           type: boolean
@@ -175,6 +176,7 @@ spec:
                     items:
                       properties:
                         endpointSliceName:
+                          description: APIExport/APIExportEndpointSlice name in root:platform-mesh-system; used for virtual-workspace kubeconfig paths when using admin kubeconfig. See operator README.
                           type: string
                         external:
                           type: boolean

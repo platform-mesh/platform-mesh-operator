@@ -115,6 +115,11 @@ func (r *WaitSubroutine) Process(
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
+	// Same core export path check as the graphql provider secret (README).
+	if err := r.checkCoreAPIExportVirtualWorkspaceReady(ctx, log); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -165,6 +170,20 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 		return errors.New("WorkspaceAuthenticationConfiguration audience is not yet set")
 	}
 
+	return nil
+}
+
+func (r *WaitSubroutine) checkCoreAPIExportVirtualWorkspaceReady(ctx context.Context, log *logger.Logger) error {
+	kubeCfg, err := buildKubeconfigFromConfig(r.client, r.cfg, r.kcpUrl)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping APIExport virtual-workspace readiness check")
+		return nil
+	}
+	const coreExportName = "core.platform-mesh.io"
+	if _, err := resolveAPIExportVirtualWorkspaceRawPath(ctx, kubeCfg, coreExportName); err != nil {
+		log.Info().Err(err).Str("apiExport", coreExportName).Msg("core APIExport virtual workspace path not ready")
+		return fmt.Errorf("APIExport virtual workspace for %q not ready: %w", coreExportName, err)
+	}
 	return nil
 }
 

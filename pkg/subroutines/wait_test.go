@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -29,6 +30,7 @@ type WaitTestSuite struct {
 	testObj       *subroutines.WaitSubroutine
 	log           *logger.Logger
 	cfg           config.OperatorConfig
+	vwPathRestore func()
 }
 
 func TestWaitTestSuite(t *testing.T) {
@@ -49,9 +51,17 @@ func (s *WaitTestSuite) SetupTest() {
 	logCfg.Name = "WaitTestSuite"
 	s.log, _ = logger.New(logCfg)
 	s.testObj = subroutines.NewWaitSubroutine(s.clientMock, s.kcpHelperMock, &s.cfg, "https://kcp.example.com")
+	s.vwPathRestore = subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "/services/apiexport/fakecluster/core.platform-mesh.io", nil
+		})
 }
 
 func (s *WaitTestSuite) TearDownTest() {
+	if s.vwPathRestore != nil {
+		s.vwPathRestore()
+		s.vwPathRestore = nil
+	}
 	s.clientMock = nil
 	s.kcpClientMock = nil
 	s.kcpHelperMock = nil
@@ -92,6 +102,40 @@ func (s *WaitTestSuite) mockWorkspaceAuthConfigCheck(audience string) {
 			}
 			return nil
 		})
+}
+
+func (s *WaitTestSuite) TestProcess_APIExportVirtualWorkspaceNotReady() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", errors.New("no usable virtual-workspace path")
+		})
+	defer restoreFail()
+
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+
+	instance := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mesh",
+			Namespace: "default",
+		},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Wait: nil,
+		},
+	}
+
+	s.clientMock.EXPECT().
+		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
+		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+			return nil
+		}).Twice()
+
+	s.mockWorkspaceAuthConfigCheck("valid-audience")
+
+	result, err := s.testObj.Process(ctx, instance)
+
+	s.Assert().NotNil(err)
+	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Contains(err.Err().Error(), "APIExport virtual workspace")
 }
 
 func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
