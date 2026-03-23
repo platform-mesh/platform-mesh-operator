@@ -9,7 +9,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
-// Requeue intervals for meshsub.StopWithRequeue (legacy OperatorError
+// Requeue intervals for subroutines.StopWithRequeue (legacy OperatorError
 // requeue / not-ready paths).
 const (
 	SubroutineRequeueShort = 5 * time.Second

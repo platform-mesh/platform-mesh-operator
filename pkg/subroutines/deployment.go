@@ -9,7 +9,7 @@ import (
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 	"github.com/rs/zerolog/log"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -48,15 +48,15 @@ func (r *DeploymentSubroutine) GetName() string {
 	return DeploymentSubroutineName
 }
 
-func (r *DeploymentSubroutine) Finalize(_ context.Context, _ client.Object) (meshsub.Result, error) {
-	return meshsub.OK(), nil
+func (r *DeploymentSubroutine) Finalize(_ context.Context, _ client.Object) (subroutines.Result, error) {
+	return subroutines.OK(), nil
 }
 
 func (r *DeploymentSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
 	return []string{}
 }
 
-func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Object) (meshsub.Result, error) {
+func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
 	inst := runtimeObj.(*v1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -64,13 +64,13 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	// Create DeploymentComponents Version
 	templateVars, err := TemplateVars(ctx, inst, r.client)
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	mergedInfraValues, err := MergeValuesAndInfraValues(inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to merge templateVars and infra values")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	// apply infra resource
 	path := filepath.Join(r.workspaceDirectory, "platform-mesh-operator-infra-components/resource.yaml")
@@ -93,7 +93,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	log.Debug().Str("path", path).Msgf("Applied path: %s", path)
 
@@ -101,7 +101,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-infra-components/release.yaml")
 	err = applyReleaseWithValues(ctx, path, r.client, mergedInfraValues)
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
@@ -109,29 +109,29 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	rel, err := getHelmRelease(ctx, r.client, "platform-mesh-operator-infra-components", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get platform-mesh-operator-infra-components Release")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueShort, "platform-mesh-operator-infra-components Release is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueShort, "platform-mesh-operator-infra-components Release is not ready"), nil
 	}
 
 	// Wait for cert-manager to be ready
 	rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get cert-manager Release")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("cert-manager Release is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueShort, "cert-manager Release is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueShort, "cert-manager Release is not ready"), nil
 	}
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to merge templateVars and services")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	log.Debug().Msgf("Merged templateVars: %s", string(mergedValues.Raw))
 
@@ -139,7 +139,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/resource.yaml")
 	err = applyManifestFromFileWithMergedValues(ctx, path, r.client, tplValues)
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	log.Debug().Str("path", path).Msgf("Applied path: %s", path)
 
@@ -147,14 +147,14 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	path = filepath.Join(r.workspaceDirectory, "platform-mesh-operator-components/release.yaml")
 	err = applyReleaseWithValues(ctx, path, r.client, mergedValues)
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	log.Debug().Str("path", path).Msgf("Applied release path: %s", path)
 
 	_, secErr := r.manageAuthorizationWebhookSecrets(ctx, inst)
 	if secErr != nil {
 		log.Info().Msg("Failed to manage authorization webhook secrets")
-		return meshsub.OK(), secErr
+		return subroutines.OK(), secErr
 	}
 
 	// Check if istio-proxy is injected
@@ -167,18 +167,18 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 		rel, err := getHelmRelease(ctx, r.client, "istio-istiod", "default")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get istio-istiod Release")
-			return meshsub.OK(), err
+			return subroutines.OK(), err
 		}
 
 		if !matchesConditionWithStatus(rel, "Ready", "True") {
 			log.Info().Msg("istio-istiod Release is not ready..")
-			return meshsub.StopWithRequeue(SubroutineRequeueShort, "istio-istiod Release is not ready"), nil
+			return subroutines.StopWithRequeue(SubroutineRequeueShort, "istio-istiod Release is not ready"), nil
 		}
 
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
-			return meshsub.OK(), err
+			return subroutines.OK(), err
 		}
 		// When running the operator locally there will never be a proxy
 		if !r.cfg.IsLocal && !hasProxy {
@@ -186,7 +186,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 			err := r.client.Delete(ctx, pod)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
-				return meshsub.OK(), err
+				return subroutines.OK(), err
 			}
 			// Forcing a pod restart
 			os.Exit(0)
@@ -200,7 +200,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueShort, "RootShard is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueShort, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -209,9 +209,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueShort, "FrontProxy is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueShort, "FrontProxy is not ready"), nil
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
 func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMesh) {
@@ -274,7 +274,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	return nil
 }
 
-func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (meshsub.Result, error) {
+func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -284,17 +284,17 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
-			return meshsub.OK(), fmt.Errorf("webhook secret does not exist")
+			return subroutines.OK(), fmt.Errorf("webhook secret does not exist")
 		}
 		log.Error().Err(err).Str("secret", caSecretName).Str("namespace", inst.Namespace).Msg("Failed to get webhook cert secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	caCrt, ok := webhookCertSecret.Data["ca.crt"]
 	if !ok || len(caCrt) == 0 {
 		err := fmt.Errorf("ca.crt not found or empty in secret %s/%s", inst.Namespace, caSecretName)
 		log.Error().Err(err).Msg("ca.crt missing from webhook cert secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Get the kcp-webhook-secret
@@ -302,7 +302,7 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	kcpWebhookSecret, err := GetSecret(r.client, webhookSecret, inst.Namespace)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Get the kubeconfig from the secret
@@ -310,14 +310,14 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	if !ok || len(kubeconfigData) == 0 {
 		err := fmt.Errorf("kubeconfig not found or empty in secret %s/%s", inst.Namespace, webhookSecret)
 		log.Error().Err(err).Msg("kubeconfig missing from kcp webhook secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Parse the kubeconfig using clientcmd utilities
 	kubeconfig, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load kubeconfig")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Update the certificate-authority-data in all clusters
@@ -334,14 +334,14 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 
 	if !updated {
 		log.Info().Msg("No clusters found in kubeconfig to update")
-		return meshsub.OK(), nil
+		return subroutines.OK(), nil
 	}
 
 	// Marshal the updated kubeconfig back to YAML using clientcmd
 	updatedKubeconfigData, err := clientcmd.Write(*kubeconfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write updated kubeconfig")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Update the secret with the new kubeconfig
@@ -350,12 +350,12 @@ func (r *DeploymentSubroutine) udpateKcpWebhookSecret(ctx context.Context, inst 
 	err = r.client.Update(ctx, kcpWebhookSecret)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	log.Info().Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Successfully updated kcp webhook secret with new certificate-authority-data")
 
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
 func getHelmRelease(ctx context.Context, client client.Client, releaseName string, releaseNamespace string) (*unstructured.Unstructured, error) {
@@ -420,24 +420,24 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 	return false, nil, fmt.Errorf("pod not found")
 }
 
-func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (meshsub.Result, error) {
+func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (subroutines.Result, error) {
 	// Create Issuer
 	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
 	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.client, map[string]any{})
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Create Certificate
 	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
 	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.client, map[string]any{})
 	if err != nil {
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	// Prepare KCP Webhook secret
 	if createErr := r.createKCPWebhookSecret(ctx, inst); createErr != nil {
-		return meshsub.OK(), createErr
+		return subroutines.OK(), createErr
 	}
 
 	// Update KCP Webhook secret with the latest CA bundle

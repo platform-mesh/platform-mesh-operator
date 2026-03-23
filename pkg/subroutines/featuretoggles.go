@@ -9,7 +9,7 @@ import (
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,15 +54,15 @@ func (r *FeatureToggleSubroutine) GetName() string {
 	return FeatureToggleSubroutineName
 }
 
-func (r *FeatureToggleSubroutine) Finalize(_ context.Context, _ client.Object) (meshsub.Result, error) {
-	return meshsub.OK(), nil
+func (r *FeatureToggleSubroutine) Finalize(_ context.Context, _ client.Object) (subroutines.Result, error) {
+	return subroutines.OK(), nil
 }
 
 func (r *FeatureToggleSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
 	return []string{}
 }
 
-func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client.Object) (meshsub.Result, error) {
+func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -74,7 +74,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-getting-started")
 			if applyErr != nil {
 				log.Error().Err(applyErr).Msg("Failed to apply getting started manifests")
-				return meshsub.OK(), applyErr
+				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Getting started configuration' feature")
 		case "feature-enable-marketplace-account":
@@ -82,7 +82,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-account")
 			if applyErr != nil {
 				log.Error().Err(applyErr).Msg("Failed to apply marketplace manifests")
-				return meshsub.OK(), applyErr
+				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Marketplace configuration' feature")
 		case "feature-enable-marketplace-org":
@@ -90,28 +90,28 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-org")
 			if applyErr != nil {
 				log.Error().Err(applyErr).Msg("Failed to apply marketplace manifests")
-				return meshsub.OK(), applyErr
+				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Marketplace configuration' feature")
 		case "feature-accounts-in-accounts":
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-accounts-in-accounts")
 			if applyErr != nil {
 				log.Error().Err(applyErr).Msg("Failed to apply accounts-in-accounts manifests")
-				return meshsub.OK(), applyErr
+				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Accounts in accounts' feature")
 		case "feature-enable-account-iam-ui":
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-account-iam-ui")
 			if applyErr != nil {
 				log.Error().Err(applyErr).Msg("Failed to apply account-iam-ui manifests")
-				return meshsub.OK(), applyErr
+				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Account IAM UI' feature")
 		case "feature-enable-terminal-controller-manager":
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-terminal-controller-manager")
 			if applyErr != nil {
 				log.Error().Err(applyErr).Msg("Failed to apply terminal-controller-manager manifests")
-				return meshsub.OK(), applyErr
+				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Terminal controller manager' feature")
 		case "feature-disable-email-verification":
@@ -121,7 +121,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 		}
 	}
 
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
 func (r *FeatureToggleSubroutine) applyKcpManifests(
@@ -129,7 +129,7 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 	inst *corev1alpha1.PlatformMesh,
 	operatorCfg config.OperatorConfig,
 	kcpDir string,
-) (meshsub.Result, error) {
+) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	// Implement the logic to enable the getting started feature
@@ -146,16 +146,16 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
 				Str("namespace", operatorCfg.KCP.Namespace).
 				Msg("KCP admin secret not found yet..")
-			return meshsub.StopWithRequeue(SubroutineRequeueLong, "KCP admin secret not found yet"), nil
+			return subroutines.StopWithRequeue(SubroutineRequeueLong, "KCP admin secret not found yet"), nil
 		}
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to get secret")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to get secret")
 	}
 
 	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
 	}
 
 	dir := r.workspaceDirectory + kcpDir
@@ -172,8 +172,8 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 	err = ApplyDirStructure(ctx, dir, "root", cfg, tplValues, inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to apply dir structure")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to apply dir structure")
 	}
 
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }

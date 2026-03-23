@@ -1,4 +1,4 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -26,7 +25,7 @@ type DeployTestSuite struct {
 	suite.Suite
 	clientMock *mocks.Client
 	helperMock *mocks.KcpHelper
-	testObj    *subroutines.DeploymentSubroutine
+	testObj    *DeploymentSubroutine
 	log        *logger.Logger
 }
 
@@ -48,7 +47,7 @@ func (s *DeployTestSuite) SetupTest() {
 		WorkspaceDir: "../../",
 	}
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
+	s.testObj = NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
 }
 
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {
@@ -94,7 +93,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	).Once()
 
 	// Create DeploymentComponents Version
-	templateVars, err := subroutines.TemplateVars(ctx, inst, s.clientMock)
+	templateVars, err := TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
 	vals := apiextensionsv1.JSON{Raw: []byte(`{"services": {"platform-mesh-operator": {"version": "v1.0.0"}}}`)}
@@ -104,7 +103,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	}
 
-	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err := MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
@@ -115,7 +114,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		Port: 443,
 	}
 
-	templateVars, err = subroutines.TemplateVars(ctx, inst, s.clientMock)
+	templateVars, err = TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
 	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
@@ -147,7 +146,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	).Once()
 
-	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err = MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)

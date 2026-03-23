@@ -1,4 +1,4 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
@@ -15,14 +15,13 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 )
 
 type HelperTestSuite struct {
 	suite.Suite
 
-	subroutines.KcpHelper
+	KcpHelper
 }
 
 func TestHelperTestSuite(t *testing.T) {
@@ -53,7 +52,7 @@ func (s *HelperTestSuite) TestGetWorkspaceName() {
 
 	for _, tt := range tests {
 		s.T().Run(tt.input, func(t *testing.T) {
-			result, err := subroutines.GetWorkspaceName(tt.input)
+			result, err := GetWorkspaceName(tt.input)
 			if tt.expectError {
 				s.Assert().Error(err, "input: %q", tt.input)
 			} else {
@@ -94,14 +93,14 @@ func (s *HelperTestSuite) TestListFiles() {
 	}
 
 	// Call ListFiles
-	result, err := subroutines.ListFiles(dir)
+	result, err := ListFiles(dir)
 	s.Require().NoError(err)
 	s.ElementsMatch(expected, result)
 }
 
 func (s *HelperTestSuite) TestListFiles_DirectoryNotExist() {
 	// Call ListFiles on a non-existent directory
-	result, err := subroutines.ListFiles("/nonexistent/path/to/dir")
+	result, err := ListFiles("/nonexistent/path/to/dir")
 	s.Error(err)
 	s.Empty(result)
 	s.Contains(err.Error(), "Failed to read directory")
@@ -112,7 +111,7 @@ func (s *HelperTestSuite) TestListFiles_EmptyDirectory() {
 	s.Require().NoError(err)
 	defer os.RemoveAll(dir) //nolint:errcheck
 
-	result, err := subroutines.ListFiles(dir)
+	result, err := ListFiles(dir)
 	s.NoError(err)
 	s.Empty(result)
 }
@@ -138,7 +137,7 @@ func (s *HelperTestSuite) TestIsWorkspace() {
 
 	for _, tt := range tests {
 		s.T().Run(tt.dir, func(t *testing.T) {
-			result := subroutines.IsWorkspace(tt.dir)
+			result := IsWorkspace(tt.dir)
 			s.Assert().Equal(tt.expected, result, "dir: %q", tt.dir)
 		})
 	}
@@ -171,7 +170,7 @@ func (s *HelperTestSuite) TestConvertToUnstructured() {
 	}
 
 	// Convert to unstructured
-	unstructuredObj, err := subroutines.ConvertToUnstructured(webhook)
+	unstructuredObj, err := ConvertToUnstructured(webhook)
 
 	// Verify no error occurred
 	s.Assert().NoError(err)
@@ -213,7 +212,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_ParseError() {
 	// Invalid template syntax {{ .Name
 	templateBytes := []byte("Hello, {{ .Name")
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to parse template")
 	s.Assert().Empty(result)
@@ -228,14 +227,14 @@ func (s *HelperTestSuite) TestReplaceTemplate_ExecuteError() {
 	templateBytes := []byte("Hello, {{ .Name }}. {{ if true }} Mismatched brackets")
 
 	// First, check parsing error because the template is malformed
-	_, parseErr := subroutines.ReplaceTemplate(templateData, templateBytes)
+	_, parseErr := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().Error(parseErr)
 	s.Assert().Contains(parseErr.Error(), "Failed to parse template")
 
 	// Test case with missing key (text/template default behavior is to insert <no value>)
 	templateBytesMissingKey := []byte("Hello, {{ .Name }}. Your ID is {{ .ID }}.")
 	expectedMissingKey := []byte("Hello, World. Your ID is <no value>.")
-	resultMissingKey, errMissingKey := subroutines.ReplaceTemplate(templateData, templateBytesMissingKey)
+	resultMissingKey, errMissingKey := ReplaceTemplate(templateData, templateBytesMissingKey)
 	s.Assert().NoError(errMissingKey)
 	s.Assert().Equal(expectedMissingKey, resultMissingKey)
 
@@ -246,7 +245,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_EmptyData() {
 	templateBytes := []byte("Hello, {{ .Name }}!")
 	expected := []byte("Hello, <no value>!") // Default behavior for missing keys
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().NoError(err)
 	s.Assert().Equal(expected, result)
 }
@@ -258,7 +257,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_EmptyTemplate() {
 	templateBytes := []byte{}
 	expected := []byte{}
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().NoError(err)
 	s.Assert().Equal(expected, result)
 }
@@ -271,13 +270,13 @@ func (s *HelperTestSuite) TestReplaceTemplate_Success() {
 	templateBytes := []byte("Hello, {{ .Name }}! You are {{ .Age }}.")
 	expected := []byte("Hello, World! You are 30.")
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().NoError(err)
 	s.Assert().Equal(expected, result)
 }
 
 func (suite *HelperTestSuite) SetupTest() {
-	suite.KcpHelper = &subroutines.Helper{}
+	suite.KcpHelper = &Helper{}
 }
 
 func (s *HelperTestSuite) TestConstructorError() {
@@ -299,21 +298,21 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 	cl := new(mocks.Client)
 	// SSA Patch call (no Get needed)
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err := ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
@@ -325,6 +324,6 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 		KCP: config.OperatorConfig{}.KCP,
 	}
 	ctx := context.WithValue(context.TODO(), keys.ConfigCtxKey, operatorCfg)
-	err = subroutines.ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 }

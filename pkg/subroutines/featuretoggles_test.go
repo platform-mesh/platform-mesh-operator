@@ -1,4 +1,4 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
@@ -9,9 +9,8 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	subroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
@@ -26,7 +25,7 @@ type FeaturesTestSuite struct {
 	suite.Suite
 	clientMock *mocks.Client
 	helperMock *mocks.KcpHelper
-	testObj    *subroutines.FeatureToggleSubroutine
+	testObj    *FeatureToggleSubroutine
 	log        *logger.Logger
 }
 
@@ -42,7 +41,7 @@ func (s *FeaturesTestSuite) SetupTest() {
 	cfg.NoJSON = true
 	cfg.Name = "FeaturesTestSuite"
 	s.log, _ = logger.New(cfg)
-	s.testObj = subroutines.NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
+	s.testObj = NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
 	}, "https://kcp.example.com")
 }
@@ -134,6 +133,6 @@ func (s *FeaturesTestSuite) TestProcess() {
 
 	// Assertions
 	s.Assert().Nil(err)
-	s.Assert().Equal(meshsub.OK(), result)
+	s.Assert().Equal(subroutines.OK(), result)
 
 }

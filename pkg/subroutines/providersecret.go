@@ -17,7 +17,7 @@ import (
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -71,18 +71,18 @@ const (
 
 func (r *ProvidersecretSubroutine) Finalize(
 	ctx context.Context, runtimeObj client.Object,
-) (meshsub.Result, error) {
-	return meshsub.OK(), nil // TODO: Implement
+) (subroutines.Result, error) {
+	return subroutines.OK(), nil // TODO: Implement
 }
 
 func (r *ProvidersecretSubroutine) Process(
 	ctx context.Context, runtimeObj client.Object,
-) (meshsub.Result, error) {
+) (subroutines.Result, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	scheme := r.client.Scheme()
 	if scheme == nil {
-		return meshsub.StopWithRequeue(SubroutineRequeueShort, "client scheme is nil"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueShort, "client scheme is nil"), nil
 	}
 
 	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
@@ -95,7 +95,7 @@ func (r *ProvidersecretSubroutine) Process(
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -105,7 +105,7 @@ func (r *ProvidersecretSubroutine) Process(
 
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
 	}
 
 	// Determine which provider connections to use based on configuration:
@@ -139,15 +139,15 @@ func (r *ProvidersecretSubroutine) Process(
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
 	}
 	for _, pc := range providers {
 		if _, connErr := r.HandleProviderConnection(ctx, instance, pc, cfg); connErr != nil {
 			log.Error().Err(connErr).Msg("Failed to handle provider connection")
-			return meshsub.OK(), connErr
+			return subroutines.OK(), connErr
 		}
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
 func (r *ProvidersecretSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
@@ -160,7 +160,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
-) (meshsub.Result, error) {
+) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -170,31 +170,31 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		kcpClient, err := r.kcpHelper.NewKcpClient(cfg, pc.Path)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to create KCP client")
-			return meshsub.OK(), err
+			return subroutines.OK(), err
 		}
 
 		var slice kcpapiv1alpha.APIExportEndpointSlice
 		err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
-			return meshsub.OK(), err
+			return subroutines.OK(), err
 		}
 
 		if len(slice.Status.APIExportEndpoints) == 0 {
-			return meshsub.StopWithRequeue(SubroutineRequeueShort, "no endpoints in slice"), nil
+			return subroutines.StopWithRequeue(SubroutineRequeueShort, "no endpoints in slice"), nil
 		}
 
 		endpointURL := slice.Status.APIExportEndpoints[0].URL
 		address, err = url.Parse(endpointURL)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to parse endpoint URL")
-			return meshsub.OK(), err
+			return subroutines.OK(), err
 		}
 	} else {
 		kcpUrl, err := url.Parse(cfg.Host)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to parse KCP URL")
-			return meshsub.OK(), err
+			return subroutines.OK(), err
 		}
 		if ptr.Deref(pc.RawPath, "") != "" {
 			kcpUrl.Path = *pc.RawPath
@@ -212,7 +212,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	host, err := url.JoinPath(hostPort, address.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	newConfig.Host = host
 
@@ -220,7 +220,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write kubeconfig")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	namespace := "platform-mesh-system"
@@ -242,34 +242,34 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	log.Debug().Str("secret", pc.Secret).Msg("Created or updated provider secret")
 
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
-) (meshsub.Result, error) {
+) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 
 	kcpClient, err := r.kcpHelper.NewKcpClient(restCfg, ic.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("creating kcp client for initializer")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	wt := &kcptenancyv1alpha.WorkspaceType{}
 	if err := kcpClient.Get(ctx, types.NamespacedName{Name: ic.WorkspaceTypeName}, wt); err != nil {
 		log.Error().Err(err).Msg("getting WorkspaceType")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	if len(wt.Status.VirtualWorkspaces) == 0 {
 		err = fmt.Errorf("no virtual workspaces found in %s", ic.WorkspaceTypeName)
 		log.Error().Err(err).Msg("bad WorkspaceType")
-		return meshsub.StopWithRequeue(SubroutineRequeueShort, err.Error()), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueShort, err.Error()), nil
 	}
 
 	newConfig := rest.CopyConfig(restCfg)
@@ -282,7 +282,7 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing virtual workspace URL")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
@@ -292,7 +292,7 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	data, err := clientcmd.Write(*apiConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("writing modified kubeconfig")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	namespace := "platform-mesh-system"
@@ -311,10 +311,10 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("creating/updating initializer Secret")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
 func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {

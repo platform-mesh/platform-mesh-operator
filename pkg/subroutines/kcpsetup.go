@@ -9,7 +9,7 @@ import (
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,15 +59,15 @@ func (r *KcpsetupSubroutine) GetName() string {
 
 func (r *KcpsetupSubroutine) Finalize(
 	ctx context.Context, runtimeObj client.Object,
-) (meshsub.Result, error) {
-	return meshsub.OK(), nil // TODO: Implement
+) (subroutines.Result, error) {
+	return subroutines.OK(), nil // TODO: Implement
 }
 
 func (r *KcpsetupSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
-func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Object) (meshsub.Result, error) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -80,7 +80,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -89,28 +89,28 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return meshsub.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
+		return subroutines.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
 	}
 
 	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
 	}
 
 	// Create kcp workspaces recursively
 	err = r.createKcpResources(ctx, cfg, r.kcpDirectory, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to create kcp workspaces")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to create kcp workspaces")
 	}
 
 	// apply extra workspaces
 	err = r.applyExtraWorkspaces(ctx, cfg, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to apply extra workspaces")
-		return meshsub.OK(), gcerrors.Wrap(err, "Failed to apply extra workspaces")
+		return subroutines.OK(), gcerrors.Wrap(err, "Failed to apply extra workspaces")
 	}
 
 	// update workspace status
@@ -127,7 +127,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 
 	log.Debug().Msg("Successful kcp setup")
 
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 
 }
 

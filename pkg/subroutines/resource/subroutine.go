@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/platform-mesh/golang-commons/logger"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -55,8 +55,8 @@ func (r *ResourceSubroutine) GetName() string {
 	return "ResourceSubroutine"
 }
 
-func (r *ResourceSubroutine) Finalize(_ context.Context, _ client.Object) (meshsub.Result, error) {
-	return meshsub.OK(), nil
+func (r *ResourceSubroutine) Finalize(_ context.Context, _ client.Object) (subroutines.Result, error) {
+	return subroutines.OK(), nil
 }
 
 func (r *ResourceSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
@@ -86,7 +86,7 @@ func getMetadataValue(obj *unstructured.Unstructured, key string) string {
 	return ""
 }
 
-func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Object) (meshsub.Result, error) {
+func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
 	inst := runtimeObj.(*unstructured.Unstructured)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("name", r.GetName())
 
@@ -141,10 +141,10 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 			return result, nil
 		}
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (meshsub.Result, error) {
+func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
 
@@ -187,24 +187,24 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	err = r.client.Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	err = unstructured.SetNestedField(obj.Object, version, updatePath...)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
-		return meshsub.StopWithRequeue(requeueShort, "set nested field"), nil
+		return subroutines.StopWithRequeue(requeueShort, "set nested field"), nil
 	}
 
 	err = r.client.Update(ctx, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (meshsub.Result, error) {
+func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
 	obj.SetName(inst.GetName())
@@ -218,28 +218,28 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	err = r.client.Get(ctx, client.ObjectKeyFromObject(inst), obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	err = unstructured.SetNestedField(obj.Object, version, "spec", "chart", "spec", "version")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
-		return meshsub.StopWithRequeue(requeueShort, "set chart version"), nil
+		return subroutines.StopWithRequeue(requeueShort, "set chart version"), nil
 	}
 
 	err = r.client.Update(ctx, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (meshsub.Result, error) {
+func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "helmRepository")
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
-		return meshsub.StopWithRequeue(requeueShort, "helmRepository status"), nil
+		return subroutines.StopWithRequeue(requeueShort, "helmRepository status"), nil
 	}
 
 	log.Info().Msg("Processing OCI Chart Resource")
@@ -264,12 +264,12 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (meshsub.Result, error) {
+func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
@@ -287,7 +287,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	spec, err := ocm.ParseRef(url)
 	if err != nil {
 		log.Error().Err(err).Str("url", url).Msg("Failed to parse Resource url")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
 
 	url = fmt.Sprintf("%s://%s/%s", spec.Scheme, spec.Host, spec.Repository)
@@ -323,12 +323,12 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (meshsub.Result, error) {
+func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	commit, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "commit")
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
@@ -368,7 +368,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create or update OCIRepository")
-		return meshsub.OK(), err
+		return subroutines.OK(), err
 	}
-	return meshsub.OK(), nil
+	return subroutines.OK(), nil
 }

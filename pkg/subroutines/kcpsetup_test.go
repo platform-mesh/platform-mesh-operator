@@ -1,4 +1,4 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
@@ -24,9 +24,8 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
-	meshsub "github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -44,7 +43,7 @@ type KcpsetupTestSuite struct {
 	suite.Suite
 	clientMock *mocks.Client
 	helperMock *mocks.KcpHelper
-	testObj    *subroutines.KcpsetupSubroutine
+	testObj    *KcpsetupSubroutine
 	log        *logger.Logger
 }
 
@@ -60,7 +59,7 @@ func (s *KcpsetupTestSuite) SetupTest() {
 	cfg.NoJSON = true
 	cfg.Name = "KcpsetupTestSuite"
 	s.log, _ = logger.New(cfg)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "https://kcp.example.com")
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "https://kcp.example.com")
 }
 
 func (s *KcpsetupTestSuite) TearDownTest() {
@@ -75,10 +74,10 @@ func (s *KcpsetupTestSuite) Test_Constructor() {
 
 	// create new mock client
 	s.clientMock = new(mocks.Client)
-	helper := &subroutines.Helper{}
+	helper := &Helper{}
 
 	// create new test object
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, helper, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, helper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 }
 
 func (s *KcpsetupTestSuite) Test_applyDirStructure() {
@@ -125,7 +124,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 			return nil
 		})
 
-	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
+	err := ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
 
 	s.Assert().Nil(err)
 }
@@ -138,13 +137,13 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	// Mock the mutating webhook secret lookup (called once due to caching)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
+				DEFAULT_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
 			}
 			return nil
 		}).
@@ -153,13 +152,13 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	// Mock the validating webhook secret lookup (called once due to caching)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
+				DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
 			}
 			return nil
 		}).
@@ -168,13 +167,13 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	// Mock the identity provider validating webhook secret lookup (called once due to caching)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
+				DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
 			}
 			return nil
 		}).
@@ -201,18 +200,18 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	s.Assert().NotNil(inventory)
 
 	// Check mutating webhook CA bundle
-	mutatingKey := subroutines.DEFAULT_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
+	mutatingKey := DEFAULT_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
 	s.Assert().Contains(inventory, mutatingKey)
 	expectedB64 := "dGVzdC1jYS1kYXRh" // base64 encoding of "test-ca-data"
 	s.Assert().Equal(expectedB64, inventory[mutatingKey])
 
 	// Check validating webhook CA bundle
-	validatingKey := subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
+	validatingKey := DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
 	s.Assert().Contains(inventory, validatingKey)
 	s.Assert().Equal(expectedB64, inventory[validatingKey])
 
 	// Check identity provider validating webhook CA bundle
-	ipdValidatingKey := subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
+	ipdValidatingKey := DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.WebhookRef.Name + ".ca-bundle"
 	s.Assert().Contains(inventory, ipdValidatingKey)
 	s.Assert().Equal(expectedB64, inventory[ipdValidatingKey])
 
@@ -231,13 +230,13 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 
 	// Test case 2: Secret not found
 	// Create a new instance to clear the cache
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
 	// Mock the mutating webhook secret lookup to return error
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		Return(errors.New("secret not found")).
 		Once()
@@ -259,18 +258,18 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 	customCfg.Subroutines.KcpSetup.DomainCertificateCASecretKey = customSecretKey
 
 	clientMock := new(mocks.Client)
-	s.testObj = subroutines.NewKcpsetupSubroutine(clientMock, s.helperMock, customCfg, ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(clientMock, s.helperMock, customCfg, ManifestStructureTest, "")
 
 	// Mock the mutating webhook secret lookup
 	clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+				DEFAULT_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
 			}
 			return nil
 		}).Once()
@@ -278,13 +277,13 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 	// Mock the validating webhook secret lookup
 	clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+				DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
 			}
 			return nil
 		}).Once()
@@ -292,13 +291,13 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 	// Mock the identity provider validating webhook secret lookup
 	clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+				DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
 			}
 			return nil
 		}).Once()
@@ -473,13 +472,13 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	// Mock the webhook server cert lookup (called once since we cache results)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+				DEFAULT_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
 			}
 			return nil
 		}).Once() // Only called once due to caching
@@ -487,13 +486,13 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	// Mock the identity provider validating webhook CA secret lookup
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
-			Namespace: subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
+			Name:      DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
+			Namespace: DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
+				DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
 			}
 			return nil
 		}).Once()
@@ -614,10 +613,10 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	// Assertions
 	s.Assert().Nil(err)
-	s.Assert().Equal(meshsub.OK(), result)
+	s.Assert().Equal(subroutines.OK(), result)
 
 	// Test error case - create a new instance to clear the cache
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "https://kcp.example.com")
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "https://kcp.example.com")
 }
 
 func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
@@ -625,7 +624,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Times(3)
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
@@ -695,25 +694,25 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
 	res := s.testObj.Finalizers(&corev1alpha1.PlatformMesh{})
-	s.Assert().Equal(res, []string{subroutines.KcpsetupSubroutineFinalizer})
+	s.Assert().Equal(res, []string{KcpsetupSubroutineFinalizer})
 }
 
 func (s *KcpsetupTestSuite) TestGetName() {
 	res := s.testObj.GetName()
-	s.Assert().Equal(res, subroutines.KcpsetupSubroutineName)
+	s.Assert().Equal(res, KcpsetupSubroutineName)
 }
 
 func (s *KcpsetupTestSuite) TestFinalize() {
 	res, err := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
-	s.Assert().Equal(meshsub.OK(), res)
+	s.Assert().Equal(subroutines.OK(), res)
 }
 
 func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	// test err1 - expect error when NewKcpClient fails
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(nil, errors.New("failed to create client"))
-	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
 	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
@@ -724,12 +723,12 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper = new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
 	// Mock both webhook secret lookups for CA bundle inventory
-	webhookConfig := subroutines.DEFAULT_WEBHOOK_CONFIGURATION
-	validatingWebhookConfig := subroutines.DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION
-	ipdValidatingWebhookConfig := subroutines.DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION
+	webhookConfig := DEFAULT_WEBHOOK_CONFIGURATION
+	validatingWebhookConfig := DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION
+	ipdValidatingWebhookConfig := DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION
 
 	// Mock the mutating webhook secret lookup (called once due to caching)
 	mockedK8sClient.EXPECT().Get(mock.Anything, types.NamespacedName{
@@ -833,7 +832,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockKcpClient = new(mocks.Client)
 	mockedKcpHelper = new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil)
-	s.testObj = subroutines.NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
+	s.testObj = NewKcpsetupSubroutine(mockedK8sClient, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
 	// Mock both secret lookups again (they should be cached from previous call)
 	// Since we're creating a new instance, the cache is cleared, so we need to mock again
@@ -1129,7 +1128,7 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 					FeatureToggles: tc.featureToggles,
 				},
 			}
-			result := subroutines.HasFeatureToggle(inst, tc.toggleName)
+			result := HasFeatureToggle(inst, tc.toggleName)
 			s.Assert().Equal(tc.expected, result)
 		})
 	}
@@ -1169,7 +1168,7 @@ func (s *KcpsetupTestSuite) Test_WorkspaceAuthConfigTemplate_FeatureDisableEmail
 				"welcomeAudiences":                []string{"test-audience"},
 			}
 
-			result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+			result, err := ReplaceTemplate(templateData, templateBytes)
 			s.Require().NoError(err, "Template rendering should not fail")
 
 			renderedYAML := string(result)
@@ -1226,7 +1225,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration
 			path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-home.yaml"
 
 			if tc.expectSkipped {
-				err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+				err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 				s.Assert().NoError(err)
 				kcpClientMock.AssertNotCalled(s.T(), "Get", mock.Anything, mock.Anything, mock.Anything)
 				kcpClientMock.AssertNotCalled(s.T(), "Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -1235,7 +1234,7 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration
 					Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Once()
 				kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-				err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+				err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 				s.Assert().NoError(err)
 			}
 		})
@@ -1259,6 +1258,6 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConf
 		Return(apierrors.NewNotFound(schema.GroupResource{}, "")).Once()
 	kcpClientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &corev1alpha1.PlatformMesh{})
+	err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &corev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err)
 }
