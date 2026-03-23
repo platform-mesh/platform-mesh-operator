@@ -6,6 +6,8 @@ spec:
   defaultAPIBindings:
     - export: core.platform-mesh.io
       path: root:platform-mesh-system
+    - export: system.platform-mesh.io
+      path: root:platform-mesh-system
   defaultChildWorkspaceType:
     name: org
     path: root
