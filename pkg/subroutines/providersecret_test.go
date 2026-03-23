@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -738,7 +737,7 @@ func (suite *ProvidersecretTestSuite) TestConstructor() {
 func (s *ProvidersecretTestSuite) TestFinalize() {
 	res, err := s.testObj.Finalize(context.Background(), nil)
 	s.Assert().Nil(err)
-	s.Assert().Equal(res, ctrl.Result{})
+	s.Assert().Equal(subroutines.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {

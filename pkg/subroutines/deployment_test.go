@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/logger"
@@ -10,6 +11,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -31,6 +33,21 @@ type DeployTestSuite struct {
 
 func TestDeployTestSuite(t *testing.T) {
 	suite.Run(t, new(DeployTestSuite))
+}
+
+// unstructuredFromApplyConfig unwraps objects produced by
+// client.ApplyConfigurationFromUnstructured (unexported wrapper type).
+func unstructuredFromApplyConfig(obj k8sruntime.ApplyConfiguration) *unstructured.Unstructured {
+	v := reflect.ValueOf(obj)
+	if v.Kind() != reflect.Pointer || v.IsNil() {
+		return nil
+	}
+	f := v.Elem().FieldByName("Unstructured")
+	if !f.IsValid() || f.IsNil() {
+		return nil
+	}
+	u, _ := f.Interface().(*unstructured.Unstructured)
+	return u
 }
 
 func (s *DeployTestSuite) SetupTest() {
@@ -63,10 +80,10 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 
 	// mocks
 	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).Return(nil).Twice()
-	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-			// Simulate a successful patch operation
-			hr := obj.(*unstructured.Unstructured)
+	s.clientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj k8sruntime.ApplyConfiguration, opts ...client.ApplyOption) error {
+			hr := unstructuredFromApplyConfig(obj)
+			s.Require().NotNil(hr)
 
 			// Extract .spec
 			spec, found, err := unstructured.NestedFieldNoCopy(hr.Object, "spec")
@@ -117,10 +134,10 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	templateVars, err = TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
-	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-			// Simulate a successful patch operation
-			hr := obj.(*unstructured.Unstructured)
+	s.clientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj k8sruntime.ApplyConfiguration, opts ...client.ApplyOption) error {
+			hr := unstructuredFromApplyConfig(obj)
+			s.Require().NotNil(hr)
 
 			// Extract .spec
 			spec, found, err := unstructured.NestedFieldNoCopy(hr.Object, "spec")

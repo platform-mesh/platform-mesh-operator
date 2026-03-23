@@ -296,8 +296,8 @@ func (s *HelperTestSuite) TestConstructorOK() {
 func (s *HelperTestSuite) TestApplyManifestFromFile() {
 
 	cl := new(mocks.Client)
-	// SSA Patch call (no Get needed)
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	// Server-side apply (no Get needed)
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	err := ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
@@ -307,15 +307,15 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 	err = ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
 	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	templateData := map[string]any{
 		".account-operator.webhooks.platform-mesh.io.ca-bundle": "CABundle",
 	}

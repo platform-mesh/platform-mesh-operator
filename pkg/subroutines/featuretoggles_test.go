@@ -106,10 +106,10 @@ func (s *FeaturesTestSuite) TestProcess() {
 			return nil
 		})
 
-	// Expect multiple Patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	// Expect multiple Apply calls for applying manifests (flexible count)
+	mockKcpClient.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	// Mock workspace lookups and patch calls
+	// Mock workspace lookups
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
