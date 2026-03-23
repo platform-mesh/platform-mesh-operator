@@ -7,15 +7,14 @@ import (
 	"strings"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
-	"github.com/platform-mesh/golang-commons/errors"
+	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	meshsub "github.com/platform-mesh/subroutines"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
@@ -59,16 +58,16 @@ func (r *KcpsetupSubroutine) GetName() string {
 }
 
 func (r *KcpsetupSubroutine) Finalize(
-	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
-) (ctrl.Result, errors.OperatorError) {
-	return ctrl.Result{}, nil // TODO: Implement
+	ctx context.Context, runtimeObj client.Object,
+) (meshsub.Result, error) {
+	return meshsub.OK(), nil // TODO: Implement
 }
 
-func (r *KcpsetupSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
+func (r *KcpsetupSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
-func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Object) (meshsub.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -81,7 +80,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, true)
+		return meshsub.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -90,28 +89,28 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, true)
+		return meshsub.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
 	}
 
 	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
+		return meshsub.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
 	}
 
 	// Create kcp workspaces recursively
 	err = r.createKcpResources(ctx, cfg, r.kcpDirectory, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kcp workspaces")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to create kcp workspaces"), true, false)
+		return meshsub.OK(), gcerrors.Wrap(err, "Failed to create kcp workspaces")
 	}
 
 	// apply extra workspaces
 	err = r.applyExtraWorkspaces(ctx, cfg, inst)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to apply extra workspaces")
-		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to apply extra workspaces"), true, false)
+		return meshsub.OK(), gcerrors.Wrap(err, "Failed to apply extra workspaces")
 	}
 
 	// update workspace status
@@ -128,7 +127,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj runtimeobje
 
 	log.Debug().Msg("Successful kcp setup")
 
-	return ctrl.Result{}, nil
+	return meshsub.OK(), nil
 
 }
 
@@ -138,14 +137,14 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport hash inventory")
-		return errors.Wrap(err, "Failed to get APIExport hash inventory")
+		return gcerrors.Wrap(err, "Failed to get APIExport hash inventory")
 	}
 
 	// Get CA bundle data
 	caBundles, err := r.getCABundleInventory(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to get CA bundle inventory")
-		return errors.Wrap(err, "Failed to get CA bundle inventory")
+		return gcerrors.Wrap(err, "Failed to get CA bundle inventory")
 	}
 
 	// Build templateData as map[string]any to support both strings and arrays
@@ -170,7 +169,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
 	if err != nil {
 		log.Err(err).Msg("Failed to create kcp client for platform-mesh-system workspace")
-		return errors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
+		return gcerrors.Wrap(err, "Failed to create kcp client for platform-mesh-system workspace")
 	}
 
 	templateData["welcomeAudiences"] = []string{}
@@ -183,7 +182,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		managedClients, found, err := unstructured.NestedMap(ipc.Object, "status", "managedClients")
 		if err != nil {
 			log.Err(err).Msg("Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
-			return errors.Wrap(err, "Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
+			return gcerrors.Wrap(err, "Failed to get managedClients from IdentityProviderConfiguration 'welcome'")
 		}
 
 		if found && len(managedClients) > 0 {
@@ -211,7 +210,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	err = ApplyDirStructure(ctx, dir, "root", config, templateData, inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
-		return errors.Wrap(err, "Failed to apply dir structure")
+		return gcerrors.Wrap(err, "Failed to apply dir structure")
 	}
 
 	return nil
@@ -234,7 +233,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	caData, err := r.getCaBundle(ctx, &webhookConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get CA bundle")
-		return nil, errors.Wrap(err, "Failed to get CA bundle")
+		return nil, gcerrors.Wrap(err, "Failed to get CA bundle")
 	}
 
 	key := fmt.Sprintf("%s.ca-bundle", webhookConfig.WebhookRef.Name)
@@ -246,7 +245,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	ipdCaData, err := r.getCaBundle(ctx, &ipdValidatingWebhookConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get Identity Provider ValidatingWebhook CA bundle")
-		return nil, errors.Wrap(err, "Failed to get Identity Provider ValidatingWebhook CA bundle")
+		return nil, gcerrors.Wrap(err, "Failed to get Identity Provider ValidatingWebhook CA bundle")
 	}
 	ipdKey := fmt.Sprintf("%s.ca-bundle", ipdValidatingWebhookConfig.WebhookRef.Name)
 	caBundles[ipdKey] = base64.StdEncoding.EncodeToString(ipdCaData)
@@ -256,7 +255,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	validatingCaData, err := r.getCaBundle(ctx, &validatingWebhookConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get ValidatingWebhook CA bundle")
-		return nil, errors.Wrap(err, "Failed to get ValidatingWebhook CA bundle")
+		return nil, gcerrors.Wrap(err, "Failed to get ValidatingWebhook CA bundle")
 	}
 
 	validatingKey := fmt.Sprintf("%s.ca-bundle", validatingWebhookConfig.WebhookRef.Name)
@@ -272,7 +271,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get Domain CA bundle")
-		return nil, errors.Wrap(err, "Failed to get Domain CA bundle")
+		return nil, gcerrors.Wrap(err, "Failed to get Domain CA bundle")
 	}
 
 	caBundles["domainCA"] = base64.StdEncoding.EncodeToString(domainCA)
@@ -297,13 +296,13 @@ func (r *KcpsetupSubroutine) getCaBundle(
 	}, &caSecret)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get ca secret")
-		return nil, errors.Wrap(err, "Failed to get ca secret: %s/%s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name)
+		return nil, gcerrors.Wrap(err, "Failed to get ca secret: %s/%s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name)
 	}
 
 	caData, ok := caSecret.Data[webhookConfig.SecretData]
 	if !ok {
 		log.Error().Msg("Failed to get caData from secret")
-		return nil, errors.New("Failed to get caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
+		return nil, fmt.Errorf("failed to get caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
 	}
 
 	decodedCaData := caData
@@ -323,21 +322,21 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, conf
 	err = cs.Get(ctx, types.NamespacedName{Name: "tenancy.kcp.io"}, &apiExport)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport for tenancy.kcp.io")
-		return inventory, errors.Wrap(err, "Failed to get APIExport for tenancy.kcp.io")
+		return inventory, gcerrors.Wrap(err, "Failed to get APIExport for tenancy.kcp.io")
 	}
 	inventory["apiExportRootTenancyKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
 	err = cs.Get(ctx, types.NamespacedName{Name: "shards.core.kcp.io"}, &apiExport)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport for shards.core.kcp.io")
-		return inventory, errors.Wrap(err, "Failed to get APIExport for shards.core.kcp.io")
+		return inventory, gcerrors.Wrap(err, "Failed to get APIExport for shards.core.kcp.io")
 	}
 	inventory["apiExportRootShardsKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
 	err = cs.Get(ctx, types.NamespacedName{Name: "topology.kcp.io"}, &apiExport)
 	if err != nil {
 		log.Err(err).Msg("Failed to get APIExport for topology.kcp.io")
-		return inventory, errors.Wrap(err, "Failed to get APIExport for topology.kcp.io")
+		return inventory, gcerrors.Wrap(err, "Failed to get APIExport for topology.kcp.io")
 	}
 	inventory["apiExportRootTopologyKcpIoIdentityHash"] = apiExport.Status.IdentityHash
 
@@ -364,7 +363,7 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 
 		k8sClient, err := r.kcpHelper.NewKcpClient(config, parentPath)
 		if err != nil {
-			return errors.Wrap(err, "Failed to create kcp client for parent workspace %s", parentPath)
+			return gcerrors.Wrap(err, "Failed to create kcp client for parent workspace %s", parentPath)
 		}
 
 		ws := &kcptenancyv1alpha.Workspace{}
@@ -378,13 +377,13 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 
 		unstructuredWs, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ws)
 		if err != nil {
-			return errors.Wrap(err, "failed to convert workspace to unstructured")
+			return gcerrors.Wrap(err, "failed to convert workspace to unstructured")
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
 		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 		if err != nil {
-			return errors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
+			return gcerrors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}
 		log.Info().Str("workspace", wsDecl.Path).Msg("Applied extra workspace")
 

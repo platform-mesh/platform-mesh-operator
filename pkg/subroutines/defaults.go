@@ -1,10 +1,19 @@
 package subroutines
 
 import (
+	"time"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+)
+
+// Requeue intervals for meshsub.StopWithRequeue (legacy OperatorError
+// requeue / not-ready paths).
+const (
+	SubroutineRequeueShort = 5 * time.Second
+	SubroutineRequeueLong  = 10 * time.Second
 )
 
 var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"

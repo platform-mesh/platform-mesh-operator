@@ -11,6 +11,7 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	subroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	meshsub "github.com/platform-mesh/subroutines"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
@@ -18,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -124,7 +124,7 @@ func (s *FeaturesTestSuite) TestProcess() {
 		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "main-home-overview-getting-started"))
 
 	// Call Process
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+	result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
 		Spec: corev1alpha1.PlatformMeshSpec{
 			FeatureToggles: []corev1alpha1.FeatureToggle{
 				{Name: "feature-enable-getting-started", Parameters: map[string]string{}},
@@ -133,7 +133,7 @@ func (s *FeaturesTestSuite) TestProcess() {
 	})
 
 	// Assertions
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Nil(err)
+	s.Assert().Equal(meshsub.OK(), result)
 
 }

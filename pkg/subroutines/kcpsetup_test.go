@@ -18,7 +18,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -27,6 +26,7 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	meshsub "github.com/platform-mesh/subroutines"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -368,7 +368,7 @@ func (s *KcpsetupTestSuite) Test_GetCaBundle() {
 	caData, err = s.testObj.GetCaBundle(ctx, webhookConfig)
 	s.Assert().Error(err)
 	s.Assert().Nil(caData)
-	s.Assert().Contains(err.Error(), "Failed to get caData from secret")
+	s.Assert().Contains(err.Error(), "failed to get caData from secret")
 	s.clientMock.AssertExpectations(s.T())
 }
 
@@ -594,11 +594,11 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		Return(nil)
 
 	// Call Process
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
+	result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
 
 	// Assertions
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Nil(err)
+	s.Assert().Equal(meshsub.OK(), result)
 
 	// Test error case - create a new instance to clear the cache
 	s.testObj = subroutines.NewKcpsetupSubroutine(s.clientMock, s.helperMock, defaultTestOperatorConfig(), ManifestStructureTest, "https://kcp.example.com")
@@ -690,7 +690,7 @@ func (s *KcpsetupTestSuite) TestGetName() {
 func (s *KcpsetupTestSuite) TestFinalize() {
 	res, err := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
-	s.Assert().Equal(res, ctrl.Result{})
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *KcpsetupTestSuite) TestCreateWorkspaces() {

@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -31,6 +30,7 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	meshsub "github.com/platform-mesh/subroutines"
 )
 
 var secretKubeconfigData, _ = os.ReadFile("test/kubeconfig.yaml")
@@ -92,7 +92,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
-			Namespace: "default",
+			Namespace: "platform-mesh-system",
 		},
 		Spec: corev1alpha1.PlatformMeshSpec{
 			Kcp: corev1alpha1.Kcp{
@@ -113,108 +113,44 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 	}
 
-	kubeconfig, err := clientcmd.Load(secretKubeconfigData)
-	s.Require().NoError(err)
+	operatorCfg := config.NewOperatorConfig()
 
-	kubeconfig.Contexts["custom-context"] = &clientcmdapi.Context{
-		AuthInfo: "test-user",
-		Cluster:  "custom-cluster",
-	}
-
-	if _, exists := kubeconfig.Clusters["custom-cluster"]; !exists {
-		kubeconfig.Clusters["custom-cluster"] = &clientcmdapi.Cluster{}
-	}
-	kubeconfig.Clusters["custom-cluster"].Server = "http://dummy-url" // value replaced below
-	kubeconfig.Contexts["custom-context"] = &clientcmdapi.Context{
-		AuthInfo: "test-user",
-		Cluster:  "custom-cluster",
-	}
-	kubeconfig.CurrentContext = "custom-context"
-
-	patchedData, err := clientcmd.Write(*kubeconfig)
-	s.Require().NoError(err)
-
-	secret := corev1.Secret{
+	adminSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
+			Name:      operatorCfg.KCP.ClusterAdminSecretName,
+			Namespace: operatorCfg.KCP.Namespace,
 		},
 		Data: map[string][]byte{
-			"kubeconfig": patchedData,
+			"ca.crt":  []byte("ZHVtbXlkYXRhCg=="),
+			"tls.crt": []byte("ZHVtbXlkYXRhCg=="),
+			"tls.key": []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
-	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
-		return key.Name == "test-secret" && key.Namespace == "default"
-	}), mock.Anything).
+	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*corev1.Secret) = secret
+			u := obj.(*unstructured.Unstructured)
+			u.Object = map[string]interface{}{
+				"status": map[string]interface{}{
+					"conditions": []interface{}{
+						map[string]interface{}{
+							"type":   "Available",
+							"status": "True",
+						},
+					},
+				},
+			}
+			return nil
+		}).Twice()
+
+	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{
+		Name:      adminSecret.Name,
+		Namespace: adminSecret.Namespace,
+	}, mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*corev1.Secret) = adminSecret
 			return nil
 		}).Once()
-
-	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
-		return key.Name == "provider-secret" && key.Namespace == "default"
-	}), mock.Anything).
-		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Secret"}, "provider-secret")).
-		Once()
-
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
-
-	s.clientMock.EXPECT().Create(
-		mock.Anything,
-		mock.MatchedBy(func(obj client.Object) bool {
-			secret, ok := obj.(*corev1.Secret)
-			if !ok {
-				s.log.Error().Msg("Object is not a Secret")
-				return false
-			}
-
-			if secret.Name != "provider-secret" {
-				s.log.Error().Msgf("Secret name mismatch: expected 'provider-secret', got '%s'", secret.Name)
-				return false
-			}
-			if secret.Namespace != "default" {
-				s.log.Error().Msgf("Secret namespace mismatch: expected 'default', got '%s'", secret.Namespace)
-				return false
-			}
-
-			kubeconfigData, exists := secret.Data["kubeconfig"]
-			if !exists {
-				s.log.Error().Msg("kubeconfig data not found in secret")
-				return false
-			}
-
-			kubeconfig, err := clientcmd.Load(kubeconfigData)
-			if err != nil {
-				s.log.Error().Msgf("Failed to parse kubeconfig: %v", err)
-				return false
-			}
-
-			currentContext := kubeconfig.Contexts[kubeconfig.CurrentContext]
-			cluster := kubeconfig.Clusters[currentContext.Cluster]
-
-			// Test that the URL is passed correctly form the endpoint slice
-			expectedURL := "http://example.com/clusters/root:platform-mesh-system"
-			if cluster.Server != expectedURL {
-				s.log.Error().Msgf("Server URL mismatch: expected '%s', got '%s'", expectedURL, cluster.Server)
-				return false
-			}
-			return true
-		}),
-		mock.Anything,
-	).
-		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-			providerSecret := obj.(*corev1.Secret)
-			err := controllerutil.SetOwnerReference(instance, providerSecret, s.clientMock.Scheme())
-			s.NoError(err)
-			return nil
-		}).
-		Once()
-
-	scheme := runtime.NewScheme()
-	err = corev1alpha1.AddToScheme(scheme)
-	s.Require().NoError(err)
-	s.clientMock.EXPECT().Scheme().Return(scheme).Once()
 
 	slice := &kcpapiv1alpha.APIExportEndpointSlice{
 		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
@@ -233,29 +169,78 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*corev1.Secret) = corev1.Secret{
-				Data: map[string][]byte{
-					"kubeconfig": patchedData,
-				},
+
+	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+		return key.Name == "provider-secret" && key.Namespace == operatorCfg.KCP.Namespace
+	}), mock.Anything).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Secret"}, "provider-secret")).
+		Once()
+
+	expectedServer := "https://frontproxy-front-proxy.platform-mesh-system:6443"
+
+	s.clientMock.EXPECT().Create(
+		mock.Anything,
+		mock.MatchedBy(func(obj client.Object) bool {
+			secret, ok := obj.(*corev1.Secret)
+			if !ok {
+				s.log.Error().Msg("Object is not a Secret")
+				return false
 			}
+
+			if secret.Name != "provider-secret" {
+				s.log.Error().Msgf("Secret name mismatch: expected 'provider-secret', got '%s'", secret.Name)
+				return false
+			}
+			if secret.Namespace != operatorCfg.KCP.Namespace {
+				s.log.Error().Msgf("Secret namespace mismatch: expected '%s', got '%s'", operatorCfg.KCP.Namespace, secret.Namespace)
+				return false
+			}
+
+			kubeconfigData, exists := secret.Data["kubeconfig"]
+			if !exists {
+				s.log.Error().Msg("kubeconfig data not found in secret")
+				return false
+			}
+
+			kubeconfig, err := clientcmd.Load(kubeconfigData)
+			if err != nil {
+				s.log.Error().Msgf("Failed to parse kubeconfig: %v", err)
+				return false
+			}
+
+			currentContext := kubeconfig.Contexts[kubeconfig.CurrentContext]
+			cluster := kubeconfig.Clusters[currentContext.Cluster]
+
+			if cluster.Server != expectedServer {
+				s.log.Error().Msgf("Server URL mismatch: expected '%s', got '%s'", expectedServer, cluster.Server)
+				return false
+			}
+			return true
+		}),
+		mock.Anything,
+	).
+		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+			providerSecret := obj.(*corev1.Secret)
+			err := controllerutil.SetOwnerReference(instance, providerSecret, s.clientMock.Scheme())
+			s.NoError(err)
 			return nil
-		},
-	).Once()
+		}).
+		Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	scheme := runtime.NewScheme()
+	err := corev1alpha1.AddToScheme(scheme)
+	s.Require().NoError(err)
+	s.clientMock.EXPECT().Scheme().Return(scheme).Once()
 
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
+	s.testObj = subroutines.NewProviderSecretSubroutine(
+		s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "https://kcp.example.com",
+	)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().Nil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestWrongScheme() {
@@ -349,10 +334,10 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Error(opErr.Err(), "expected error due to nil scheme")
-	s.Assert().Equal(res, ctrl.Result{})
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().Nil(err)
+	s.Assert().True(res.IsStopWithRequeue())
+	s.Assert().Contains(res.Message(), "scheme")
 }
 
 func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
@@ -515,12 +500,12 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
-	res, opErr := s.testObj.Process(ctx, instance)
+	res, err := s.testObj.Process(ctx, instance)
 
 	// Asserts
-	s.Require().NotNil(opErr, "expected opErr to not be nil")
-	s.Assert().Error(opErr.Err(), "expected error from operator")
-	s.Assert().Equal(ctrl.Result{}, res)
+	s.Require().NotNil(err, "expected error to not be nil")
+	s.Assert().Error(err, "expected error from operator")
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
@@ -623,13 +608,11 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
-	res, opErr := s.testObj.Process(ctx, instance)
-	_ = opErr
-	_ = res
+	res, err := s.testObj.Process(ctx, instance)
 
 	// assert
-	s.Assert().Error(opErr.Err(), "Failed to build config from kubeconfig string")
-	s.Assert().Equal(res, ctrl.Result{})
+	s.Assert().Error(err, "Failed to build config from kubeconfig string")
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
@@ -713,11 +696,11 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 	}
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
-	res, opErr := s.testObj.Process(ctx, instance)
+	res, err := s.testObj.Process(ctx, instance)
 
 	// assert
-	s.Assert().Error(opErr.Err(), "Failed to build kubeconfig")
-	s.Assert().Equal(res, ctrl.Result{})
+	s.Assert().Error(err, "Failed to build kubeconfig")
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestFinalizers() {
@@ -738,7 +721,7 @@ func (suite *ProvidersecretTestSuite) TestConstructor() {
 func (s *ProvidersecretTestSuite) TestFinalize() {
 	res, err := s.testObj.Finalize(context.Background(), nil)
 	s.Assert().Nil(err)
-	s.Assert().Equal(res, ctrl.Result{})
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
@@ -824,9 +807,9 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 	}
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
@@ -913,9 +896,9 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
@@ -1013,10 +996,10 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
+	res, err := s.testObj.Process(ctx, instance)
 
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
@@ -1110,10 +1093,10 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
+	res, err := s.testObj.Process(ctx, instance)
 
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
@@ -1216,9 +1199,9 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
@@ -1323,9 +1306,9 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
@@ -1444,9 +1427,9 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
@@ -1584,9 +1567,9 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().NotNil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().NotNil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
 
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
@@ -1821,7 +1804,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
+	res, err := s.testObj.Process(ctx, instance)
+	s.Require().Nil(err)
+	s.Assert().Equal(meshsub.OK(), res)
 }
