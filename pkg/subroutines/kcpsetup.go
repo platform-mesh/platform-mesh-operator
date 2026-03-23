@@ -80,7 +80,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -89,7 +89,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "FrontProxy is not ready"), nil
 	}
 
 	// Build kcp kubeconfig

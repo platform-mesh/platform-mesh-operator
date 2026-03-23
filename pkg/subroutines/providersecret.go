@@ -82,7 +82,7 @@ func (r *ProvidersecretSubroutine) Process(
 
 	scheme := r.client.Scheme()
 	if scheme == nil {
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, "client scheme is nil"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "client scheme is nil"), nil
 	}
 
 	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
@@ -95,7 +95,7 @@ func (r *ProvidersecretSubroutine) Process(
 	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueLong, "RootShard is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -105,7 +105,7 @@ func (r *ProvidersecretSubroutine) Process(
 
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueLong, "FrontProxy is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "FrontProxy is not ready"), nil
 	}
 
 	// Determine which provider connections to use based on configuration:
@@ -181,7 +181,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 
 		if len(slice.Status.APIExportEndpoints) == 0 {
-			return subroutines.StopWithRequeue(SubroutineRequeueShort, "no endpoints in slice"), nil
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "no endpoints in slice"), nil
 		}
 
 		endpointURL := slice.Status.APIExportEndpoints[0].URL
@@ -269,7 +269,7 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	if len(wt.Status.VirtualWorkspaces) == 0 {
 		err = fmt.Errorf("no virtual workspaces found in %s", ic.WorkspaceTypeName)
 		log.Error().Err(err).Msg("bad WorkspaceType")
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, err.Error()), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, err.Error()), nil
 	}
 
 	newConfig := rest.CopyConfig(restCfg)

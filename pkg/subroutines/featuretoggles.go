@@ -146,7 +146,7 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
 				Str("namespace", operatorCfg.KCP.Namespace).
 				Msg("KCP admin secret not found yet..")
-			return subroutines.StopWithRequeue(SubroutineRequeueLong, "KCP admin secret not found yet"), nil
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "KCP admin secret not found yet"), nil
 		}
 		return subroutines.OK(), gcerrors.Wrap(err, "Failed to get secret")
 	}

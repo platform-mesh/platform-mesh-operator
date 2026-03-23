@@ -74,11 +74,11 @@ func (r *WaitSubroutine) Process(
 				err := r.client.Get(ctx, client.ObjectKey{Namespace: resourceType.Namespace, Name: resourceType.Name}, res)
 				if err != nil {
 					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
-					return subroutines.StopWithRequeue(SubroutineRequeueShort, "get resource"), nil
+					return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
 				}
 				if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
-					return subroutines.StopWithRequeue(SubroutineRequeueShort, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
+					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
 				}
 				continue
 			}
@@ -87,7 +87,7 @@ func (r *WaitSubroutine) Process(
 			ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
 			if err != nil {
 				log.Info().Msgf("Error converting label selector: %v", err)
-				return subroutines.StopWithRequeue(SubroutineRequeueShort, "label selector"), nil
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
 			}
 			err = r.client.List(ctx, waitList, &client.ListOptions{
 				Namespace:     resourceType.Namespace,
@@ -95,13 +95,13 @@ func (r *WaitSubroutine) Process(
 			})
 			if err != nil {
 				log.Info().Msgf("Error listing resources: %v", err)
-				return subroutines.StopWithRequeue(SubroutineRequeueShort, "list resources"), nil
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources"), nil
 			}
 
 			for _, item := range waitList.Items {
 				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
-					return subroutines.StopWithRequeue(SubroutineRequeueShort, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
+					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
 				}
 			}
 		}
@@ -110,7 +110,7 @@ func (r *WaitSubroutine) Process(
 	// Check if WorkspaceAuthenticationConfiguration audience is still a placeholder
 	// If so, trigger a reconcile to ensure all logic is finished
 	if err := r.checkWorkspaceAuthConfigAudience(ctx, log); err != nil {
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, err.Error()), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, err.Error()), nil
 	}
 
 	return subroutines.OK(), nil

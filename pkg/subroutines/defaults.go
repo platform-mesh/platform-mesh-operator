@@ -9,12 +9,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
-// Requeue intervals for subroutines.StopWithRequeue (legacy OperatorError
-// requeue / not-ready paths).
-const (
-	SubroutineRequeueShort = 5 * time.Second
-	SubroutineRequeueLong  = 10 * time.Second
-)
+const DefaultRequeueInterval = 5 * time.Second
 
 var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"
 var AccountOperatorWebhookSecretNamespace = "platform-mesh-system"

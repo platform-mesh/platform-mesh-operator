@@ -114,7 +114,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 
 	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("platform-mesh-operator-infra-components Release is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, "platform-mesh-operator-infra-components Release is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "platform-mesh-operator-infra-components Release is not ready"), nil
 	}
 
 	// Wait for cert-manager to be ready
@@ -125,7 +125,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	if !matchesConditionWithStatus(rel, "Ready", "True") {
 		log.Info().Msg("cert-manager Release is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, "cert-manager Release is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
 	}
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
@@ -172,7 +172,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 
 		if !matchesConditionWithStatus(rel, "Ready", "True") {
 			log.Info().Msg("istio-istiod Release is not ready..")
-			return subroutines.StopWithRequeue(SubroutineRequeueShort, "istio-istiod Release is not ready"), nil
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "istio-istiod Release is not ready"), nil
 		}
 
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
@@ -200,7 +200,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, "RootShard is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -209,7 +209,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
-		return subroutines.StopWithRequeue(SubroutineRequeueShort, "FrontProxy is not ready"), nil
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "FrontProxy is not ready"), nil
 	}
 	return subroutines.OK(), nil
 }
