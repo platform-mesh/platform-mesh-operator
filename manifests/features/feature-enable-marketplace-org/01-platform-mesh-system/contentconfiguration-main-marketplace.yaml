@@ -19,7 +19,7 @@ spec:
                 "order": 700,
                 "icon": "retail-store",
                 "hideFromNav": false,
-                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/entity/org/marketplace",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/marketplace/ui/#/marketplace",
                 "viewGroup": "marketplace",
                 "context": {
                   "frameContext": {"automaticDGraphqlApiUrl": "http://localhost/placeholder"},

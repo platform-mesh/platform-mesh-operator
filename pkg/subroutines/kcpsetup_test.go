@@ -117,6 +117,14 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 			return nil
 		})
 
+	// Mock APIExport lookups
+	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			export := obj.(*kcpapiv1alpha.APIExport)
+			export.Status.IdentityHash = "test-hash"
+			return nil
+		})
+
 	err := subroutines.ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
 
 	s.Assert().Nil(err)
@@ -558,6 +566,14 @@ func (s *KcpsetupTestSuite) TestProcess() {
 			return nil
 		})
 
+	mockKcpClient.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "system.platform-mesh.io"}, mock.AnythingOfType("*v1alpha1.APIExport")).
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+			export := obj.(*kcpapiv1alpha.APIExport)
+			export.Status = apiexport.Status
+			return nil
+		})
+
 	// Mock workspace lookups and patch calls
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
@@ -782,12 +798,12 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			Phase: "Ready",
 		},
 	}
-	// Mock APIExport lookups (3 calls for tenancy, shards, topology)
+	// Mock APIExport lookups
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
-		}).Times(3)
+		})
 
 	// Mock workspace lookups (flexible count for polling)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
@@ -876,12 +892,12 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Return(nil).
 		Once()
 
-	// Mock APIExport lookups (3 calls for tenancy, shards, topology)
+	// Mock APIExport lookups
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
-		}).Times(3)
+		})
 
 	// Mock workspace lookups (2 calls for platform-mesh-system and orgs workspaces)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).

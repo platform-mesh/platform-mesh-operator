@@ -30,10 +30,9 @@ spec:
                           },
                           "context": {
                               "resourceDefinition": {
-                                  "group": "core.platform-mesh.io",
-                                  "plural": "accounts",
-                                  "singular": "account",
-                                  "kind": "Account",
+                                  "apiGroup": "core_platform_mesh_io",
+                                  "entityCollection": "Accounts",
+                                  "entity": "Account",
                                   "scope": "Cluster",
                                   "version": "v1alpha1",
                                   "readyCondition": {
@@ -101,7 +100,7 @@ spec:
                           },
                           "children": [
                               {
-                                  "pathSegment": ":core_platform-mesh_io_accountId:1",
+                                  "pathSegment": ":core_platform-mesh_io_accountId",
                                   "hideFromNav": true,
                                   "keepSelectedForChildren": false,
                                   "defineEntity": {
@@ -112,12 +111,12 @@ spec:
                                       "additionalContextKeys": ["accountPath"]
                                   },
                                   "context": {
-                                      "accountId": ":core_platform-mesh_io_accountId:1",
-                                      "core_platform-mesh_io_accountId": ":core_platform-mesh_io_accountId:1",
-                                      "resourceId": ":core_platform-mesh_io_accountId:1"
+                                      "accountId": ":core_platform-mesh_io_accountId",
+                                      "core_platform-mesh_io_accountId": ":core_platform-mesh_io_accountId",
+                                      "resourceId": ":core_platform-mesh_io_accountId"
                                   },
                                   "navHeader": {
-                                    "label": ":core_platform-mesh_io_accountId:1"
+                                    "label": ":core_platform-mesh_io_accountId"
                                   }
                               }
                           ]

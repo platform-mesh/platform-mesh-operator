@@ -26,10 +26,9 @@ spec:
                 },
                 "context": {
                   "resourceDefinition": {
-                    "group": "core.platform-mesh.io",
-                    "plural": "accounts",
-                    "singular": "account",
-                    "kind": "Account",
+                    "apiGroup": "core_platform_mesh_io",
+                    "entityCollection": "Accounts",
+                    "entity": "Account",
                     "scope": "Cluster",
                     "version": "v1alpha1"
                   }
