@@ -1,11 +1,15 @@
 package subroutines
 
 import (
+	"time"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
+
+const DefaultRequeueInterval = 5 * time.Second
 
 var AccountOperatorWebhookSecretName = "account-operator-webhook-server-cert"
 var AccountOperatorWebhookSecretNamespace = "platform-mesh-system"
