@@ -1263,3 +1263,52 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConf
 	err := subroutines.ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &corev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err)
 }
+
+func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_EnsuresSystemBindingForOrgWorkspaceType() {
+	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
+	kcpClientMock := new(mocks.Client)
+
+	tmp, err := os.CreateTemp("", "org-workspacetype-*.yaml")
+	s.Require().NoError(err)
+	defer os.Remove(tmp.Name())
+
+	_, err = tmp.WriteString(`apiVersion: tenancy.kcp.io/v1alpha1
+kind: WorkspaceType
+metadata:
+  name: org
+spec:
+  defaultAPIBindings:
+    - export: core.platform-mesh.io
+      path: root:platform-mesh-system
+`)
+	s.Require().NoError(err)
+	s.Require().NoError(tmp.Close())
+
+	kcpClientMock.EXPECT().
+		Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			u, ok := obj.(*unstructured.Unstructured)
+			s.Require().True(ok)
+			bindings, found, nestedErr := unstructured.NestedSlice(u.Object, "spec", "defaultAPIBindings")
+			s.Require().NoError(nestedErr)
+			s.Require().True(found)
+
+			hasSystem := false
+			for _, b := range bindings {
+				m, mapOK := b.(map[string]interface{})
+				if !mapOK {
+					continue
+				}
+				if m["export"] == "system.platform-mesh.io" && m["path"] == "root:platform-mesh-system" {
+					hasSystem = true
+					break
+				}
+			}
+			s.Assert().True(hasSystem, "org workspace type should always include system.platform-mesh.io default APIBinding")
+			return nil
+		}).
+		Once()
+
+	err = subroutines.ApplyManifestFromFile(ctx, tmp.Name(), kcpClientMock, map[string]any{}, "root", &corev1alpha1.PlatformMesh{})
+	s.Require().NoError(err)
+}

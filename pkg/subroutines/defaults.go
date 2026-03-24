@@ -18,7 +18,6 @@ var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 
-// Default provider kubeconfigs are generated from kubeconfig-kcp-admin.
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		Path:           "root:platform-mesh-system",
@@ -36,19 +35,30 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
-		Path:           "root:platform-mesh-system",
-		Secret:         "kubernetes-grapqhl-gateway-kubeconfig",
-		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
+		EndpointSliceName: ptr.To("core.platform-mesh.io"),
+		Path:              "root",
+		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+		KubeconfigAuth:    corev1alpha1.KubeconfigAuthAdminKubeconfig,
 	},
 	{
 		Path:           "root:platform-mesh-system",
 		Secret:         "extension-manager-operator-kubeconfig",
 		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
+		// extenseion manager operator works with scoped kubeconfig
+		// set KubeconfigAuth = KubeconfigAuthServiceAccountScoped
+		APIExportName: "core.platform-mesh.io",
 	},
 	{
 		Path:           "root:platform-mesh-system",
 		Secret:         "iam-service-kubeconfig",
 		KubeconfigAuth: corev1alpha1.KubeconfigAuthAdminKubeconfig,
+		APIExportName:  "core.platform-mesh.io",
+		// iam service works with scoped kubeconfig
+		// set KubeconfigAuth = KubeconfigAuthServiceAccountScoped
+		//ServiceAccountPermissions: &corev1alpha1.ServiceAccountPermissions{
+		//	RootOrgAccess:           ptr.To(true),
+		//	EnableGetLogicalCluster: ptr.To(true),
+		//},
 	},
 	{
 		Path:           "root:orgs",

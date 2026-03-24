@@ -144,6 +144,25 @@ func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte,
 	return result.Bytes(), nil
 }
 
+func appendDefaultAPIBindingIfMissing(current []interface{}, export, path string) []interface{} {
+	for _, item := range current {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		exportVal, _ := m["export"].(string)
+		pathVal, _ := m["path"].(string)
+		if exportVal == export && pathVal == path {
+			return current
+		}
+	}
+
+	return append(current, map[string]interface{}{
+		"export": export,
+		"path":   path,
+	})
+}
+
 func ConvertToUnstructured(webhook admissionv1.MutatingWebhookConfiguration) (*unstructured.Unstructured, error) {
 	// Convert the structured object to a map
 	objMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&webhook)
@@ -490,6 +509,13 @@ func ApplyManifestFromFile(
 		currentDefAPiBindings, found, err := unstructured.NestedSlice(obj.Object, "spec", "defaultAPIBindings")
 		if err != nil || !found {
 			currentDefAPiBindings = []interface{}{}
+		}
+		if obj.GetName() == "org" {
+			currentDefAPiBindings = appendDefaultAPIBindingIfMissing(
+				currentDefAPiBindings,
+				"system.platform-mesh.io",
+				"root:platform-mesh-system",
+			)
 		}
 		for _, v := range extraDefaultApiBindings {
 			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}

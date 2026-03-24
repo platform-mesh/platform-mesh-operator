@@ -20,9 +20,78 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 )
+
+func Test_ensureWorkspaceAccessForServiceAccount_includesClusterIdentityAndCustomRole(t *testing.T) {
+	t.Parallel()
+
+	s := runtime.NewScheme()
+	utilruntime.Must(rbacv1.AddToScheme(s))
+	c := fake.NewClientBuilder().WithScheme(s).Build()
+
+	err := ensureWorkspaceAccessForServiceAccount(
+		context.Background(),
+		c,
+		"default",
+		"platform-mesh-provider-iam-service-kubeconfig",
+		"iam-service-kubeconfig-kaufmann",
+		"17w2rdw9li185u76",
+	)
+	require.NoError(t, err)
+
+	roleName := "platform-mesh-admin-cluster-role-sa-iam-service-kubeconfig-kaufmann"
+	role := &rbacv1.ClusterRole{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: roleName}, role))
+	require.Len(t, role.Rules, 2)
+	assert.Equal(t, []string{"*"}, role.Rules[0].APIGroups)
+	assert.Equal(t, []string{"*"}, role.Rules[0].Resources)
+	assert.Equal(t, []string{"*"}, role.Rules[0].Verbs)
+
+	adminCRB := &rbacv1.ClusterRoleBinding{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: roleName}, adminCRB))
+	assert.Equal(t, roleName, adminCRB.RoleRef.Name)
+	assert.ElementsMatch(t, []rbacv1.Subject{
+		{Kind: rbacv1.ServiceAccountKind, Namespace: "default", Name: "platform-mesh-provider-iam-service-kubeconfig"},
+		{Kind: rbacv1.UserKind, Name: "system:serviceaccount:default:platform-mesh-provider-iam-service-kubeconfig"},
+		{Kind: rbacv1.GroupKind, Name: "system:cluster:17w2rdw9li185u76"},
+	}, adminCRB.Subjects)
+
+	workspaceCRB := &rbacv1.ClusterRoleBinding{}
+	workspaceCRBName := "platform-mesh-admin-workspace-access-sa-iam-service-kubeconfig-kaufmann"
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: workspaceCRBName}, workspaceCRB))
+	assert.Equal(t, kcpWorkspaceAccessRoleName, workspaceCRB.RoleRef.Name)
+	assert.ElementsMatch(t, adminCRB.Subjects, workspaceCRB.Subjects)
+}
+
+func Test_ensureWorkspaceAccessForServiceAccount_withoutClusterIdentitySubject(t *testing.T) {
+	t.Parallel()
+
+	s := runtime.NewScheme()
+	utilruntime.Must(rbacv1.AddToScheme(s))
+	c := fake.NewClientBuilder().WithScheme(s).Build()
+
+	err := ensureWorkspaceAccessForServiceAccount(
+		context.Background(),
+		c,
+		"default",
+		"platform-mesh-provider-iam-service-kubeconfig",
+		"iam-service-kubeconfig-kaufmann",
+		"",
+	)
+	require.NoError(t, err)
+
+	adminCRB := &rbacv1.ClusterRoleBinding{}
+	name := "platform-mesh-admin-cluster-role-sa-iam-service-kubeconfig-kaufmann"
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: name}, adminCRB))
+
+	require.Len(t, adminCRB.Subjects, 2)
+	for _, s := range adminCRB.Subjects {
+		assert.NotEqual(t, rbacv1.GroupKind, s.Kind)
+	}
+}
 
 // Test_getPolicyRulesFromAPIExport checks that getPolicyRulesFromAPIExport builds the right PolicyRules from an APIExport.
 // It verifies that: exported resources get full access plus status; permission claims get their verbs
@@ -512,11 +581,8 @@ func Test_getExtraPolicyRulesFromFlags(t *testing.T) {
 		wantAPIs []string
 	}{
 		{"nil flags", nil, 0, nil},
-		{"both false", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &falseVal, EnableStoresAccess: &falseVal}, 0, nil},
+		{"false", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &falseVal}, 0, nil},
 		{"get logical cluster only", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &trueVal}, 1, []string{"core.kcp.io"}},
-		{"stores only", &ExtraPolicyRulesFlags{EnableStoresAccess: &trueVal}, 1, []string{"core.platform-mesh.io"}},
-		{"both enabled", &ExtraPolicyRulesFlags{EnableGetLogicalCluster: &trueVal, EnableStoresAccess: &trueVal}, 2, []string{"core.kcp.io", "core.platform-mesh.io"}},
-		{"workspace types only", &ExtraPolicyRulesFlags{EnableWorkspaceTypesAccess: &trueVal}, 1, []string{"tenancy.kcp.io"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

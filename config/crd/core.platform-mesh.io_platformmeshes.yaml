@@ -125,14 +125,18 @@ spec:
                         apiExportName:
                           type: string
                         endpointSliceName:
+                          description: |-
+                            EndpointSliceName names the APIExport / APIExportEndpointSlice in root:platform-mesh-system (e.g. core.platform-mesh.io).
+                            With admin kubeconfig, the operator may set the written kubeconfig server from export status; see README.
                           type: string
                         external:
                           type: boolean
                         kubeconfigAuth:
-                          description: |-
-                            KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
-                            serviceAccountScoped (scoped SA token), serviceAccountAdmin (admin SA token), or adminKubeconfig
-                            (directly from kubeconfig-kcp-admin with host/scheme rewrite). When unset, defaults to adminCertificate.
+                          description: KubeconfigAuth defines how provider kubeconfigs
+                            authenticate to kcp.
+                          enum:
+                          - adminKubeconfig
+                          - serviceAccountScoped
                           type: string
                         namespace:
                           type: string
@@ -143,34 +147,10 @@ spec:
                         secret:
                           type: string
                         serviceAccountPermissions:
-                          description: |-
-                            ServiceAccountPermissions applies to both serviceAccountScoped and serviceAccountAdmin.
-                            For admin SA, only enableGetLogicalCluster is supported; other flags are ignored with a warning.
                           properties:
                             enableGetLogicalCluster:
-                              description: EnableGetLogicalCluster grants get on core.kcp.io
-                                logicalclusters (resource "cluster"). Supported for
-                                both scoped and admin SA.
-                              type: boolean
-                            enableInitTargetsAccess:
-                              description: EnableInitTargetsAccess grants get, list,
-                                watch on initialization.kcp.io inittargets. Only for
-                                serviceAccountScoped; ignored for admin.
-                              type: boolean
-                            enableStoresAccess:
-                              description: EnableStoresAccess grants get, list, watch
-                                on core.platform-mesh.io stores. Only for serviceAccountScoped;
-                                ignored for admin.
-                              type: boolean
-                            enableWorkspaceTypesAccess:
-                              description: |-
-                                EnableWorkspaceTypesAccess grants get, list, watch on tenancy.kcp.io workspacetypes.
-                                Only for serviceAccountScoped; ignored for admin.
                               type: boolean
                             rootOrgAccess:
-                              description: |-
-                                RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
-                                (e.g. LogicalCluster get, Store get). Only for serviceAccountScoped; ignored for serviceAccountAdmin.
                               type: boolean
                           type: object
                       required:
@@ -214,14 +194,18 @@ spec:
                         apiExportName:
                           type: string
                         endpointSliceName:
+                          description: |-
+                            EndpointSliceName names the APIExport / APIExportEndpointSlice in root:platform-mesh-system (e.g. core.platform-mesh.io).
+                            With admin kubeconfig, the operator may set the written kubeconfig server from export status; see README.
                           type: string
                         external:
                           type: boolean
                         kubeconfigAuth:
-                          description: |-
-                            KubeconfigAuth defines how this provider's kubeconfig authenticates to KCP: adminCertificate (cert-based admin),
-                            serviceAccountScoped (scoped SA token), serviceAccountAdmin (admin SA token), or adminKubeconfig
-                            (directly from kubeconfig-kcp-admin with host/scheme rewrite). When unset, defaults to adminCertificate.
+                          description: KubeconfigAuth defines how provider kubeconfigs
+                            authenticate to kcp.
+                          enum:
+                          - adminKubeconfig
+                          - serviceAccountScoped
                           type: string
                         namespace:
                           type: string
@@ -232,34 +216,10 @@ spec:
                         secret:
                           type: string
                         serviceAccountPermissions:
-                          description: |-
-                            ServiceAccountPermissions applies to both serviceAccountScoped and serviceAccountAdmin.
-                            For admin SA, only enableGetLogicalCluster is supported; other flags are ignored with a warning.
                           properties:
                             enableGetLogicalCluster:
-                              description: EnableGetLogicalCluster grants get on core.kcp.io
-                                logicalclusters (resource "cluster"). Supported for
-                                both scoped and admin SA.
-                              type: boolean
-                            enableInitTargetsAccess:
-                              description: EnableInitTargetsAccess grants get, list,
-                                watch on initialization.kcp.io inittargets. Only for
-                                serviceAccountScoped; ignored for admin.
-                              type: boolean
-                            enableStoresAccess:
-                              description: EnableStoresAccess grants get, list, watch
-                                on core.platform-mesh.io stores. Only for serviceAccountScoped;
-                                ignored for admin.
-                              type: boolean
-                            enableWorkspaceTypesAccess:
-                              description: |-
-                                EnableWorkspaceTypesAccess grants get, list, watch on tenancy.kcp.io workspacetypes.
-                                Only for serviceAccountScoped; ignored for admin.
                               type: boolean
                             rootOrgAccess:
-                              description: |-
-                                RootOrgAccess when true ensures RBAC in root:orgs so this provider's scoped identity can access root:orgs
-                                (e.g. LogicalCluster get, Store get). Only for serviceAccountScoped; ignored for serviceAccountAdmin.
                               type: boolean
                           type: object
                       required:

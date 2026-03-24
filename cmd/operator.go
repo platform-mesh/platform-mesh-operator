@@ -21,11 +21,13 @@ import (
 	"crypto/tls"
 	"net/http"
 	"os"
+	"time"
 
 	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -99,6 +101,9 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		LeaderElection:                defaultCfg.LeaderElectionEnabled,
 		LeaderElectionID:              "81924e50.platform-mesh.org",
 		LeaderElectionReleaseOnCancel: true,
+		Cache: cache.Options{
+			SyncPeriod: ptrTo(1 * time.Minute),
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -132,4 +137,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
+}
+
+func ptrTo[T any](v T) *T {
+	return &v
 }

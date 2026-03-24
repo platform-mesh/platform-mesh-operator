@@ -90,6 +90,25 @@ spec:
       secret: auxiliary-kubeconfig
 ```
 
+#### Provider secrets and KCP API exports
+
+Workload kubeconfigs (account-operator, graphql gateway, etc.) are built from the **`kubeconfig-kcp-admin`** secret that kcp-operator creates. The operator copies identity from that kubeconfig and rewrites each cluster **`server`** from the `PlatformMesh` provider connection (`path`, `rawPath`, or derived path).
+
+If **`endpointSliceName`** is set (for example **`core.platform-mesh.io`** for kubernetes-graphql-gateway), the operator looks up the **`APIExport`** / **`APIExportEndpointSlice`** in **`root:platform-mesh-system`** and, when possible, sets **`server`** to a **`/services/apiexport/...`** path from KCP status (`virtualWorkspaces` or `apiExportEndpoints` URLs). If the published URL uses a path segment that is not a valid logical cluster name, it may fall back to the **`Workspace`** **`spec.cluster`** for that export workspace, or to **`identityHash`** only when that value is valid.
+
+The **Wait** subroutine repeats the same check for **`core.platform-mesh.io`** so reconciliation does not finish before that path is usable.
+
+Default **graphql** wiring uses **`path: root`** together with **`endpointSliceName: core.platform-mesh.io`** so the listener can reconcile **`APIBinding`** objects under org workspaces.
+
+**WorkspaceType** manifests under **`manifests/kcp/`** add bindings for **`system.platform-mesh.io`** (org), and **`tenancy.kcp.io`** / **`topology.kcp.io`** on **`orgs`**, so IPC and account-operator child types have the APIs they need.
+
+#### Kubeconfig auth modes
+
+- **`adminKubeconfig`** keeps credentials from `kubeconfig-kcp-admin` and rewrites only the server URL (and CA when front-proxy CA is configured).
+- **`serviceAccountScoped`** creates a per-provider ServiceAccount in the target workspace, derives RBAC from the configured APIExport, mints a token, and writes a token-based kubeconfig.
+- Optional `serviceAccountPermissions.enableGetLogicalCluster` adds a rule block for reading `core.kcp.io` `logicalclusters/cluster`.
+- `rootOrgAccess: true` additionally ensures required access in `root:orgs` and child org workspaces.
+
 #### Initializer Connections
 
 Initializer connections are used to set up workspaces with specific types:
@@ -240,17 +259,6 @@ The ProviderSecret subroutine manages the creation and maintenance of secrets fo
 - Creates secrets for each provider connection specified in the `providerConnections` and `extraProviderConnections` sections
 - Updates the secrets when configurations change
 - Manages access credentials for connecting to provider clusters
-
-#### Scoped kubeconfig
-
-For provider connections with `apiExportName` and `path`, the operator can create a **scoped kubeconfig** secret: a token limited to the APIExport’s resources and permission claims so consumers use least-privilege credentials.
-
-- Resolves the APIExport in the workspace path (v1alpha1 and v1alpha2).
-- Creates a ServiceAccount and ClusterRole in that KCP workspace; rules come from the APIExport (exported resources, permission claims, plus `apiexports/content`, `apiexportendpointslices`, `apibindings`, discovery).
-- Binds the ServiceAccount to that ClusterRole and to KCP’s **`system:kcp:workspace:access`** so the workspace content authorizer allows the token before resource RBAC applies.
-- Creates a token and writes kubeconfig (server URL, token, CA) into the configured secret.
-
-Without the binding to `system:kcp:workspace:access`, KCP denies the token at workspace level and you may see errors like `failed to get server groups: unknown`. See [KCP – Authorizers](https://docs.kcp.io/kcp/main/concepts/authorization/authorizers/) for details.
 
 ### Defaults
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 
@@ -36,22 +37,14 @@ import (
 
 var secretKubeconfigData, _ = os.ReadFile("test/kubeconfig.yaml")
 
-type fakeHelm struct{ ready bool }
-
-func (f fakeHelm) GetRelease(ctx context.Context, cli client.Client, name, ns string) (*unstructured.Unstructured, error) {
-	u := &unstructured.Unstructured{Object: map[string]interface{}{
-		"status": map[string]interface{}{"ready": f.ready},
-	}}
-	return u, nil
-}
-
 type ProvidersecretTestSuite struct {
 	suite.Suite
 	testObj *subroutines.ProvidersecretSubroutine
 	// mocks
-	clientMock *mocks.Client
-	scheme     *runtime.Scheme
-	log        *logger.Logger
+	clientMock           *mocks.Client
+	scheme               *runtime.Scheme
+	log                  *logger.Logger
+	apiExportPathRestore func()
 }
 
 func TestProvidersecretTestSuite(t *testing.T) {
@@ -74,10 +67,20 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 
 	suite.clientMock.EXPECT().Scheme().Return(suite.scheme).Maybe()
 
-	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, &subroutines.Helper{}, fakeHelm{ready: true}, "")
+	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, "")
+
+	suite.apiExportPathRestore = subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(_ context.Context, _ *rest.Config, apiExportName string) (string, error) {
+			return "/services/apiexport/stubhash/" + apiExportName, nil
+		},
+	)
 }
 
 func (suite *ProvidersecretTestSuite) TearDownTest() {
+	if suite.apiExportPathRestore != nil {
+		suite.apiExportPathRestore()
+		suite.apiExportPathRestore = nil
+	}
 	// clear mocks
 	suite.clientMock = nil
 
@@ -217,23 +220,6 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	s.Require().NoError(err)
 	s.clientMock.EXPECT().Scheme().Return(scheme).Once()
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{URL: "http://example.com"},
-			},
-		},
-	}
-
-	mockKcpClient := new(mocks.Client)
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
@@ -244,9 +230,9 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			}
 			return nil
 		},
-	).Times(2)
+	).Maybe()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -301,33 +287,16 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	// return nil scheme
 	mockK8sClient.EXPECT().Scheme().Return(nil).Maybe()
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{
-					URL: "http://url",
-				},
-			},
-		},
-	}
-
 	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-			switch obj := o.(type) {
-			case *kcpapiv1alpha.APIExportEndpointSlice:
-				*obj = *slice
-				return nil
+			switch o.(type) {
 			case *unstructured.Unstructured:
-				// do nothing
 				return nil
 			default:
-				return fmt.Errorf("unexpected type %T", o)
+				return nil
 			}
 		}).Once()
 
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockK8sClient, nil).Once()
 	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
@@ -341,8 +310,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		},
 	).Once()
 
-	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = subroutines.NewProviderSecretSubroutine(mockK8sClient, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(mockK8sClient, "")
 
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -398,14 +366,6 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		},
 	}
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{URL: "http://url"},
-			},
-		},
-	}
-
 	// Mocks
 	mockClient := new(mocks.Client)
 	mockScheme := runtime.NewScheme()
@@ -448,6 +408,9 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	mockClient.EXPECT().
 		Get(mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
+				if key.Name == subroutines.AdminKubeconfigSecretName && (key.Namespace == "" || key.Namespace == "platform-mesh-system") {
+					return true
+				}
 				if key.Namespace == "platform-mesh-system" {
 					switch key.Name {
 					case "account-operator-kubeconfig",
@@ -468,44 +431,13 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			return nil
 		})
 
-	// Simulate error on Create
+	// Simulate error on Create (admin kubeconfig path writes provider secret via CreateOrUpdate)
 	mockClient.EXPECT().
 		Create(mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("error creating secret")).
 		Once()
 
-	// Mock KCP client and its Get call for EndpointSlice
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
-			_, ok := obj.(*kcpapiv1alpha.APIExportEndpointSlice)
-			return ok
-		})).
-		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).
-		Once()
-
-	// Mock KcpHelper
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
-		) error {
-			*o.(*corev1.Secret) = corev1.Secret{
-				Data: map[string][]byte{
-					"kubeconfig": secretKubeconfigData,
-				},
-			}
-			return nil
-		},
-	).Once()
-
-	// Run
-	s.testObj = subroutines.NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
+	s.testObj = subroutines.NewProviderSecretSubroutine(mockClient, "example.com")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -581,26 +513,6 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 		}).
 		Twice()
 
-	// mocks
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{
-					URL: "http://url",
-				},
-			},
-		},
-	}
-
-	mockKcpClient := new(mocks.Client)
-	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
@@ -614,8 +526,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 		},
 	).Once()
 
-	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -623,7 +534,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	}
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg) // Add this line
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	_ = opErr
 	_ = res
@@ -732,8 +643,7 @@ func (s *ProvidersecretTestSuite) TestGetName() {
 }
 
 func (suite *ProvidersecretTestSuite) TestConstructor() {
-	helper := &subroutines.Helper{}
-	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, helper, fakeHelm{ready: true}, "")
+	suite.testObj = subroutines.NewProviderSecretSubroutine(suite.clientMock, "")
 }
 
 func (s *ProvidersecretTestSuite) TestFinalize() {
@@ -808,7 +718,6 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 		}).
 		Twice()
 
-	mockedKcpHelper := new(mocks.KcpHelper)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
@@ -817,7 +726,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -946,6 +855,9 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	s.clientMock.EXPECT().
 		Get(mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
+				if key.Name == subroutines.AdminKubeconfigSecretName && key.Namespace == "" {
+					return true
+				}
 				if key.Namespace == "platform-mesh-system" {
 					switch key.Name {
 					case "account-operator-kubeconfig",
@@ -994,9 +906,6 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 		}).
 		Twice()
 
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(nil, errors.New("failed to create KCP client")).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
@@ -1005,7 +914,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1021,6 +930,13 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 }
 
 func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", fmt.Errorf("no APIExport endpoint slice")
+		},
+	)
+	defer restoreFail()
+
 	instance := s.getBaseInstance()
 	// mock getting rootShard and frontproxy
 	secret := &corev1.Secret{
@@ -1077,7 +993,8 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
-		})
+		}).
+		Maybe()
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
@@ -1087,22 +1004,15 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		Return(errors.New("failed to get APIExportEndpointSlice")).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Times(2)
+	).Maybe()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1118,6 +1028,13 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 }
 
 func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", fmt.Errorf("APIExport %q has no status.identityHash yet", "test-endpoint")
+		},
+	)
+	defer restoreFail()
+
 	instance := s.getBaseInstance()
 	// mock getting rootShard and frontproxy
 	secret := &corev1.Secret{
@@ -1174,7 +1091,8 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
-		})
+		}).
+		Maybe()
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
@@ -1184,31 +1102,15 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{},
-		},
-	}
-
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Times(2)
+	).Maybe()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1223,6 +1125,13 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 }
 
 func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
+	restoreFail := subroutines.SetResolveAPIExportVirtualWorkspaceRawPathForTesting(
+		func(context.Context, *rest.Config, string) (string, error) {
+			return "", fmt.Errorf("invalid endpoint slice URL")
+		},
+	)
+	defer restoreFail()
+
 	instance := s.getBaseInstance()
 	// mock getting rootShard and frontproxy
 	secret := &corev1.Secret{
@@ -1289,33 +1198,15 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{URL: "://invalid-url"},
-			},
-		},
-	}
-
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Maybe()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1410,24 +1301,6 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 			return nil
 		})
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{URL: "http://example.com"},
-			},
-		},
-	}
-
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
@@ -1436,13 +1309,13 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
 	}
-	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
+	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg)
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -1550,24 +1423,6 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 			return nil
 		})
 
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{URL: "http://example.com"},
-			},
-		},
-	}
-
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Once()
-
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
@@ -1576,13 +1431,13 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "")
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
 	}
-	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg) // Add this line
+	ctx := context.WithValue(context.Background(), keys.ConfigCtxKey, operatorCfg)
 	ctx = context.WithValue(ctx, keys.LoggerCtxKey, s.log)
 
 	res, opErr := s.testObj.Process(ctx, instance)
@@ -1591,22 +1446,9 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 }
 
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
-	// Setup test instance: use only account-operator (admin path) and kubernetes-graphql-gateway (admin path with slice)
-	// First provider uses admin path; second uses admin path with slice URL (avoids scoped path and ResolveAPIExport mocks).
+	// Setup test instance
 	instance := s.getBaseInstance()
-	instance.Spec.Kcp.ProviderConnections = []corev1alpha1.ProviderConnection{
-		{
-			Path:   "root:platform-mesh-system",
-			Secret: "account-operator-kubeconfig",
-			// default kubeconfigAuth is adminCertificate
-		},
-		{
-			EndpointSliceName: ptr.To("core.platform-mesh.io"),
-			Path:              "root:platform-mesh-system",
-			Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
-			// default kubeconfigAuth is adminCertificate; admin path so we use slice URL without calling ResolveAPIExport
-		},
-	}
+	instance.Spec.Kcp.ProviderConnections = nil
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
 			EndpointSliceName: ptr.To(""),
@@ -1614,11 +1456,10 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			Secret:            "external-kubeconfig",
 			External:          true,
 			Namespace:         ptr.To("test"),
-			// default kubeconfigAuth is adminCertificate
 		},
 	}
 	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
-		BaseDomain: "kcp.api.example.com", // KCP API host (no hardcoded prefix)
+		BaseDomain: "example.com",
 		Port:       8443,
 		Protocol:   "https",
 	}
@@ -1719,7 +1560,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					} else {
 						for _, c := range cfg.Clusters {
 							if c != nil {
-								if c.Server == "https://kcp.api.example.com:8443/clusters/root:platform-mesh-system" {
+								if c.Server == "https://example.com/clusters/root:platform-mesh-system" {
 									return nil
 								}
 								return fmt.Errorf("unexpected server URL: %s", c.Server)
@@ -1732,42 +1573,16 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			return nil
 		})
 
-	// Setup mock KCP client
-	mockedKcpClient := new(mocks.Client)
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{
-				{URL: "http://example.com"},
-			},
-		},
-	}
-	mockedKcpClient.
-		EXPECT().
-		Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).
-		Times(1) // only kubernetes-graphql-gateway has EndpointSliceName set (needs slice Get)
-
-	// Setup mock KCP helper
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.
-		EXPECT().
-		NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockedKcpClient, nil).
-		Times(1)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Times(2)
+	).Maybe()
 
-	providers := append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...)
 	// Setup mock expectations for each provider connection
-	for _, pc := range providers {
+	for _, pc := range subroutines.DefaultProviderConnections {
 		s.clientMock.
 			EXPECT().
 			Get(
@@ -1809,18 +1624,15 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					}
 					ctx := cfg.Contexts[cfg.CurrentContext]
 					cluster := cfg.Clusters[ctx.Cluster]
-					// hostPort from original logic: operatorCfg (frontproxy.platform-mesh-system:6443) or exposure when External.
-					// With slice (admin): address from slice URL so path empty -> hostPort only.
-					// Without slice: host = hostPort + "/clusters/" + path.
-					// External: hostPort = kcp.api.example.com:8443.
-					baseHost := "https://frontproxy-front-proxy.platform-mesh-system:6443"
 					var want string
-					if pc.External {
-						want = fmt.Sprintf("https://kcp.api.example.com:8443/clusters/%s", pc.Path)
-					} else if ptr.Deref(pc.EndpointSliceName, "") != "" {
-						want = baseHost // admin path with slice: hostPort + empty path
-					} else {
-						want = fmt.Sprintf("%s/clusters/%s", baseHost, pc.Path)
+					switch {
+					case ptr.Deref(pc.RawPath, "") != "":
+						want = "https://example.com" + ptr.Deref(pc.RawPath, "")
+					case pc.EndpointSliceName != nil && strings.TrimSpace(*pc.EndpointSliceName) != "":
+						n := strings.TrimSpace(*pc.EndpointSliceName)
+						want = fmt.Sprintf("https://example.com/services/apiexport/stubhash/%s", n)
+					default:
+						want = fmt.Sprintf("https://example.com/clusters/%s", pc.Path)
 					}
 					if cluster.Server != want {
 						s.log.Error().Msgf("server URL = %q; want %q", cluster.Server, want)
@@ -1840,131 +1652,15 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	}
 
 	// Run test
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
+	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, "example.com")
 
-	// Add operator config so hostPort is set (frontproxy.platform-mesh-system:6443) and hasBaseURL is true
-	operatorCfg := config.OperatorConfig{KCP: config.OperatorConfig{}.KCP}
-	operatorCfg.KCP.FrontProxyName = "frontproxy"
-	operatorCfg.KCP.Namespace = "platform-mesh-system"
-	operatorCfg.KCP.FrontProxyPort = "6443"
+	// Add the missing operator config context
+	operatorCfg := config.OperatorConfig{
+		KCP: config.OperatorConfig{}.KCP,
+	}
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	res, opErr := s.testObj.Process(ctx, instance)
-	s.Require().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, res)
-}
-
-// TestHandleProviderConnections_NoDoublePathWhenKcpUrlHasPath ensures that when kcpUrl
-// has a path, the written provider kubeconfig server URLs use hostPort from operatorCfg
-// (not from cfg.Host), so there is no double path (e.g. no .../clusters/.../clusters/...).
-func (s *ProvidersecretTestSuite) TestHandleProviderConnections_NoDoublePathWhenKcpUrlHasPath() {
-	// Same instance and mocks as TestHandleProviderConnections, but kcpUrl has a path.
-	// buildKubeconfig will set cfg.Host = kcpUrl, so getBaseURL/URLSchemeHost must strip it
-	// before url.JoinPath(baseURL, "clusters", path) to avoid double path.
-	kcpUrlWithPath := "https://example.com/clusters/root:platform-mesh-system"
-	instance := s.getBaseInstance()
-	instance.Namespace = "platform-mesh-system"
-	// Only in-cluster providers so all secrets are in platform-mesh-system (same as instance.Namespace, no cross-namespace owner ref).
-	instance.Spec.Kcp.ProviderConnections = []corev1alpha1.ProviderConnection{
-		{Path: "root:platform-mesh-system", Secret: "account-operator-kubeconfig"},
-		{EndpointSliceName: ptr.To("core.platform-mesh.io"), Path: "root:platform-mesh-system", Secret: "kubernetes-grapqhl-gateway-kubeconfig"},
-	}
-	instance.Spec.Kcp.ExtraProviderConnections = nil
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-secret", Namespace: "default"},
-		Data: map[string][]byte{
-			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
-		},
-	}
-
-	// Admin secret Get (buildKubeconfig): must match before provider secret Gets.
-	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "kcp-cluster-admin-client-cert", Namespace: "platform-mesh-system"}, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*corev1.Secret) = *secret
-			return nil
-		}).Once()
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*unstructured.Unstructured) = unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{"type": "Available", "status": "True"},
-						},
-					},
-				},
-			}
-			return nil
-		}).Twice()
-
-	slice := &kcpapiv1alpha.APIExportEndpointSlice{
-		Status: kcpapiv1alpha.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha.APIExportEndpoint{{URL: "http://example.com"}},
-		},
-	}
-	mockedKcpClient := new(mocks.Client)
-	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
-			return nil
-		}).Times(1)
-	mockedKcpHelper := new(mocks.KcpHelper)
-	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockedKcpClient, nil).Times(1)
-	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(_ context.Context, _ types.NamespacedName, o client.Object, _ ...client.GetOption) error {
-			*o.(*corev1.Secret) = *secret
-			return nil
-		}).Once()
-
-	doublePath := "/clusters/root:platform-mesh-system/clusters/root:platform-mesh-system"
-	for _, pc := range append(instance.Spec.Kcp.ProviderConnections, instance.Spec.Kcp.ExtraProviderConnections...) {
-		pc := pc
-		secretNS := "platform-mesh-system"
-		if pc.Namespace != nil && *pc.Namespace != "" {
-			secretNS = *pc.Namespace
-		}
-		s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: pc.Secret, Namespace: secretNS}, mock.Anything).
-			Return(apierrors.NewNotFound(schema.GroupResource{}, pc.Secret)).Once()
-		s.clientMock.EXPECT().Create(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
-			sec, ok := obj.(*corev1.Secret)
-			if !ok || sec.Name != pc.Secret || sec.Namespace != secretNS {
-				return false
-			}
-			data, ok := sec.Data["kubeconfig"]
-			if !ok {
-				return false
-			}
-			cfg, err := clientcmd.Load(data)
-			if err != nil {
-				return false
-			}
-			ctx := cfg.Contexts[cfg.CurrentContext]
-			cluster := cfg.Clusters[ctx.Cluster]
-			if cluster == nil || cluster.Server == "" {
-				return false
-			}
-			if strings.Contains(cluster.Server, doublePath) {
-				s.log.Error().Msgf("provider secret %s has double path in server URL: %s", pc.Secret, cluster.Server)
-				return false
-			}
-			return true
-		}), mock.Anything).RunAndReturn(func(ctx context.Context, obj client.Object, _ ...client.CreateOption) error {
-			return controllerutil.SetOwnerReference(instance, obj.(*corev1.Secret), s.clientMock.Scheme())
-		}).Once()
-	}
-
-	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, kcpUrlWithPath)
-	operatorCfg := config.OperatorConfig{KCP: config.OperatorConfig{}.KCP}
-	operatorCfg.KCP.FrontProxyName = "frontproxy"
-	operatorCfg.KCP.Namespace = "platform-mesh-system"
-	operatorCfg.KCP.FrontProxyPort = "6443"
-	operatorCfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
-	ctx := context.WithValue(context.WithValue(context.Background(), keys.LoggerCtxKey, s.log), keys.ConfigCtxKey, operatorCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, res)

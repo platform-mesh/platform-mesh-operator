@@ -46,7 +46,7 @@ func TestBuildScopedKubeconfig_roundtrip(t *testing.T) {
 }
 
 // TestBuildScopedKubeconfig_adminSAURLs verifies that the server URL in the kubeconfig is exactly
-// the one passed in. Admin SA always uses workspace URL (BuildHostURLForScoped(hostPort, path));
+// the one passed in. Admin SA always uses workspace URL (hostPort + "/clusters/" + path);
 // endpointSliceName is ignored for admin SA. The second case is a legacy slice-URL shape for BuildScopedKubeconfig only.
 func TestBuildScopedKubeconfig_adminSAURLs(t *testing.T) {
 	tests := []struct {
@@ -66,54 +66,6 @@ func TestBuildScopedKubeconfig_adminSAURLs(t *testing.T) {
 	}
 }
 
-func TestBuildHostURLForScoped(t *testing.T) {
-	tests := []struct {
-		name     string
-		hostPort string
-		path     string
-		wantURL  string
-		wantErr  bool
-	}{
-		{
-			name:     "normal",
-			hostPort: "https://frontproxy.platform-mesh-system:6443",
-			path:     "root:platform-mesh-system",
-			wantURL:  "https://frontproxy.platform-mesh-system:6443/clusters/root:platform-mesh-system",
-			wantErr:  false,
-		},
-		{
-			name:     "with trailing slash hostPort",
-			hostPort: "https://kcp.example.com:8443/",
-			path:     "root:orgs",
-			wantURL:  "https://kcp.example.com:8443/clusters/root:orgs",
-			wantErr:  false,
-		},
-		{
-			name:     "empty path",
-			hostPort: "https://kcp.example.com",
-			path:     "",
-			wantURL:  "https://kcp.example.com/clusters",
-			wantErr:  false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := subroutines.BuildHostURLForScoped(tt.hostPort, tt.path)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantURL, got)
-		})
-	}
-}
-
-func TestBuildHostURLForScoped_invalidHostPort(t *testing.T) {
-	_, err := subroutines.BuildHostURLForScoped("://missing-scheme", "root:test")
-	assert.Error(t, err)
-}
-
 func TestWriteScopedKubeconfigToSecret_requiresAPIExportName(t *testing.T) {
 	ctx := context.Background()
 	mockClient := new(mocks.Client)
@@ -126,6 +78,20 @@ func TestWriteScopedKubeconfigToSecret_requiresAPIExportName(t *testing.T) {
 	err := subroutines.WriteScopedKubeconfigToSecret(ctx, mockClient, cfg, spec, "https://frontproxy.example.com:6443", "platform-mesh-system")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "APIExportName")
+}
+
+func TestWriteScopedKubeconfigToSecret_invalidHostPort(t *testing.T) {
+	ctx := context.Background()
+	mockClient := new(mocks.Client)
+	cfg := &rest.Config{Host: "https://kcp.example.com", TLSClientConfig: rest.TLSClientConfig{}}
+	spec := subroutines.ProviderConnectionSpec{
+		Path:          "root:platform-mesh-system",
+		Secret:        "test-secret",
+		APIExportName: "core.platform-mesh.io",
+	}
+	err := subroutines.WriteScopedKubeconfigToSecret(ctx, mockClient, cfg, spec, "://missing-scheme", "platform-mesh-system")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build host URL for scoped kubeconfig")
 }
 
 func TestWriteScopedKubeconfigToSecret_requiresPath(t *testing.T) {
