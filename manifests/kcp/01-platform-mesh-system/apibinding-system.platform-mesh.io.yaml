@@ -1,7 +1,7 @@
 apiVersion: apis.kcp.io/v1alpha2
 kind: APIBinding
 metadata:
-  name: core.platform-mesh.io
+  name: system.platform-mesh.io
 spec:
   permissionClaims:
   - resource: workspaces
@@ -57,5 +57,5 @@ spec:
     state: Accepted
   reference:
     export:
-      name: core.platform-mesh.io
+      name: system.platform-mesh.io
       path: root:platform-mesh-system

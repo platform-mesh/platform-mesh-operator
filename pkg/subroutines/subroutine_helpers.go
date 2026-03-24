@@ -430,6 +430,16 @@ func ApplyManifestFromFile(
 		}
 	}
 
+	if obj.GetKind() == "APIExport" && obj.GetName() == "core.platform-mesh.io" {
+		apiExport := kcpapiv1alpha.APIExport{}
+		err = k8sClient.Get(ctx, types.NamespacedName{Name: "system.platform-mesh.io"}, &apiExport)
+		if err != nil {
+			return errors.Wrap(err, "Failed to get APIExport system.platform-mesh.io")
+		}
+
+		templateData["apiExportSystemPlatformMeshIoIdentityHash"] = apiExport.Status.IdentityHash
+	}
+
 	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())

@@ -54,8 +54,9 @@ jobs:
       - name: Install Code Coverage
         run: go install github.com/vladopajic/go-test-coverage/v2@v2.18.3
       - name: Check Test Coverage
+        run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out
         if: ${{ inputs.useLocalCoverageConfig == false }}
         run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out
       - name: Check Test Coverage with Config
-        if: ${{ inputs.useLocalCoverageConfig == true }}
         run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out --config ./.testcoverage.yml
+        if: ${{ inputs.useLocalCoverageConfig == true }}
