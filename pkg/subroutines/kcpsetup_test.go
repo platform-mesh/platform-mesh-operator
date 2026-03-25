@@ -824,12 +824,12 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 			Phase: "Ready",
 		},
 	}
-	// Mock APIExport lookups (5 calls: 3 in getAPIExportHashInventory + 2 when applying APIBindings)
+	// Mock APIExport lookups
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
-		}).Times(5)
+		})
 
 	// Mock workspace lookups (flexible count for polling)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
@@ -918,12 +918,12 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Return(nil).
 		Once()
 
-	// Mock APIExport lookups (5 calls: 3 in getAPIExportHashInventory + 2 when applying APIBindings)
+	// Mock APIExport lookups
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
-		}).Times(5)
+		})
 
 	// Mock workspace lookups (2 calls for platform-mesh-system and orgs workspaces)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
