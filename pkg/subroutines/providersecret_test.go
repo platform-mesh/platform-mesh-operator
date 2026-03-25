@@ -405,9 +405,6 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -504,6 +501,13 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
+	// root-ca secret lookup (RootShardName is empty so name is "-ca", Namespace is "platform-mesh-system")
+	mockClient.EXPECT().
+		Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+			return key.Name == "-ca" && key.Namespace == "platform-mesh-system"
+		}), mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "-ca")).
+		Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
@@ -685,9 +689,6 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 	secret := corev1.Secret{
 		Data: map[string][]byte{
 			"kubeconfig": []byte("invalid"),
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -861,9 +862,6 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -950,9 +948,6 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -1017,6 +1012,12 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 			return nil
 		},
 	).Once()
+	// root-ca secret lookup (RootShardName is empty in this test's operatorCfg so name is "-ca")
+	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+		return key.Name == "-ca"
+	}), mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "-ca")).
+		Once()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
@@ -1043,9 +1044,6 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 	s.clientMock.EXPECT().
@@ -1114,6 +1112,12 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 			return nil
 		},
 	).Once()
+	// root-ca secret lookup (RootShardName is empty in this test's operatorCfg so name is "-ca")
+	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+		return key.Name == "-ca"
+	}), mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "-ca")).
+		Once()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
@@ -1140,9 +1144,6 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 	s.clientMock.EXPECT().
@@ -1220,6 +1221,12 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 			return nil
 		},
 	).Once()
+	// root-ca secret lookup (RootShardName is empty in this test's operatorCfg so name is "-ca")
+	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+		return key.Name == "-ca"
+	}), mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "-ca")).
+		Once()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
@@ -1245,9 +1252,6 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 	s.clientMock.EXPECT().
@@ -1327,6 +1331,12 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 			return nil
 		},
 	).Once()
+	// root-ca secret lookup (RootShardName is empty in this test's operatorCfg so name is "-ca")
+	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
+		return key.Name == "-ca"
+	}), mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "-ca")).
+		Once()
 
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true})
 
@@ -1344,38 +1354,28 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 
 func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	instance := s.getBaseInstance()
-	kubeconfig := &clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{
-			"test-cluster": {
-				Server: "https://test-server",
-			},
-		},
-		Contexts:       map[string]*clientcmdapi.Context{},
-		CurrentContext: "non-existent-context",
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"test-user": {},
-		},
-	}
-
-	kubeconfigBytes, err := clientcmd.Write(*kubeconfig)
-	s.Require().NoError(err)
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": kubeconfigBytes,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
-		},
-	}
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*corev1.Secret) = *secret
+			obj.(*corev1.Secret).Data = map[string][]byte{
+				"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
+			}
 			return nil
 		}).Once()
 
@@ -1456,7 +1456,27 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
-			*o.(*corev1.Secret) = *secret
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
+				},
+			}
 			return nil
 		},
 	)
@@ -1477,35 +1497,6 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 
 func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	instance := s.getBaseInstance()
-	kubeconfig := &clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{},
-		Contexts: map[string]*clientcmdapi.Context{
-			"test-context": {
-				Cluster:  "non-existent-cluster",
-				AuthInfo: "test-user",
-			},
-		},
-		CurrentContext: "test-context",
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"test-user": {},
-		},
-	}
-
-	kubeconfigBytes, err := clientcmd.Write(*kubeconfig)
-	s.Require().NoError(err)
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-secret",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"kubeconfig": kubeconfigBytes,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
-		},
-	}
 
 	// Mock the Helm release lookup
 	s.clientMock.EXPECT().
@@ -1527,7 +1518,25 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			*obj.(*corev1.Secret) = *secret
+			obj.(*corev1.Secret).Data = map[string][]byte{
+				"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
+			}
 			return nil
 		}).Once()
 
@@ -1608,7 +1617,27 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
 		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
 		) error {
-			*o.(*corev1.Secret) = *secret
+			*o.(*corev1.Secret) = corev1.Secret{
+				Data: map[string][]byte{
+					"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
+				},
+			}
 			return nil
 		},
 	)
@@ -1660,9 +1689,6 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		},
 		Data: map[string][]byte{
 			"kubeconfig": secretKubeconfigData,
-			"ca.crt":     []byte("ZHVtbXlkYXRhCg=="),
-			"tls.crt":    []byte("ZHVtbXlkYXRhCg=="),
-			"tls.key":    []byte("ZHVtbXlkYXRhCg=="),
 		},
 	}
 
@@ -1792,7 +1818,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			*o.(*corev1.Secret) = *secret
 			return nil
 		},
-	).Once()
+	).Times(3) // called by buildKubeconfig, loadAdminKubeconfig, and root-ca lookup
 
 	// Setup mock expectations for each provider connection
 	for _, pc := range subroutines.DefaultProviderConnections {
@@ -1928,7 +1954,7 @@ func (s *ProvidersecretTestSuite) TestBothProvidersAndExtraProviders() {
 			return nil
 		}).Twice()
 
-	// buildKubeconfig fails: admin secret has no ca.crt
+	// buildKubeconfig fails: admin secret has invalid kubeconfig data
 	s.clientMock.EXPECT().
 		Get(mock.Anything, mock.Anything, &corev1.Secret{}).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
@@ -1970,7 +1996,13 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection_KcpClientError
 	ctx, _ := s.baseCtxAndCfg()
 
 	restCfg := &rest.Config{Host: "https://kcp.example.com:6443"}
-	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
+	adminKubeconfig := &clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{"default": {Server: "https://placeholder:6443"}},
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{"default": {Token: "test-token"}},
+		Contexts:       map[string]*clientcmdapi.Context{"default": {Cluster: "default", AuthInfo: "default"}},
+		CurrentContext: "default",
+	}
+	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg, adminKubeconfig)
 	s.Require().NotNil(opErr)
 }
 
@@ -1996,7 +2028,13 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection_WorkspaceTypeG
 	ctx, _ := s.baseCtxAndCfg()
 
 	restCfg := &rest.Config{Host: "https://kcp.example.com:6443"}
-	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
+	adminKubeconfig := &clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{"default": {Server: "https://placeholder:6443"}},
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{"default": {Token: "test-token"}},
+		Contexts:       map[string]*clientcmdapi.Context{"default": {Cluster: "default", AuthInfo: "default"}},
+		CurrentContext: "default",
+	}
+	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg, adminKubeconfig)
 	s.Require().NotNil(opErr)
 }
 
@@ -2025,7 +2063,13 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection_NoVirtualWorks
 	ctx, _ := s.baseCtxAndCfg()
 
 	restCfg := &rest.Config{Host: "https://kcp.example.com:6443"}
-	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
+	adminKubeconfig := &clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{"default": {Server: "https://placeholder:6443"}},
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{"default": {Token: "test-token"}},
+		Contexts:       map[string]*clientcmdapi.Context{"default": {Cluster: "default", AuthInfo: "default"}},
+		CurrentContext: "default",
+	}
+	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg, adminKubeconfig)
 	s.Require().NotNil(opErr)
 }
 
@@ -2070,6 +2114,12 @@ func (s *ProvidersecretTestSuite) TestHandleInitializerConnection_Success() {
 		Host:        "https://kcp.example.com:6443",
 		BearerToken: "test-token",
 	}
-	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg)
+	adminKubeconfig := &clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{"default": {Server: "https://placeholder:6443"}},
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{"default": {Token: "test-token"}},
+		Contexts:       map[string]*clientcmdapi.Context{"default": {Cluster: "default", AuthInfo: "default"}},
+		CurrentContext: "default",
+	}
+	_, opErr := testObj.HandleInitializerConnection(ctx, instance, ic, restCfg, adminKubeconfig)
 	s.Require().Nil(opErr)
 }

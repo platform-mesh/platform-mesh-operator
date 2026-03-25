@@ -433,9 +433,23 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"ca.crt":  []byte("test-ca-data"),
-				"tls.crt": []byte("test-tls-crt"),
-				"tls.key": []byte("test-tls-key"),
+				"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
 			}
 			return nil
 		})
@@ -447,9 +461,23 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"ca.crt":  []byte("test-ca-data"),
-				"tls.crt": []byte("test-tls-crt"),
-				"tls.key": []byte("test-tls-key"),
+				"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
 			}
 			return nil
 		})

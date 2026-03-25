@@ -44,7 +44,7 @@ func (s *DeployTestSuite) SetupTest() {
 	operatorCfg.KCP.Namespace = "platform-mesh-system"
 	operatorCfg.KCP.FrontProxyName = "frontproxy"
 	operatorCfg.KCP.FrontProxyPort = "6443"
-	operatorCfg.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	operatorCfg.KCP.ClusterAdminSecretName = "kubeconfig-kcp-admin"
 	operatorCfg.RemoteInfra.Kubeconfig = "platform-mesh-kubeconfig"
 
 	s.operatorConfig = &operatorCfg

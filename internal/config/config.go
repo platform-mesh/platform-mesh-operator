@@ -76,7 +76,7 @@ func NewOperatorConfig() OperatorConfig {
 			RootShardName:          "root",
 			FrontProxyName:         "frontproxy",
 			FrontProxyPort:         "6443",
-			ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
+			ClusterAdminSecretName: "kubeconfig-kcp-admin",
 		},
 		Subroutines: SubroutinesConfig{
 			Deployment: DeploymentSubroutineConfig{

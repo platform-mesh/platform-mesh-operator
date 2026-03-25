@@ -32,8 +32,7 @@ data:
             crds:
               enabled: false
             kcp:
-              apiExportEndpointSliceName: ""
-              enabled: true
+              apiExportEndpointSliceName: "core.platform-mesh.io"
             kubeconfigSecret: account-operator-kubeconfig
             log:
               level: debug
@@ -160,7 +159,6 @@ data:
               rootShard:
                 extraArgs:
                 - --feature-gates=WorkspaceAuthentication=true
-                - --shard-virtual-workspace-url=https://localhost:8443
               webhook:
                 enabled: true
               external:
@@ -190,6 +188,9 @@ data:
               infra: "true"
             name: kcp-image
           targetNamespace: kcp-operator
+          values:
+            image:
+              tag: v0.5.1
         keycloak:
           syncWave: 2
           enabled: true

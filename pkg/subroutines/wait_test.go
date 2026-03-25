@@ -70,9 +70,23 @@ func (s *WaitTestSuite) mockWorkspaceAuthConfigCheck(audience string) {
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"ca.crt":  []byte("fake-ca"),
-				"tls.crt": []byte("fake-cert"),
-				"tls.key": []byte("fake-key"),
+				"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
 			}
 			return nil
 		})
@@ -377,9 +391,23 @@ func (s *WaitTestSuite) mockSecretGet() {
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			obj.(*corev1.Secret).Data = map[string][]byte{
-				"ca.crt":  []byte("fake-ca"),
-				"tls.crt": []byte("fake-cert"),
-				"tls.key": []byte("fake-key"),
+				"kubeconfig": []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://fake-kcp:6443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+users:
+- name: default
+  user:
+    token: fake-token
+`),
 			}
 			return nil
 		})

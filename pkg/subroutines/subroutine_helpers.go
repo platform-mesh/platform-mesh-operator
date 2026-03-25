@@ -305,54 +305,60 @@ func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (
 	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
 }
 
+func loadAdminKubeconfig(ctx context.Context, cl client.Client) (*clientcmdapi.Config, error) {
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	secretName := operatorCfg.KCP.ClusterAdminSecretName
+	secret, err := GetSecret(cl, secretName, operatorCfg.KCP.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("getting secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+	}
+	if secret == nil {
+		return nil, fmt.Errorf("secret %s/%s is nil", operatorCfg.KCP.Namespace, secretName)
+	}
+	if secret.Data == nil {
+		return nil, fmt.Errorf("secret %s/%s has no Data", operatorCfg.KCP.Namespace, secretName)
+	}
+
+	kubeconfigData, ok := secret.Data["kubeconfig"]
+	if !ok || len(kubeconfigData) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"kubeconfig\"", operatorCfg.KCP.Namespace, secretName)
+	}
+
+	cfg, err := clientcmd.Load(kubeconfigData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+	}
+	return cfg, nil
+}
+
 func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
+		return nil, fmt.Errorf("getting secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
+		return nil, fmt.Errorf("secret %s/%s is nil", operatorCfg.KCP.Namespace, secretName)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
+		return nil, fmt.Errorf("secret %s/%s has no Data", operatorCfg.KCP.Namespace, secretName)
 	}
 
-	caData, ok := secret.Data["ca.crt"]
-	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
+	kubeconfigData, ok := secret.Data["kubeconfig"]
+	if !ok || len(kubeconfigData) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"kubeconfig\"", operatorCfg.KCP.Namespace, secretName)
 	}
 
-	tlsCrt, ok := secret.Data["tls.crt"]
-	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
+	cfg, err := clientcmd.Load(kubeconfigData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
 	}
 
-	tlsKey, ok := secret.Data["tls.key"]
-	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
+	// Override the server URL in all clusters with the provided kcpUrl
+	for _, cluster := range cfg.Clusters {
+		cluster.Server = kcpUrl
 	}
 
-	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters = map[string]*clientcmdapi.Cluster{
-		"kcp": {
-			Server:                   kcpUrl,
-			CertificateAuthorityData: secret.Data["ca.crt"],
-		},
-	}
-	cfg.Contexts = map[string]*clientcmdapi.Context{
-		"admin": {
-			Cluster:  "kcp",
-			AuthInfo: "admin",
-		},
-	}
-	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
-		"admin": {
-			ClientCertificateData: secret.Data["tls.crt"],
-			ClientKeyData:         secret.Data["tls.key"],
-		},
-	}
-	cfg.CurrentContext = "admin"
 	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 

@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -414,11 +415,25 @@ func (s *HelperTestSuite) TestPlatformMeshExtraProviderConnections() {
 		},
 	}
 
+	// Build admin kubeconfig to be serialized into the provider secret
+	adminKubeconfig := &clientcmdapi.Config{
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"default": {Server: "https://placeholder:6443"},
+		},
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			"default": {Token: "admin-token"},
+		},
+		Contexts: map[string]*clientcmdapi.Context{
+			"default": {Cluster: "default", AuthInfo: "default"},
+		},
+		CurrentContext: "default",
+	}
+
 	// Create the ProvidersecretSubroutine and invoke HandleProviderConnection
 	testObj := subroutines.NewProviderSecretSubroutine(clientMock, &subroutines.Helper{}, nil)
 
 	pc := instance.Spec.Kcp.ExtraProviderConnections[0]
-	res, opErr := testObj.HandleProviderConnection(ctx, instance, pc, restCfg)
+	res, opErr := testObj.HandleProviderConnection(ctx, instance, pc, restCfg, adminKubeconfig)
 	s.Require().Nil(opErr)
 	s.Assert().False(res.Requeue)
 
@@ -440,8 +455,8 @@ func (s *HelperTestSuite) TestPlatformMeshExtraProviderConnections() {
 		"root:providers:httpbin-provider")
 
 	s.Require().Len(cfg.Clusters, 1, "kubeconfig should have exactly one cluster")
-	cluster, ok := cfg.Clusters["default-cluster"]
-	s.Require().True(ok, "kubeconfig should have a 'default-cluster' entry")
-	s.Assert().Equal(expectedServer, cluster.Server,
-		"server field should be front-proxy host with provider path")
+	for _, cluster := range cfg.Clusters {
+		s.Assert().Equal(expectedServer, cluster.Server,
+			"server field should be front-proxy host with provider path")
+	}
 }

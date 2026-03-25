@@ -585,7 +585,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"
 	appConfig.KCP.FrontProxyPort = "6443"
-	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	appConfig.KCP.ClusterAdminSecretName = "kubeconfig-kcp-admin"
 	appConfig.RemoteRuntime.Kubeconfig = ""
 	appConfig.RemoteInfra.Kubeconfig = ""
 

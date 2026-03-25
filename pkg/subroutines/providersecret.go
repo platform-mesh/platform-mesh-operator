@@ -132,14 +132,37 @@ func (r *ProvidersecretSubroutine) Process(
 		})
 	}
 
-	// Build kcp kubeonfig
+	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(instance, &operatorCfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
+	// Load the raw admin kubeconfig for serializing into provider secrets
+	adminKubeconfig, err := loadAdminKubeconfig(ctx, r.client)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load admin kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to load admin kubeconfig"), true, false)
+	}
+
+	// Append root CA to the admin kubeconfig's cluster CA data.
+	// The KCP operator generates kubeconfigs with only the intermediate CA (root-server-ca),
+	// but Node.js clients (e.g. the portal) require the full chain including the self-signed root-ca.
+	rootCASecretName := operatorCfg.KCP.RootShardName + "-ca"
+	rootCASecret, rootCAErr := GetSecret(r.client, rootCASecretName, operatorCfg.KCP.Namespace)
+	if rootCAErr == nil && rootCASecret != nil {
+		if rootCAData, ok := rootCASecret.Data["tls.crt"]; ok && len(rootCAData) > 0 {
+			for clusterName, cluster := range adminKubeconfig.Clusters {
+				if len(cluster.CertificateAuthorityData) > 0 {
+					adminKubeconfig.Clusters[clusterName].CertificateAuthorityData = append(cluster.CertificateAuthorityData, '\n')
+					adminKubeconfig.Clusters[clusterName].CertificateAuthorityData = append(adminKubeconfig.Clusters[clusterName].CertificateAuthorityData, rootCAData...)
+				}
+			}
+		}
+	}
+
 	for _, pc := range providers {
-		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg); opErr != nil {
+		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg, adminKubeconfig); opErr != nil {
 			log.Error().Err(opErr.Err()).Msg("Failed to handle provider connection")
 			return ctrl.Result{}, opErr
 		}
@@ -156,7 +179,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config, adminKubeconfig *clientcmdapi.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -201,7 +224,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		address = kcpUrl
 	}
 
-	newConfig := rest.CopyConfig(cfg)
 	var hostPort string
 	if pc.External {
 		hostPort = getExternalKcpHost(instance, &operatorCfg)
@@ -213,10 +235,13 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	newConfig.Host = host
 
-	apiConfig := restConfigToAPIConfig(newConfig)
-	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
+	// Deep-copy the admin kubeconfig and set the server URL for this provider
+	providerKubeconfig := adminKubeconfig.DeepCopy()
+	for _, cluster := range providerKubeconfig.Clusters {
+		cluster.Server = host
+	}
+	kcpConfigBytes, err := clientcmd.Write(*providerKubeconfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -249,7 +274,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config, adminKubeconfig *clientcmdapi.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -270,24 +295,22 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	newConfig := rest.CopyConfig(restCfg)
-	apiConfig := restConfigToAPIConfig(newConfig)
-	curr := apiConfig.CurrentContext
-	cluster := apiConfig.Contexts[curr].Cluster
-	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
-
-	var url *url.URL
-	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
+	vwURL, err := url.Parse(wt.Status.VirtualWorkspaces[0].URL)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing virtual workspace URL")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
-	apiConfig.Clusters[cluster].Server = url.String()
-	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
+	vwURL.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
 
-	data, err := clientcmd.Write(*apiConfig)
+	// Deep-copy the admin kubeconfig and set the server URL
+	initKubeconfig := adminKubeconfig.DeepCopy()
+	for _, cluster := range initKubeconfig.Clusters {
+		cluster.Server = vwURL.String()
+	}
+	log.Debug().Str("url", vwURL.String()).Msg("modified virtual workspace URL")
+
+	data, err := clientcmd.Write(*initKubeconfig)
 	if err != nil {
 		log.Error().Err(err).Msg("writing modified kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -315,36 +338,3 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	return ctrl.Result{}, nil
 }
 
-func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
-	if restCfg == nil {
-		return nil
-	}
-
-	clientConfig := &clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{
-			"default-cluster": {
-				Server:                   restCfg.Host,
-				CertificateAuthorityData: restCfg.CAData,
-				InsecureSkipTLSVerify:    restCfg.Insecure,
-			},
-		},
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"default-auth": {
-				Token:                 restCfg.BearerToken,
-				ClientCertificateData: restCfg.CertData,
-				ClientKeyData:         restCfg.KeyData,
-				Username:              restCfg.Username,
-				Password:              restCfg.Password,
-			},
-		},
-		Contexts: map[string]*clientcmdapi.Context{
-			"default-context": {
-				Cluster:  "default-cluster",
-				AuthInfo: "default-auth",
-			},
-		},
-		CurrentContext: "default-context",
-	}
-
-	return clientConfig
-}
