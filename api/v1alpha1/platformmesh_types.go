@@ -143,6 +143,9 @@ type ProviderConnection struct {
 	Secret            string  `json:"secret"`
 	External          bool    `json:"external,omitempty"`
 	Namespace         *string `json:"namespace,omitempty"`
+	// AdminAuth when false requests a scoped kubeconfig (ServiceAccount token to the APIExport virtual workspace) instead of reusing cluster-admin client certificate material.
+	// +optional
+	AdminAuth *bool `json:"adminAuth,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh

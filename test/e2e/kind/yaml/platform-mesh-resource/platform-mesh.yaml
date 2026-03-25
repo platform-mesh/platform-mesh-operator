@@ -14,6 +14,12 @@ spec:
     referencePath: []
   featureToggles:
    - name: "feature-enable-getting-started"
+  kcp:
+    extraProviderConnections:
+      - path: root:platform-mesh-system
+        secret: e2e-scoped-kubeconfig
+        endpointSliceName: core.platform-mesh.io
+        adminAuth: false
   values:
     keycloak:
       enabled: true
