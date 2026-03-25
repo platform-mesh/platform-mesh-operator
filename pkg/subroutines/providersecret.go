@@ -337,4 +337,3 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 
 	return ctrl.Result{}, nil
 }
-

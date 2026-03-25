@@ -270,11 +270,11 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 // For fluxcd: skips application files.
 func deploymentTechFileFilter(deploymentTech string, log *logger.Logger) func(fileName string) bool {
 	return func(fileName string) bool {
-		if deploymentTech == "argocd" && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
+		if deploymentTech == deploymentTechArgoCD && (strings.HasPrefix(fileName, "helmrelease") || strings.HasPrefix(fileName, "kustomization")) {
 			log.Debug().Str("file", fileName).Str("deploymentTechnology", deploymentTech).Msg("Skipping FluxCD template, ArgoCD is enabled")
 			return true
 		}
-		if deploymentTech == "fluxcd" && strings.HasPrefix(fileName, "application") {
+		if deploymentTech == deploymentTechFluxCD && strings.HasPrefix(fileName, "application") {
 			log.Debug().Str("file", fileName).Str("deploymentTechnology", deploymentTech).Msg("Skipping ArgoCD template, FluxCD is enabled")
 			return true
 		}

@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"html/template"
 	"os"
@@ -24,14 +25,13 @@ func applyUnstructureds(
 	path string,
 	log *logger.Logger,
 ) error {
-	var errRet error = nil
+	var errRet error
 	for _, obj := range objs {
 		if obj.Object == nil {
 			continue
 		}
-		err := k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
-		if err != nil {
-			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+		if err := k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator")); err != nil {
+			errRet = stderrors.Join(errRet, fmt.Errorf("failed to apply manifest file: %s (%s/%s): %w", path, obj.GetKind(), obj.GetName(), err))
 		}
 	}
 	return errRet

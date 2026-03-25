@@ -35,6 +35,11 @@ import (
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
 
+const (
+	deploymentTechFluxCD = "fluxcd"
+	deploymentTechArgoCD = "argocd"
+)
+
 type DeploymentSubroutine struct {
 	clientInfra              client.Client
 	clientRuntime            client.Client
@@ -209,7 +214,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	}
 	deploymentTech, _ := tmplVars["deploymentTechnology"].(string)
 	if deploymentTech == "" {
-		deploymentTech = "fluxcd" // default to fluxcd if not in profile
+		deploymentTech = deploymentTechFluxCD // default to fluxcd if not in profile
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
@@ -220,7 +225,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		log.Error().Err(err).Msg("Failed to get cert-manager resource")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	if deploymentTech == "argocd" {
+	if deploymentTech == deploymentTechArgoCD {
 		// For ArgoCD Applications, check status.sync.status and status.health.status directly
 		// ArgoCD Applications may not have conditions initially, so check status fields directly
 		syncStatus, found, _ := unstructured.NestedString(rel.Object, "status", "sync", "status")
@@ -234,7 +239,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		}
 	}
 
-	if deploymentTech == "fluxcd" {
+	if deploymentTech == deploymentTechFluxCD {
 		// For FluxCD HelmReleases, check Ready condition
 		if !matchesConditionWithStatus(rel, "Ready", "True") {
 			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
@@ -271,7 +276,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			log.Error().Err(err).Msg("Failed to get istio-istiod resource")
 			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 		}
-		if deploymentTech == "argocd" {
+		if deploymentTech == deploymentTechArgoCD {
 			// For ArgoCD Applications, check status.sync.status and status.health.status directly
 			syncStatus, found, _ := unstructured.NestedString(rel.Object, "status", "sync", "status")
 			healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
@@ -284,7 +289,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			}
 		}
 
-		if deploymentTech == "fluxcd" {
+		if deploymentTech == deploymentTechFluxCD {
 			// For FluxCD HelmReleases, check Ready condition
 			if !matchesConditionWithStatus(rel, "Ready", "True") {
 				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
@@ -361,7 +366,7 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 	}
 
 	// Add deploymentTechnology from profile or templateVars (defaults to fluxcd if not specified)
-	deploymentTech := "fluxcd" // default
+	deploymentTech := deploymentTechFluxCD // default
 	if deploymentTechFromProfile, ok := infraProfileMap["deploymentTechnology"].(string); ok && deploymentTechFromProfile != "" {
 		deploymentTech = deploymentTechFromProfile
 	}
@@ -370,17 +375,14 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 	}
 	// Normalize to lowercase
 	deploymentTech = strings.ToLower(deploymentTech)
-	if deploymentTech != "fluxcd" && deploymentTech != "argocd" {
-		deploymentTech = "fluxcd" // default to fluxcd if invalid
+	if deploymentTech != deploymentTechFluxCD && deploymentTech != deploymentTechArgoCD {
+		deploymentTech = deploymentTechFluxCD // default to fluxcd if invalid
 	}
 	infraProfileMap["deploymentTechnology"] = deploymentTech
 
 	// Merge infra profile (base) with templateVars (overrides)
 	// templateVars take precedence over profile values
-	log, err := logger.New(logger.DefaultConfig())
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create logger")
-	}
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	tmplVars, err := merge.MergeMaps(infraProfileMap, templateVarsMap, log)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
@@ -523,10 +525,7 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 // buildComponentsTemplateVars parses components profile using TemplateVars and produces the data
 // structure expected by gotemplates/components (root keys: values, releaseNamespace).
 func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]interface{}, error) {
-	log, err := logger.New(logger.DefaultConfig())
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create logger")
-	}
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	// Load components profile from ConfigMap
 	_, componentsProfileYaml, err := r.loadProfileSections(ctx, inst)
@@ -659,7 +658,7 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 	}
 
 	// Add deploymentTechnology from profile or templateVars (defaults to fluxcd if not specified)
-	deploymentTech := "fluxcd" // default
+	deploymentTech := deploymentTechFluxCD // default
 	if deploymentTechFromProfile, ok := values["deploymentTechnology"].(string); ok && deploymentTechFromProfile != "" {
 		deploymentTech = deploymentTechFromProfile
 	}
@@ -668,13 +667,13 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 	}
 	// Normalize to lowercase
 	deploymentTech = strings.ToLower(deploymentTech)
-	if deploymentTech != "fluxcd" && deploymentTech != "argocd" {
-		deploymentTech = "fluxcd" // default to fluxcd if invalid
+	if deploymentTech != deploymentTechFluxCD && deploymentTech != deploymentTechArgoCD {
+		deploymentTech = deploymentTechFluxCD // default to fluxcd if invalid
 	}
 	data["deploymentTechnology"] = deploymentTech
 
 	// Calculate sync waves for ArgoCD Applications based on dependsOn
-	if deploymentTech == "argocd" {
+	if deploymentTech == deploymentTechArgoCD {
 		if err := calculateSyncWaves(mergedServices); err != nil {
 			log.Warn().Err(err).Msg("Failed to calculate sync waves, continuing without sync wave annotations")
 		}
@@ -1036,7 +1035,7 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 
 	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
 	if !ok {
-		deploymentTech = "fluxcd"
+		deploymentTech = deploymentTechFluxCD
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
@@ -1072,7 +1071,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 
 	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
 	if !ok {
-		deploymentTech = "fluxcd"
+		deploymentTech = deploymentTechFluxCD
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
@@ -1295,7 +1294,7 @@ func getDeploymentResource(ctx context.Context, client client.Client, resourceNa
 	deploymentTech = strings.ToLower(deploymentTech)
 	obj := &unstructured.Unstructured{}
 
-	if deploymentTech == "argocd" {
+	if deploymentTech == deploymentTechArgoCD {
 		obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Application"})
 	} else {
 		// Default to FluxCD

@@ -30,13 +30,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -58,26 +58,26 @@ func newFakeManager(c client.Client, s *runtime.Scheme) *fakeManager {
 	return &fakeManager{client: c, scheme: s}
 }
 
-func (f *fakeManager) GetClient() client.Client                               { return f.client }
-func (f *fakeManager) GetScheme() *runtime.Scheme                            { return f.scheme }
-func (f *fakeManager) GetConfig() *rest.Config                               { panic("not implemented") }
-func (f *fakeManager) GetCache() cache.Cache                                 { panic("not implemented") }
-func (f *fakeManager) GetFieldIndexer() client.FieldIndexer                  { panic("not implemented") }
-func (f *fakeManager) GetEventRecorderFor(_ string) record.EventRecorder     { panic("not implemented") }
-func (f *fakeManager) GetRESTMapper() meta.RESTMapper                        { panic("not implemented") }
-func (f *fakeManager) GetAPIReader() client.Reader                           { panic("not implemented") }
-func (f *fakeManager) GetHTTPClient() *http.Client                           { panic("not implemented") }
-func (f *fakeManager) Add(_ manager.Runnable) error                          { panic("not implemented") }
-func (f *fakeManager) Elected() <-chan struct{}                              { panic("not implemented") }
+func (f *fakeManager) GetClient() client.Client                          { return f.client }
+func (f *fakeManager) GetScheme() *runtime.Scheme                        { return f.scheme }
+func (f *fakeManager) GetConfig() *rest.Config                           { panic("not implemented") }
+func (f *fakeManager) GetCache() cache.Cache                             { panic("not implemented") }
+func (f *fakeManager) GetFieldIndexer() client.FieldIndexer              { panic("not implemented") }
+func (f *fakeManager) GetEventRecorderFor(_ string) record.EventRecorder { panic("not implemented") }
+func (f *fakeManager) GetRESTMapper() meta.RESTMapper                    { panic("not implemented") }
+func (f *fakeManager) GetAPIReader() client.Reader                       { panic("not implemented") }
+func (f *fakeManager) GetHTTPClient() *http.Client                       { panic("not implemented") }
+func (f *fakeManager) Add(_ manager.Runnable) error                      { panic("not implemented") }
+func (f *fakeManager) Elected() <-chan struct{}                          { panic("not implemented") }
 func (f *fakeManager) AddMetricsServerExtraHandler(_ string, _ http.Handler) error {
 	panic("not implemented")
 }
 func (f *fakeManager) AddHealthzCheck(_ string, _ healthz.Checker) error { panic("not implemented") }
 func (f *fakeManager) AddReadyzCheck(_ string, _ healthz.Checker) error  { panic("not implemented") }
-func (f *fakeManager) Start(_ context.Context) error                      { panic("not implemented") }
-func (f *fakeManager) GetWebhookServer() webhook.Server                   { panic("not implemented") }
-func (f *fakeManager) GetLogger() logr.Logger                             { panic("not implemented") }
-func (f *fakeManager) GetControllerOptions() ctrlconfig.Controller        { panic("not implemented") }
+func (f *fakeManager) Start(_ context.Context) error                     { panic("not implemented") }
+func (f *fakeManager) GetWebhookServer() webhook.Server                  { panic("not implemented") }
+func (f *fakeManager) GetLogger() logr.Logger                            { panic("not implemented") }
+func (f *fakeManager) GetControllerOptions() ctrlconfig.Controller       { panic("not implemented") }
 
 // newTestLogger creates a logger suitable for unit tests.
 func newTestLogger() *logger.Logger {
