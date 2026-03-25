@@ -199,4 +199,3 @@ tasks:
       - for:
           var: SERVICES
         cmd: COMP_VERSION=$(echo "{{ .PLATFORM_MESH_COMP }}" | yq -r '.items[0].component.componentReferences[] | select(.name == "{{ .ITEM }}").version') yq -i ".spec.sourceRef.resourceRef.version = strenv(COMP_VERSION)" deployment/{{ range splitList "-" .ITEM }}{{ . }}{{ end }}/resource.yaml
-
