@@ -312,36 +312,6 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 	}
 }
 
-func TestSanitizeSecretNameForRBAC(t *testing.T) {
-	t.Parallel()
-	longIn := strings.Repeat("x", maxRBACNameSuffixLength+50)
-	longWant := strings.Repeat("x", maxRBACNameSuffixLength)
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"kubernetes-graphql-gateway-kubeconfig", "kubernetes-graphql-gateway-kubeconfig"},
-		{"My_Secret.Name", "my-secret-name"},
-		{"rebac-authz-webhook-kubeconfig", "rebac-authz-webhook-kubeconfig"},
-		{"", "scoped"},
-		{"___", "scoped"},
-		{longIn, longWant},
-	}
-	for _, tt := range tests {
-		name := tt.in
-		if len(name) > 40 {
-			name = name[:20] + "…"
-		}
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			got := sanitizeSecretNameForRBAC(tt.in)
-			if got != tt.want {
-				t.Fatalf("got %q want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestBuildKCPConfigForPath(t *testing.T) {
 	t.Parallel()
 	cfg := &rest.Config{Host: "https://shard:6443/clusters/root:orgs:ws"}
@@ -362,7 +332,7 @@ func TestResolveAPIExportVirtualWorkspaceRawPath(t *testing.T) {
 	cfg := &rest.Config{Host: "https://kcp:6443"}
 	t.Run("empty slice name", func(t *testing.T) {
 		t.Parallel()
-		_, err := resolveAPIExportVirtualWorkspaceRawPath(ctx, &Helper{}, cfg, "")
+		_, err := resolveAPIExportVirtualWorkspaceRawPath(ctx, &Helper{}, cfg, "root:platform-mesh-system", "")
 		if err == nil || !strings.Contains(err.Error(), "empty") {
 			t.Fatalf("expected empty name error, got %v", err)
 		}
