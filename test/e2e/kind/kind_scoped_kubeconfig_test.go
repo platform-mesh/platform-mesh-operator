@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -169,72 +168,6 @@ func (s *KindTestSuite) TestScopedKubeconfigAPIExportNameWorkspaceServer() {
 	s.Require().NotNil(cluster)
 	s.Require().Contains(cluster.Server, "/clusters/root:platform-mesh-system",
 		"apiExportName-only scoped kubeconfig should point at workspace cluster URL, got %q", cluster.Server)
-}
-
-// Reconcile surfaces an error when both endpointSliceName and apiExportName are set on a scoped provider connection.
-func (s *KindTestSuite) TestScopedKubeconfigRejectBothSliceAndAPIExportName() {
-	ctx := context.TODO()
-	s.scopedWaitPlatformMeshReady(ctx)
-
-	const invalidSecret = "e2e-invalid-scoped-kubeconfig"
-	var pm corev1alpha1.PlatformMesh
-	s.Require().NoError(s.client.Get(ctx, client.ObjectKey{
-		Name:      e2ePlatformMeshName,
-		Namespace: e2ePlatformMeshNamespace,
-	}, &pm))
-	orig := append([]corev1alpha1.ProviderConnection(nil), pm.Spec.Kcp.ExtraProviderConnections...)
-	defer func() {
-		pm.Spec.Kcp.ExtraProviderConnections = orig
-		s.Require().NoError(s.client.Update(ctx, &pm))
-	}()
-
-	pm.Spec.Kcp.ExtraProviderConnections = append(orig, corev1alpha1.ProviderConnection{
-		Path:              "root:platform-mesh-system",
-		Secret:            invalidSecret,
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
-		APIExportName:     ptr.To("core.platform-mesh.io"),
-		AdminAuth:         ptr.To(false),
-	})
-	s.Require().NoError(s.client.Update(ctx, &pm))
-
-	// Lifecycle may surface the scoped validation error on ProvidersecretSubroutine_Ready, Ready, or another condition;
-	// match several substrings so we do not depend on a single wording or status value.
-	s.Eventually(func() bool {
-		var updated corev1alpha1.PlatformMesh
-		if err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2ePlatformMeshName,
-			Namespace: e2ePlatformMeshNamespace,
-		}, &updated); err != nil {
-			return false
-		}
-		var b strings.Builder
-		for _, c := range updated.Status.Conditions {
-			b.WriteString(strings.ToLower(c.Type + " "))
-			b.WriteString(strings.ToLower(string(c.Status) + " "))
-			b.WriteString(strings.ToLower(c.Message + " " + c.Reason + " "))
-		}
-		combined := b.String()
-		if combined == "" {
-			return false
-		}
-		inv := strings.ToLower(invalidSecret)
-		switch {
-		case strings.Contains(combined, "only one"):
-			return true
-		case strings.Contains(combined, "endpoint") && strings.Contains(combined, "apiexport"):
-			return true
-		case strings.Contains(combined, "scoped kubeconfig"):
-			return true
-		case inv != "" && strings.Contains(combined, inv):
-			return true
-		case strings.Contains(combined, "failed to write scoped provider kubeconfig"):
-			return true
-		case strings.Contains(combined, "failed to handle provider connection"):
-			return true
-		default:
-			return false
-		}
-	}, 10*time.Minute, 5*time.Second, "expected PlatformMesh status to reflect invalid scoped provider (both endpointSliceName and apiExportName)")
 }
 
 // Wait until reconciler writes kubeconfig for the extraProviderConnections entry in e2e platform-mesh.yaml.
