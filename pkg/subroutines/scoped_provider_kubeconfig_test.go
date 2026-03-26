@@ -141,49 +141,110 @@ func TestVirtualWorkspacePathFromSlice(t *testing.T) {
 	}
 }
 
-func TestJoinVirtualWorkspaceServerURL(t *testing.T) {
+func TestVirtualWorkspaceServerURLFromSlice(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		hostPort string
-		rawPath  string
-		want     string
+		name    string
+		slice   *kcpapiv1alpha1.APIExportEndpointSlice
+		want    string
+		wantErr bool
 	}{
 		{
-			name:     "front-proxy plus slice path from cluster capture",
-			hostPort: "https://frontproxy-front-proxy.platform-mesh-system:6443",
-			rawPath:  "/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io",
-			want:     "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io",
+			name: "status URL used 1:1 as kubeconfig server (kind / local)",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://root.kcp.localhost:8443/services/apiexport/158ffh0myu3e6xhu/core.platform-mesh.io"},
+					},
+				},
+			},
+			want: "https://root.kcp.localhost:8443/services/apiexport/158ffh0myu3e6xhu/core.platform-mesh.io",
 		},
 		{
-			name:     "hostPort without trailing slash rawPath absolute",
-			hostPort: "https://fp.ns.svc:6443",
-			rawPath:  "/services/apiexport/x/y",
-			want:     "https://fp.ns.svc:6443/services/apiexport/x/y",
+			name: "in-cluster front-proxy host from slice status",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io"},
+					},
+				},
+			},
+			want: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io",
 		},
 		{
-			name:     "hostPort with trailing slash",
-			hostPort: "https://fp.ns.svc:6443/",
-			rawPath:  "/services/apiexport/x/y",
-			want:     "https://fp.ns.svc:6443/services/apiexport/x/y",
+			name: "trailing slash on URL trimmed",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "x"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://h:6443/services/apiexport/id/export-name/"},
+					},
+				},
+			},
+			want: "https://h:6443/services/apiexport/id/export-name",
 		},
 		{
-			name:     "rawPath without leading slash",
-			hostPort: "https://h:6443",
-			rawPath:  "services/apiexport/a/b",
-			want:     "https://h:6443/services/apiexport/a/b",
+			name: "first endpoint wins",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "multi"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://a:1/services/apiexport/first/export"},
+						{URL: "https://b:2/services/apiexport/second/export"},
+					},
+				},
+			},
+			want: "https://a:1/services/apiexport/first/export",
 		},
 		{
-			name:     "path with wildcard segment after slice parse",
-			hostPort: "https://front-proxy:6443",
-			rawPath:  "/services/apiexport/id/name/clusters/*",
-			want:     "https://front-proxy:6443/services/apiexport/id/name/clusters/*",
+			name:    "nil slice",
+			slice:   nil,
+			wantErr: true,
+		},
+		{
+			name: "no endpoints",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "empty"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid URL",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "bad"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "://nohost"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "URL with only host no path",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "nopath"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://only.host:6443"},
+					},
+				},
+			},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := joinVirtualWorkspaceServerURL(tt.hostPort, tt.rawPath)
+			got, err := virtualWorkspaceServerURLFromSlice(tt.slice)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,32 +252,6 @@ func TestJoinVirtualWorkspaceServerURL(t *testing.T) {
 				t.Fatalf("server URL: got %q want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestVirtualWorkspacePathAndJoinRoundTrip(t *testing.T) {
-	t.Parallel()
-	// Same shape as local kind + in-cluster operator: slice URL from kcp, server URL the operator writes.
-	slice := &kcpapiv1alpha1.APIExportEndpointSlice{
-		ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
-		Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
-			APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-				{URL: "https://root.kcp.localhost:8443/services/apiexport/158ffh0myu3e6xhu/core.platform-mesh.io"},
-			},
-		},
-	}
-	rawPath, err := virtualWorkspacePathFromSlice(slice)
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:6443"
-	got, err := joinVirtualWorkspaceServerURL(hostPort, rawPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/158ffh0myu3e6xhu/core.platform-mesh.io"
-	if got != want {
-		t.Fatalf("round-trip server URL: got %q want %q", got, want)
 	}
 }
 
@@ -310,6 +345,24 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config {
+	out := rest.CopyConfig(cfg)
+	h := cfg.Host
+	if h == "" {
+		return out
+	}
+	if !strings.HasPrefix(h, "http://") && !strings.HasPrefix(h, "https://") {
+		h = "https://" + h
+	}
+	u, err := url.Parse(h)
+	if err != nil || u.Host == "" {
+		out.Host = h + "/clusters/" + workspacePath
+		return out
+	}
+	out.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
+	return out
 }
 
 func TestBuildKCPConfigForPath(t *testing.T) {
