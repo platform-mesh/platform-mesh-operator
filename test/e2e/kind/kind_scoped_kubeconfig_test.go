@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -24,11 +25,13 @@ const (
 	e2ePlatformMeshNamespace = "platform-mesh-system"
 	e2ePlatformMeshName      = "platform-mesh"
 
-	e2eKcpAdminSecretName = "kubeconfig-kcp-admin"
+	// Same as runOperator appConfig.KCP.ClusterAdminSecretName / operator default (not kubeconfig-kcp-admin from Kubeconfig CR).
+	e2eKcpClusterAdminClientCertSecretName = "kcp-cluster-admin-client-cert"
 
 	// Operator-written Secrets for extraProviderConnections in platform-mesh.yaml (provider1 vs provider2 scenario).
 	e2eScopedKubeconfigProvider1SecretName = "kind-e2e-provider1-scoped-kubeconfig"
 	e2eScopedKubeconfigProvider2SecretName = "kind-e2e-provider2-scoped-kubeconfig"
+	e2eAdminKubeconfigProvider3SecretName  = "kind-e2e-provider3-admin-kubeconfig"
 
 	// APIExport / APIExportEndpointSlice name in yaml/kcp-provider-workspaces; kubectl resource for E2EProviderConfig.
 	e2eKindScopedProviderExportName       = "kind-e2e-scoped-provider.platform-mesh.io"
@@ -44,10 +47,11 @@ const (
 )
 
 // setupScopedProviderKcpBeforePlatformMesh must run from SetupSuite before platform-mesh.yaml is applied:
-// extraProviderConnections need APIExports/slices in kcp, and kcp clients need kubeconfig-kcp-admin.
+// extraProviderConnections need APIExports/slices in kcp; kcp clients use the same TLS material as the operator
+// (kcp-cluster-admin-client-cert), not kubeconfig-kcp-admin (optional Kubeconfig CR output).
 // It cannot run inside TestScopedKubeconfig* — the operator already reconciles PlatformMesh after SetupSuite.
 func (s *KindTestSuite) setupScopedProviderKcpBeforePlatformMesh(ctx context.Context) {
-	s.waitForKcpAdminKubeconfigSecret(ctx)
+	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
 }
 
@@ -58,7 +62,7 @@ func (s *KindTestSuite) TestScopedKubeconfigProvider1() {
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
-	sec := s.waitForOperatorScopedKubeconfigSecret(ctx, e2eScopedKubeconfigProvider1SecretName)
+	sec := s.requireE2EProviderKubeconfigSecret(ctx, e2eScopedKubeconfigProvider1SecretName)
 	kcfg := sec.Data["kubeconfig"]
 
 	name := fmt.Sprintf("e2e-provider1-%d", time.Now().UnixNano())
@@ -89,7 +93,7 @@ func (s *KindTestSuite) TestScopedKubeconfigProvider2() {
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
-	sec := s.waitForOperatorScopedKubeconfigSecret(ctx, e2eScopedKubeconfigProvider2SecretName)
+	sec := s.requireE2EProviderKubeconfigSecret(ctx, e2eScopedKubeconfigProvider2SecretName)
 	kcfg := sec.Data["kubeconfig"]
 
 	name := fmt.Sprintf("e2e-provider2-%d", time.Now().UnixNano())
@@ -114,25 +118,30 @@ spec:
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider2Path, name)
 }
 
-// waitForOperatorScopedKubeconfigSecret waits until the reconciler populates the given provider secret
-// (PlatformMesh.spec.kcp.extraProviderConnections[].secret in e2e platform-mesh.yaml).
-func (s *KindTestSuite) waitForOperatorScopedKubeconfigSecret(ctx context.Context, secretName string) *corev1.Secret {
+// Provider3: extraProviderConnections entry with adminAuth true — same slice-based virtual workspace wiring as default providers, admin cert material.
+func (s *KindTestSuite) TestExtraProviderAdminKubeconfigProvider3() {
+	ctx := context.TODO()
+	s.scopedWaitPlatformMeshReady(ctx)
+
+	sec := s.requireE2EProviderKubeconfigSecret(ctx, e2eAdminKubeconfigProvider3SecretName)
+	cfg, err := clientcmd.Load(sec.Data["kubeconfig"])
+	s.Require().NoError(err)
+	clusterName := cfg.Contexts[cfg.CurrentContext].Cluster
+	cluster := cfg.Clusters[clusterName]
+	s.Require().NotNil(cluster)
+	s.Require().Contains(cluster.Server, "front-proxy", "admin provider kubeconfig should use front-proxy host from operator rewrite")
+}
+
+// requireE2EProviderKubeconfigSecret loads the operator-written provider secret (PlatformMesh extraProviderConnections[].secret).
+// Call only after scopedWaitPlatformMeshReady: Ready implies ProvidersecretSubroutine has populated these secrets.
+func (s *KindTestSuite) requireE2EProviderKubeconfigSecret(ctx context.Context, secretName string) *corev1.Secret {
 	sec := &corev1.Secret{}
-	s.Eventually(func() bool {
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      secretName,
-			Namespace: e2ePlatformMeshNamespace,
-		}, sec)
-		if err != nil {
-			s.logger.Warn().Err(err).Str("secret", secretName).Msg("scoped kubeconfig secret not created by operator yet")
-			return false
-		}
-		if len(sec.Data["kubeconfig"]) == 0 {
-			s.logger.Warn().Str("secret", secretName).Msg("scoped kubeconfig secret missing kubeconfig data")
-			return false
-		}
-		return true
-	}, 20*time.Minute, 10*time.Second, "Secret "+secretName+" from PlatformMesh.spec.kcp.extraProviderConnections was not populated by the operator")
+	err := s.client.Get(ctx, client.ObjectKey{
+		Name:      secretName,
+		Namespace: e2ePlatformMeshNamespace,
+	}, sec)
+	s.Require().NoError(err, "provider kubeconfig secret %s/%s must exist once PlatformMesh is Ready", e2ePlatformMeshNamespace, secretName)
+	s.Require().NotEmpty(sec.Data["kubeconfig"], "secret %s/%s must contain non-empty kubeconfig data", e2ePlatformMeshNamespace, secretName)
 	return sec
 }
 
@@ -153,14 +162,34 @@ func (s *KindTestSuite) deleteE2EProviderConfigOrWarn(ctx context.Context, works
 
 func (s *KindTestSuite) kcpAdminKubeconfigBytes(ctx context.Context) ([]byte, error) {
 	var sec corev1.Secret
-	if err := s.client.Get(ctx, client.ObjectKey{Name: e2eKcpAdminSecretName, Namespace: e2ePlatformMeshNamespace}, &sec); err != nil {
+	if err := s.client.Get(ctx, client.ObjectKey{
+		Name:      e2eKcpClusterAdminClientCertSecretName,
+		Namespace: e2ePlatformMeshNamespace,
+	}, &sec); err != nil {
 		return nil, err
 	}
-	raw := sec.Data["kubeconfig"]
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("secret %s/%s has no kubeconfig key", e2ePlatformMeshNamespace, e2eKcpAdminSecretName)
+	if sec.Data == nil {
+		return nil, fmt.Errorf("secret %s/%s has no Data", e2ePlatformMeshNamespace, e2eKcpClusterAdminClientCertSecretName)
 	}
-	return raw, nil
+	ca, crt, key := sec.Data["ca.crt"], sec.Data["tls.crt"], sec.Data["tls.key"]
+	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing ca.crt, tls.crt, or tls.key", e2ePlatformMeshNamespace, e2eKcpClusterAdminClientCertSecretName)
+	}
+	apiCfg := clientcmdapi.NewConfig()
+	apiCfg.Clusters = map[string]*clientcmdapi.Cluster{
+		"kcp": {
+			Server:                   kcpLocalFrontProxyURL,
+			CertificateAuthorityData: ca,
+		},
+	}
+	apiCfg.Contexts = map[string]*clientcmdapi.Context{
+		"admin": {Cluster: "kcp", AuthInfo: "admin"},
+	}
+	apiCfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
+		"admin": {ClientCertificateData: crt, ClientKeyData: key},
+	}
+	apiCfg.CurrentContext = "admin"
+	return clientcmd.Write(*apiCfg)
 }
 
 func (s *KindTestSuite) restConfigForLocalKCPFrontProxy(kubeconfigBytes []byte) (*rest.Config, error) {
@@ -185,24 +214,29 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
 }
 
-// Same style as waitForOperatorScopedKubeconfigSecret(ctx, name): Eventually + Warn while polling (kind e2e convention).
-func (s *KindTestSuite) waitForKcpAdminKubeconfigSecret(ctx context.Context) {
+// waitForKcpClusterAdminClientCert polls until kcp-cluster-admin-client-cert has TLS material (same as operator buildKubeconfig path).
+func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	sec := &corev1.Secret{}
 	s.Eventually(func() bool {
 		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2eKcpAdminSecretName,
+			Name:      e2eKcpClusterAdminClientCertSecretName,
 			Namespace: e2ePlatformMeshNamespace,
 		}, sec)
 		if err != nil {
-			s.logger.Warn().Err(err).Str("secret", e2eKcpAdminSecretName).Msg("kcp admin kubeconfig secret not available yet")
+			s.logger.Warn().Err(err).Str("secret", e2eKcpClusterAdminClientCertSecretName).
+				Msg("kcp cluster-admin client cert secret not available yet")
 			return false
 		}
-		if len(sec.Data["kubeconfig"]) == 0 {
-			s.logger.Warn().Str("secret", e2eKcpAdminSecretName).Msg("kcp admin kubeconfig secret missing kubeconfig data")
+		if sec.Data == nil {
+			return false
+		}
+		if len(sec.Data["ca.crt"]) == 0 || len(sec.Data["tls.crt"]) == 0 || len(sec.Data["tls.key"]) == 0 {
+			s.logger.Warn().Str("secret", e2eKcpClusterAdminClientCertSecretName).
+				Msg("kcp cluster-admin client cert secret missing ca.crt / tls.crt / tls.key")
 			return false
 		}
 		return true
-	}, 20*time.Minute, 10*time.Second, "Secret "+e2eKcpAdminSecretName+" was not populated (needed for kcp workspace setup before PlatformMesh apply)")
+	}, 20*time.Minute, 10*time.Second, "Secret "+e2eKcpClusterAdminClientCertSecretName+" was not populated (needed for kcp workspace setup before PlatformMesh apply)")
 }
 
 // ensureScopedE2EKcpProviderWorkspaces creates root:providers:provider1|provider2 and applies static YAML that models a

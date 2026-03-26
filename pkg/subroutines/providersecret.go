@@ -131,8 +131,9 @@ func (r *ProvidersecretSubroutine) Process(
 
 	if HasFeatureToggle(instance, "feature-enable-terminal-controller-manager") == "true" {
 		providers = append(providers, corev1alpha1.ProviderConnection{
-			Path:   "root:platform-mesh-system",
-			Secret: "terminal-controller-manager-kubeconfig",
+			Path:      "root:platform-mesh-system",
+			Secret:    "terminal-controller-manager-kubeconfig",
+			AdminAuth: ptr.To(true),
 		})
 	}
 
@@ -165,7 +166,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	if !ptr.Deref(pc.AdminAuth, true) {
+	if !ptr.Deref(pc.AdminAuth, false) {
 		if err := writeScopedKubeconfigToSecret(ctx, r.client, r.kcpHelper, cfg, instance, pc); err != nil {
 			log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write scoped provider kubeconfig")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, false)
