@@ -146,8 +146,8 @@ type ProviderConnection struct {
 	Secret        string  `json:"secret"`
 	External      bool    `json:"external,omitempty"`
 	Namespace     *string `json:"namespace,omitempty"`
-	// AdminAuth when false requests a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport) instead of cluster-admin certificate material.
-	// Use exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+	// AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport).
+	// Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
 	// +optional
 	AdminAuth *bool `json:"adminAuth,omitempty"`
 }

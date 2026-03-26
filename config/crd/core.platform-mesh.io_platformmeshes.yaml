@@ -124,8 +124,8 @@ spec:
                       properties:
                         adminAuth:
                           description: |-
-                            AdminAuth when false requests a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport) instead of cluster-admin certificate material.
-                            Use exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+                            AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport).
+                            Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
                           type: boolean
                         apiExportName:
                           description: APIExportName is the APIExport object name
@@ -185,8 +185,8 @@ spec:
                       properties:
                         adminAuth:
                           description: |-
-                            AdminAuth when false requests a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport) instead of cluster-admin certificate material.
-                            Use exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+                            AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport).
+                            Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
                           type: boolean
                         apiExportName:
                           description: APIExportName is the APIExport object name

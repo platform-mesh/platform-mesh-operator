@@ -16,7 +16,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -30,7 +29,6 @@ import (
 
 const (
 	defaultScopedSANamespace       = "default"
-	defaultScopedSecretNamespace   = "platform-mesh-system"
 	secondsPerDay                  = 86400
 	defaultTokenExpirationSeconds  = 7 * secondsPerDay
 	scopedClusterRolePrefix        = "platform-mesh-provider-"
@@ -38,26 +36,6 @@ const (
 	scopedWorkspaceAccessCRBPrefix = "platform-mesh-workspace-access-"
 	kcpWorkspaceAccessRoleName     = "system:kcp:workspace:access"
 )
-
-// buildKCPConfigForPath points cfg at a workspace cluster URL. cfg.Host may be bare host:port
-// or include /clusters/...; strip to scheme://host so we do not append a second /clusters/.
-func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config {
-	out := rest.CopyConfig(cfg)
-	h := cfg.Host
-	if h == "" {
-		return out
-	}
-	if !strings.HasPrefix(h, "http://") && !strings.HasPrefix(h, "https://") {
-		h = "https://" + h
-	}
-	u, err := url.Parse(h)
-	if err != nil || u.Host == "" {
-		out.Host = h + "/clusters/" + workspacePath
-		return out
-	}
-	out.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
-	return out
-}
 
 func resolveAPIExport(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Config, apiExportName, apiExportPath string) (*kcpapiv1alpha2.APIExport, error) {
 	if apiExportName == "" {
@@ -185,19 +163,12 @@ func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient cl
 
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{Name: crName},
-		Rules:      policyRules,
 	}
-	if err := kcpClient.Create(ctx, cr); err != nil {
-		if !kerrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("create ClusterRole %s: %w", crName, err)
-		}
-		if err := kcpClient.Get(ctx, client.ObjectKey{Name: crName}, cr); err != nil {
-			return "", err
-		}
+	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, cr, func() error {
 		cr.Rules = policyRules
-		if err := kcpClient.Update(ctx, cr); err != nil {
-			return "", fmt.Errorf("update ClusterRole %s: %w", crName, err)
-		}
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("create or update ClusterRole %s: %w", crName, err)
 	}
 
 	crb := &rbacv1.ClusterRoleBinding{
@@ -244,33 +215,57 @@ func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient cl
 	return saName, nil
 }
 
-func createTokenForSA(ctx context.Context, cfg *rest.Config, workspacePath, namespace, saName string, expirationSeconds int64) (string, error) {
-	config := buildKCPConfigForPath(cfg, workspacePath)
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return "", fmt.Errorf("create clientset for KCP: %w", err)
-	}
+func createTokenForSA(ctx context.Context, kcpWorkspaceClient client.Client, namespace, saName string, expirationSeconds int64) (string, error) {
 	expSec := expirationSeconds
 	if expSec <= 0 {
 		expSec = defaultTokenExpirationSeconds
 	}
-	treq := &authv1.TokenRequest{
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      saName,
+		},
+	}
+	tr := &authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			ExpirationSeconds: &expSec,
 		},
 	}
-	tr, err := clientset.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, saName, treq, metav1.CreateOptions{})
-	if err != nil {
+	if err := kcpWorkspaceClient.SubResource("token").Create(ctx, sa, tr); err != nil {
 		return "", fmt.Errorf("create token for ServiceAccount %s/%s: %w", namespace, saName, err)
+	}
+	if tr.Status.Token == "" {
+		return "", fmt.Errorf("empty token in TokenRequest status for ServiceAccount %s/%s", namespace, saName)
 	}
 	return tr.Status.Token, nil
 }
 
-// joinVirtualWorkspaceServerURL attaches the path from APIExportEndpointSlice status to the operator-chosen front-proxy base URL.
-func joinVirtualWorkspaceServerURL(hostPort, rawPath string) (string, error) {
-	return url.JoinPath(hostPort, rawPath)
+// virtualWorkspaceServerURLFromSlice returns status.apiExportEndpoints[0].url as the kubeconfig cluster server (kcp’s published VirtualWorkspace URL).
+func virtualWorkspaceServerURLFromSlice(slice *kcpapiv1alpha1.APIExportEndpointSlice) (string, error) {
+	if slice == nil {
+		return "", fmt.Errorf("nil APIExportEndpointSlice")
+	}
+	if len(slice.Status.APIExportEndpoints) == 0 {
+		return "", fmt.Errorf("no endpoints in APIExportEndpointSlice %q", slice.Name)
+	}
+	raw := strings.TrimSpace(slice.Status.APIExportEndpoints[0].URL)
+	if raw == "" {
+		return "", fmt.Errorf("empty endpoint URL on APIExportEndpointSlice %q", slice.Name)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid endpoint URL on APIExportEndpointSlice %q: %w", slice.Name, err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("invalid endpoint URL on APIExportEndpointSlice %q: missing scheme or host", slice.Name)
+	}
+	if u.Path == "" || u.Path == "/" {
+		return "", fmt.Errorf("invalid endpoint URL on APIExportEndpointSlice %q: missing path", slice.Name)
+	}
+	return strings.TrimSuffix(raw, "/"), nil
 }
 
+// virtualWorkspacePathFromSlice returns only the URL path from status (for joining to a different base host, e.g. admin kubeconfig front-proxy).
 func virtualWorkspacePathFromSlice(slice *kcpapiv1alpha1.APIExportEndpointSlice) (string, error) {
 	if slice == nil {
 		return "", fmt.Errorf("nil APIExportEndpointSlice")
@@ -346,19 +341,9 @@ func writeScopedKubeconfigToSecret(
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
-	if pc.External {
-		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
-	}
-
 	pcPath := strings.TrimSpace(pc.Path)
 	if pcPath == "" {
 		return fmt.Errorf("scoped kubeconfig requires Path (workspace)")
-	}
-
-	secretNamespace := defaultScopedSecretNamespace
-	if ptr.Deref(pc.Namespace, "") != "" {
-		secretNamespace = *pc.Namespace
 	}
 
 	endpointSliceName, apiExportNameField, err := parseScopedKubeconfigExportSource(pc)
@@ -366,33 +351,27 @@ func writeScopedKubeconfigToSecret(
 		return err
 	}
 
+	kcpWorkspaceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), pcPath)
+	if err != nil {
+		return errors.Wrap(err, "kcp client for provider workspace")
+	}
+
 	var hostURL string
 	var apiExportName string
 	var exportWorkspacePath string
 
 	if endpointSliceName != "" {
-		sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), pcPath)
-		if err != nil {
-			return errors.Wrap(err, "kcp client for APIExportEndpointSlice workspace")
-		}
 		var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
-		if err := sliceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
+		if err := kcpWorkspaceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
 			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, pcPath, err)
 		}
-		rawPath, err := virtualWorkspacePathFromSlice(&endpointSlice)
+		hostURL, err = virtualWorkspaceServerURLFromSlice(&endpointSlice)
 		if err != nil {
 			return err
 		}
-
-		var aerr error
-		apiExportName, exportWorkspacePath, aerr = apiExportLocationFromEndpointSlice(&endpointSlice)
-		if aerr != nil {
-			return aerr
-		}
-
-		hostURL, err = joinVirtualWorkspaceServerURL(hostPort, rawPath)
+		apiExportName, exportWorkspacePath, err = apiExportLocationFromEndpointSlice(&endpointSlice)
 		if err != nil {
-			return errors.Wrap(err, "build scoped virtual workspace server URL")
+			return err
 		}
 		log.Info().
 			Str("secret", pc.Secret).
@@ -403,6 +382,10 @@ func writeScopedKubeconfigToSecret(
 	} else {
 		apiExportName = apiExportNameField
 		exportWorkspacePath = pcPath
+		hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+		if pc.External {
+			hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
+		}
 		var errJoin error
 		hostURL, errJoin = url.JoinPath(hostPort, "clusters", pcPath)
 		if errJoin != nil {
@@ -429,16 +412,12 @@ func writeScopedKubeconfigToSecret(
 		caData = []byte{}
 	}
 
-	kcpWorkspaceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), pcPath)
-	if err != nil {
-		return errors.Wrap(err, "create KCP client for provider workspace")
-	}
 	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret)
 	if err != nil {
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}
 
-	token, err := createTokenForSA(ctx, cfg, pcPath, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
+	token, err := createTokenForSA(ctx, kcpWorkspaceClient, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
 	if err != nil {
 		return errors.Wrap(err, "create token for ServiceAccount")
 	}
@@ -449,7 +428,7 @@ func writeScopedKubeconfigToSecret(
 	}
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: pc.Secret, Namespace: secretNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: pc.Secret, Namespace: ptr.Deref(pc.Namespace, operatorCfg.KCP.Namespace)},
 	}
 	_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, secret, func() error {
 		secret.Data = map[string][]byte{"kubeconfig": kubeconfigBytes}

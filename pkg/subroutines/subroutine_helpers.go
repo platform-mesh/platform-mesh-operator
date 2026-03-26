@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +21,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -52,17 +53,16 @@ type Helper struct {
 func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error) {
 	config.QPS = 1000.0
 	config.Burst = 2000.0
-	u, err := url.Parse(config.Host)
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to parse kcp host: %s", config.Host)
-	}
-	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
+	config.Host = config.Host + "/clusters/" + workspacePath
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(authenticationv1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
+	utilruntime.Must(rbacv1.AddToScheme(scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme))
 
 	cl, err := client.New(config, client.Options{
@@ -117,6 +117,25 @@ func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte,
 		return []byte{}, nil
 	}
 	return result.Bytes(), nil
+}
+
+func appendDefaultAPIBindingIfMissing(current []interface{}, export, path string) []interface{} {
+	for _, item := range current {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		exportVal, _ := m["export"].(string)
+		pathVal, _ := m["path"].(string)
+		if exportVal == export && pathVal == path {
+			return current
+		}
+	}
+
+	return append(current, map[string]interface{}{
+		"export": export,
+		"path":   path,
+	})
 }
 
 func ConvertToUnstructured(webhook admissionv1.MutatingWebhookConfiguration) (*unstructured.Unstructured, error) {
@@ -359,38 +378,39 @@ func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (
 	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
 }
 
-func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
+func clusterAdminClientCmdAPIConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpURL string) (*clientcmdapi.Config, error) {
+	ns := operatorCfg.KCP.Namespace
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
-	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
+	secret, err := GetSecret(client, secretName, ns)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
+		return nil, fmt.Errorf("getting secret %s/%s: %w", secretName, ns, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
+		return nil, fmt.Errorf("secret %s/%s is nil", secretName, ns)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
+		return nil, fmt.Errorf("secret %s/%s has no Data", secretName, ns)
 	}
 
 	caData, ok := secret.Data["ca.crt"]
 	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
+		return nil, fmt.Errorf(`secret %s/%s missing or empty key "ca.crt"`, secretName, ns)
 	}
 
 	tlsCrt, ok := secret.Data["tls.crt"]
 	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
+		return nil, fmt.Errorf(`secret %s/%s missing or empty key "tls.crt"`, secretName, ns)
 	}
 
 	tlsKey, ok := secret.Data["tls.key"]
 	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
+		return nil, fmt.Errorf(`secret %s/%s missing or empty key "tls.key"`, secretName, ns)
 	}
 
 	cfg := clientcmdapi.NewConfig()
 	cfg.Clusters = map[string]*clientcmdapi.Cluster{
 		"kcp": {
-			Server:                   kcpUrl,
+			Server:                   kcpURL,
 			CertificateAuthorityData: secret.Data["ca.crt"],
 		},
 	}
@@ -407,7 +427,15 @@ func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.Operato
 		},
 	}
 	cfg.CurrentContext = "admin"
-	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
+	return cfg, nil
+}
+
+func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
+	apiCfg, err := clusterAdminClientCmdAPIConfig(client, operatorCfg, kcpUrl)
+	if err != nil {
+		return nil, err
+	}
+	return clientcmd.NewDefaultClientConfig(*apiCfg, nil).ClientConfig()
 }
 
 func WaitForWorkspace(
@@ -466,6 +494,13 @@ func ApplyManifestFromFile(
 		if err != nil || !found {
 			currentDefAPiBindings = []interface{}{}
 		}
+		if obj.GetName() == "org" {
+			currentDefAPiBindings = appendDefaultAPIBindingIfMissing(
+				currentDefAPiBindings,
+				"system.platform-mesh.io",
+				"root:platform-mesh-system",
+			)
+		}
 		for _, v := range extraDefaultApiBindings {
 			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}
 			var m map[string]interface{}
@@ -484,7 +519,7 @@ func ApplyManifestFromFile(
 		}
 	}
 
-	if (obj.GetKind() == "APIExport" || obj.GetKind() == "APIBinding") && obj.GetName() == "core.platform-mesh.io" {
+	if obj.GetKind() == "APIExport" && obj.GetName() == "core.platform-mesh.io" {
 		apiExport := kcpapiv1alpha.APIExport{}
 		err = k8sClient.Get(ctx, types.NamespacedName{Name: "system.platform-mesh.io"}, &apiExport)
 		if err != nil {
