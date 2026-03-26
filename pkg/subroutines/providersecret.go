@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"strings"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -167,11 +166,6 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	if !ptr.Deref(pc.AdminAuth, true) {
-		if strings.TrimSpace(ptr.Deref(pc.EndpointSliceName, "")) == "" {
-			err := fmt.Errorf("adminAuth=false requires endpointSliceName")
-			log.Error().Err(err).Str("secret", pc.Secret).Msg("Invalid provider connection configuration")
-			return ctrl.Result{}, errors.NewOperatorError(err, true, false)
-		}
 		if err := writeScopedKubeconfigToSecret(ctx, r.client, r.kcpHelper, cfg, instance, pc); err != nil {
 			log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write scoped provider kubeconfig")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, false)
