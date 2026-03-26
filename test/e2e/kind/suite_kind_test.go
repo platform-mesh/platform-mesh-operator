@@ -29,7 +29,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
@@ -147,7 +146,7 @@ func (s *KindTestSuite) createKindCluster() error {
 		}
 
 		s.logger.Info().Msg("Creating Kind cluster...")
-		if _, err = runCommand("kind", "create", "cluster", "--config", "kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
+		if _, err = runCommand("kind", "create", "cluster", "--config", "kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.35.0"); err != nil {
 			return err
 		}
 	}
@@ -267,7 +266,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 	domain_certificate := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "domain-certificate",
-			Namespace: "istio-system",
+			Namespace: "default",
 		},
 		Data: map[string][]byte{
 			"ca.crt":  caRootBytes,
@@ -383,9 +382,9 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 
 	s.logger.Info().Msg("helm resources ready")
 
-	if err := ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
-		return err
-	}
+	// if err := ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
+	// 	return err
+	// }
 
 	time.Sleep(25 * time.Second)
 	return nil
@@ -498,25 +497,19 @@ func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName strin
 
 // applyOCM applies the OCM component and repository to the cluster.
 func (s *KindTestSuite) applyOCM(ctx context.Context) error {
-	clients, err := kapply.NewClients(s.config)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to create kapply clients")
-		return err
+	s.logger.Info().Msg("Applying OCM manifests...")
+	if _, err := runCommand("kubectl", "apply", "--server-side", "--force-conflicts", "-k", "../../../test/e2e/kind/kustomize/components/ocm"); err != nil {
+		return fmt.Errorf("failed to apply OCM manifests: %w", err)
 	}
-
-	return kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/components/ocm", clients)
+	return nil
 }
 
 func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 
-	clients, err := kapply.NewClients(s.config)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to create kapply clients")
-		return err
-	}
-
-	err = kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/base", clients)
-	if err != nil {
+	// Use kubectl apply -k for base kustomize (aligns with helm-charts local-setup
+	// and handles Flux CRD discovery correctly)
+	s.logger.Info().Msg("Applying base kustomize manifests...")
+	if _, err := runCommand("kubectl", "apply", "--server-side", "--force-conflicts", "-k", "../../../test/e2e/kind/kustomize/base"); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply base kustomize manifests")
 		return err
 	}
@@ -546,7 +539,7 @@ func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 		return fmt.Errorf("Repository CRD is not available")
 	}
 
-	s.logger.Info().Msg("kapply finished successfully")
+	s.logger.Info().Msg("kustomize base applied successfully")
 	return nil
 }
 
