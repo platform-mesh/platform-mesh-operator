@@ -138,12 +138,16 @@ type SecretReference struct {
 
 type ProviderConnection struct {
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
-	Path              string  `json:"path,omitempty"`
-	RawPath           *string `json:"rawPath,omitempty"`
-	Secret            string  `json:"secret"`
-	External          bool    `json:"external,omitempty"`
-	Namespace         *string `json:"namespace,omitempty"`
-	// AdminAuth when false requests a scoped kubeconfig (ServiceAccount token to the APIExport virtual workspace) instead of reusing cluster-admin client certificate material.
+	// APIExportName is the APIExport object name in root:platform-mesh-system used to build RBAC for scoped kubeconfig when endpointSliceName is not set (server URL is the workspace cluster URL for Path).
+	// +optional
+	APIExportName *string `json:"apiExportName,omitempty"`
+	Path          string  `json:"path,omitempty"`
+	RawPath       *string `json:"rawPath,omitempty"`
+	Secret        string  `json:"secret"`
+	External      bool    `json:"external,omitempty"`
+	Namespace     *string `json:"namespace,omitempty"`
+	// AdminAuth when false requests a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport) instead of cluster-admin certificate material.
+	// Use exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
 	// +optional
 	AdminAuth *bool `json:"adminAuth,omitempty"`
 }

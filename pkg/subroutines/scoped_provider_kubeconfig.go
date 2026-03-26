@@ -301,7 +301,7 @@ func virtualWorkspacePathFromSlice(slice *kcpapiv1alpha1.APIExportEndpointSlice)
 	if len(slice.Status.APIExportEndpoints) == 0 {
 		return "", fmt.Errorf("no endpoints in APIExportEndpointSlice %q", slice.Name)
 	}
-	raw := strings.TrimSpace(slice.Status.APIExportEndpoints[0].URL)
+	raw := slice.Status.APIExportEndpoints[0].URL
 	u, err := url.Parse(raw)
 	if err != nil || u.Path == "" || u.Path == "/" {
 		return "", fmt.Errorf("invalid endpoint URL on APIExportEndpointSlice %q", slice.Name)
@@ -309,28 +309,52 @@ func virtualWorkspacePathFromSlice(slice *kcpapiv1alpha1.APIExportEndpointSlice)
 	return strings.TrimSuffix(u.Path, "/"), nil
 }
 
-// apiExportLocationFromEndpointSlice returns the APIExport name and workspace path used to load that export for RBAC.
-// If spec.export.path is empty or whitespace, exportWorkspacePath defaults to platformMeshAPIExportWorkspace.
-func apiExportLocationFromEndpointSlice(slice *kcpapiv1alpha1.APIExportEndpointSlice, sliceName string) (apiExportName, exportWorkspacePath string, err error) {
+// apiExportLocationFromEndpointSlice returns spec.export name and path from the slice object (no trimming).
+func apiExportLocationFromEndpointSlice(slice *kcpapiv1alpha1.APIExportEndpointSlice) (apiExportName, exportWorkspacePath string, err error) {
 	if slice == nil {
 		return "", "", fmt.Errorf("nil APIExportEndpointSlice")
 	}
-	key := strings.TrimSpace(sliceName)
-	if key == "" {
-		key = slice.Name
+	n := slice.Name
+	if slice.Spec.APIExport.Name == "" {
+		return "", "", fmt.Errorf("APIExportEndpointSlice %q has empty spec.export.name", n)
 	}
-	apiExportName = strings.TrimSpace(slice.Spec.APIExport.Name)
-	if apiExportName == "" {
-		return "", "", fmt.Errorf("APIExportEndpointSlice %q has empty spec.export.name", key)
+	if slice.Spec.APIExport.Path == "" {
+		return "", "", fmt.Errorf("APIExportEndpointSlice %q has empty spec.export.path", n)
 	}
-	exportWorkspacePath = strings.TrimSpace(slice.Spec.APIExport.Path)
-	if exportWorkspacePath == "" {
-		exportWorkspacePath = platformMeshAPIExportWorkspace
-	}
-	return apiExportName, exportWorkspacePath, nil
+	return slice.Spec.APIExport.Name, slice.Spec.APIExport.Path, nil
 }
 
-// writeScopedKubeconfigToSecret builds a kubeconfig that uses a workspace ServiceAccount token and the APIExport virtual workspace URL from the endpoint slice status.
+// resolveAPIExportVirtualWorkspaceRawPath returns the URL path segment for joining to front-proxy host (admin kubeconfig), from APIExportEndpointSlice status in platformMeshAPIExportWorkspace.
+func resolveAPIExportVirtualWorkspaceRawPath(ctx context.Context, kcpHelper KcpHelper, baseCfg *rest.Config, sliceName string) (string, error) {
+	if sliceName == "" {
+		return "", fmt.Errorf("APIExportEndpointSlice name is empty")
+	}
+	name := sliceName
+	sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(baseCfg), platformMeshAPIExportWorkspace)
+	if err != nil {
+		return "", fmt.Errorf("kcp client for APIExportEndpointSlice workspace: %w", err)
+	}
+	var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
+	if err := sliceClient.Get(ctx, client.ObjectKey{Name: name}, &endpointSlice); err != nil {
+		return "", fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", name, platformMeshAPIExportWorkspace, err)
+	}
+	return virtualWorkspacePathFromSlice(&endpointSlice)
+}
+
+// parseScopedKubeconfigExportSource validates that exactly one of endpointSliceName or apiExportName is set (after trim).
+func parseScopedKubeconfigExportSource(pc corev1alpha1.ProviderConnection) (endpointSliceName, apiExportName string, err error) {
+	endpointSliceName = strings.TrimSpace(ptr.Deref(pc.EndpointSliceName, ""))
+	apiExportName = strings.TrimSpace(ptr.Deref(pc.APIExportName, ""))
+	if endpointSliceName != "" && apiExportName != "" {
+		return "", "", fmt.Errorf("scoped kubeconfig: set only one of endpointSliceName or apiExportName")
+	}
+	if endpointSliceName == "" && apiExportName == "" {
+		return "", "", fmt.Errorf("scoped kubeconfig requires endpointSliceName or apiExportName")
+	}
+	return endpointSliceName, apiExportName, nil
+}
+
+// writeScopedKubeconfigToSecret builds a scoped kubeconfig: ServiceAccount token in pc.Path, RBAC from APIExport; server is virtual workspace when endpointSliceName is set, else workspace cluster URL when apiExportName is set.
 func writeScopedKubeconfigToSecret(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -357,27 +381,58 @@ func writeScopedKubeconfigToSecret(
 		secretNamespace = *pc.Namespace
 	}
 
-	endpointSliceName := strings.TrimSpace(ptr.Deref(pc.EndpointSliceName, ""))
-	if endpointSliceName == "" {
-		return fmt.Errorf("scoped kubeconfig requires endpointSliceName")
-	}
-
-	sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), platformMeshAPIExportWorkspace)
-	if err != nil {
-		return errors.Wrap(err, "kcp client for APIExportEndpointSlice workspace")
-	}
-	var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
-	if err := sliceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
-		return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, platformMeshAPIExportWorkspace, err)
-	}
-	rawPath, err := virtualWorkspacePathFromSlice(&endpointSlice)
+	endpointSliceName, apiExportNameField, err := parseScopedKubeconfigExportSource(pc)
 	if err != nil {
 		return err
 	}
 
-	apiExportName, exportWorkspacePath, err := apiExportLocationFromEndpointSlice(&endpointSlice, endpointSliceName)
-	if err != nil {
-		return err
+	var hostURL string
+	var apiExportName string
+	var exportWorkspacePath string
+
+	if endpointSliceName != "" {
+		sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), platformMeshAPIExportWorkspace)
+		if err != nil {
+			return errors.Wrap(err, "kcp client for APIExportEndpointSlice workspace")
+		}
+		var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
+		if err := sliceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
+			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, platformMeshAPIExportWorkspace, err)
+		}
+		rawPath, err := virtualWorkspacePathFromSlice(&endpointSlice)
+		if err != nil {
+			return err
+		}
+
+		var aerr error
+		apiExportName, exportWorkspacePath, aerr = apiExportLocationFromEndpointSlice(&endpointSlice)
+		if aerr != nil {
+			return aerr
+		}
+
+		hostURL, err = joinVirtualWorkspaceServerURL(hostPort, rawPath)
+		if err != nil {
+			return errors.Wrap(err, "build scoped virtual workspace server URL")
+		}
+		log.Info().
+			Str("secret", pc.Secret).
+			Str("path", pcPath).
+			Str("endpointSlice", endpointSliceName).
+			Str("apiExport", apiExportName).
+			Msg("Using scoped kubeconfig virtual workspace URL")
+	} else {
+		apiExportName = apiExportNameField
+		exportWorkspacePath = platformMeshAPIExportWorkspace
+		var errJoin error
+		hostURL, errJoin = url.JoinPath(hostPort, "clusters", pcPath)
+		if errJoin != nil {
+			return errors.Wrap(errJoin, "build scoped workspace cluster server URL")
+		}
+		log.Info().
+			Str("secret", pc.Secret).
+			Str("path", pcPath).
+			Str("apiExport", apiExportName).
+			Msg("Using scoped kubeconfig workspace cluster URL")
 	}
 
 	export, err := resolveAPIExport(ctx, kcpHelper, cfg, apiExportName, exportWorkspacePath)
@@ -388,17 +443,6 @@ func writeScopedKubeconfigToSecret(
 	if err != nil {
 		return errors.Wrap(err, "build RBAC from APIExport")
 	}
-
-	hostURL, err := joinVirtualWorkspaceServerURL(hostPort, rawPath)
-	if err != nil {
-		return errors.Wrap(err, "build scoped virtual workspace server URL")
-	}
-	log.Info().
-		Str("secret", pc.Secret).
-		Str("path", pcPath).
-		Str("endpointSlice", endpointSliceName).
-		Str("apiExport", apiExportName).
-		Msg("Using scoped kubeconfig virtual workspace URL")
 
 	caData := cfg.TLSClientConfig.CAData
 	if caData == nil {
