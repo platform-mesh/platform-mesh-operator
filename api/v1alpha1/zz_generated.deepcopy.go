@@ -341,6 +341,11 @@ func (in *ProviderConnection) DeepCopyInto(out *ProviderConnection) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.APIExportName != nil {
+		in, out := &in.APIExportName, &out.APIExportName
+		*out = new(string)
+		**out = **in
+	}
 	if in.RawPath != nil {
 		in, out := &in.RawPath, &out.RawPath
 		*out = new(string)

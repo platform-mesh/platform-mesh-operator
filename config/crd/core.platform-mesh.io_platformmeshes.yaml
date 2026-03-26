@@ -122,6 +122,17 @@ spec:
                   extraProviderConnections:
                     items:
                       properties:
+                        adminAuth:
+                          description: |-
+                            AdminAuth when false requests a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport) instead of cluster-admin certificate material.
+                            Use exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+                          type: boolean
+                        apiExportName:
+                          description: APIExportName is the APIExport object name
+                            in root:platform-mesh-system used to build RBAC for scoped
+                            kubeconfig when endpointSliceName is not set (server URL
+                            is the workspace cluster URL for Path).
+                          type: string
                         endpointSliceName:
                           type: string
                         external:
@@ -172,6 +183,17 @@ spec:
                   providerConnections:
                     items:
                       properties:
+                        adminAuth:
+                          description: |-
+                            AdminAuth when false requests a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport) instead of cluster-admin certificate material.
+                            Use exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+                          type: boolean
+                        apiExportName:
+                          description: APIExportName is the APIExport object name
+                            in root:platform-mesh-system used to build RBAC for scoped
+                            kubeconfig when endpointSliceName is not set (server URL
+                            is the workspace cluster URL for Path).
+                          type: string
                         endpointSliceName:
                           type: string
                         external:

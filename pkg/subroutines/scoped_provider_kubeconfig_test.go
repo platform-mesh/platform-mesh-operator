@@ -1,12 +1,17 @@
 package subroutines
 
 import (
+	"context"
+	"net/url"
 	"strings"
 	"testing"
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
+
+	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
 func TestVirtualWorkspacePathFromSlice(t *testing.T) {
@@ -220,7 +225,6 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 	tests := []struct {
 		name         string
 		slice        *kcpapiv1alpha1.APIExportEndpointSlice
-		sliceName    string
 		wantName     string
 		wantPath     string
 		wantErr      bool
@@ -237,12 +241,13 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 					},
 				},
 			},
-			sliceName: "core.platform-mesh.io",
-			wantName:  "core.platform-mesh.io",
-			wantPath:  "root:platform-mesh-system",
+			wantName: "core.platform-mesh.io",
+			wantPath: "root:platform-mesh-system",
 		},
 		{
-			name: "empty spec.export.path defaults to platform workspace",
+			name:         "empty spec.export.path",
+			wantErr:      true,
+			errSubstring: "empty spec.export.path",
 			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
 				Spec: kcpapiv1alpha1.APIExportEndpointSliceSpec{
@@ -251,27 +256,11 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 					},
 				},
 			},
-			sliceName: "core.platform-mesh.io",
-			wantName:  "core.platform-mesh.io",
-			wantPath:  platformMeshAPIExportWorkspace,
 		},
 		{
-			name: "whitespace-only path treated as empty → default",
-			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{Name: "x"},
-				Spec: kcpapiv1alpha1.APIExportEndpointSliceSpec{
-					APIExport: kcpapiv1alpha1.ExportBindingReference{
-						Name: "some.export",
-						Path: "   \t  ",
-					},
-				},
-			},
-			sliceName: "x",
-			wantName:  "some.export",
-			wantPath:  platformMeshAPIExportWorkspace,
-		},
-		{
-			name: "trim name and path",
+			name:     "spec values returned as stored (no trim)",
+			wantName: "  my-export  ",
+			wantPath: "  root:custom  ",
 			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{Name: "slice"},
 				Spec: kcpapiv1alpha1.APIExportEndpointSliceSpec{
@@ -281,13 +270,9 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 					},
 				},
 			},
-			sliceName: "slice",
-			wantName:  "my-export",
-			wantPath:  "root:custom",
 		},
 		{
 			name:         "empty spec.export.name",
-			sliceName:    "named-slice",
 			wantErr:      true,
 			errSubstring: `empty spec.export.name`,
 			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
@@ -300,27 +285,14 @@ func TestAPIExportLocationFromEndpointSlice(t *testing.T) {
 		{
 			name:         "nil slice",
 			slice:        nil,
-			sliceName:    "any",
 			wantErr:      true,
 			errSubstring: "nil APIExportEndpointSlice",
-		},
-		{
-			name: "sliceName empty uses metadata.name in error",
-			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{Name: "meta-name"},
-				Spec: kcpapiv1alpha1.APIExportEndpointSliceSpec{
-					APIExport: kcpapiv1alpha1.ExportBindingReference{},
-				},
-			},
-			sliceName:    "",
-			wantErr:      true,
-			errSubstring: `APIExportEndpointSlice "meta-name"`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotName, gotPath, err := apiExportLocationFromEndpointSlice(tt.slice, tt.sliceName)
+			gotName, gotPath, err := apiExportLocationFromEndpointSlice(tt.slice)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error")
@@ -381,5 +353,106 @@ func TestBuildKCPConfigForPath(t *testing.T) {
 	outBare := buildKCPConfigForPath(cfgBare, "root:x")
 	if outBare.Host != "https://shard:6443/clusters/root:x" {
 		t.Fatalf("Host (bare): got %q", outBare.Host)
+	}
+}
+
+func TestResolveAPIExportVirtualWorkspaceRawPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := &rest.Config{Host: "https://kcp:6443"}
+	t.Run("empty slice name", func(t *testing.T) {
+		t.Parallel()
+		_, err := resolveAPIExportVirtualWorkspaceRawPath(ctx, &Helper{}, cfg, "")
+		if err == nil || !strings.Contains(err.Error(), "empty") {
+			t.Fatalf("expected empty name error, got %v", err)
+		}
+	})
+}
+
+func TestWorkspaceClusterScopedServerURLJoinPath(t *testing.T) {
+	t.Parallel()
+	// Same shape as writeScopedKubeconfigToSecret when apiExportName is set (no endpoint slice).
+	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:6443"
+	pcPath := "root:platform-mesh-system"
+	got, err := url.JoinPath(hostPort, "clusters", pcPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:platform-mesh-system"
+	if got != want {
+		t.Fatalf("server URL: got %q want %q", got, want)
+	}
+}
+
+func TestParseScopedKubeconfigExportSource(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		pc          corev1alpha1.ProviderConnection
+		wantSlice   string
+		wantExport  string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "apiExportName only",
+			pc: corev1alpha1.ProviderConnection{
+				APIExportName: ptr.To("core.platform-mesh.io"),
+			},
+			wantExport: "core.platform-mesh.io",
+		},
+		{
+			name: "endpointSliceName only",
+			pc: corev1alpha1.ProviderConnection{
+				EndpointSliceName: ptr.To("core.platform-mesh.io"),
+			},
+			wantSlice: "core.platform-mesh.io",
+		},
+		{
+			name: "trim whitespace",
+			pc: corev1alpha1.ProviderConnection{
+				APIExportName: ptr.To("  my-export  "),
+			},
+			wantExport: "my-export",
+		},
+		{
+			name:        "both set",
+			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("a"), APIExportName: ptr.To("b")},
+			wantErr:     true,
+			errContains: "only one",
+		},
+		{
+			name:        "neither set",
+			pc:          corev1alpha1.ProviderConnection{},
+			wantErr:     true,
+			errContains: "requires endpointSliceName or apiExportName",
+		},
+		{
+			name:        "both whitespace",
+			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("  "), APIExportName: ptr.To("\t")},
+			wantErr:     true,
+			errContains: "requires endpointSliceName or apiExportName",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotSlice, gotExport, err := parseScopedKubeconfigExportSource(tt.pc)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("error %q should contain %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gotSlice != tt.wantSlice || gotExport != tt.wantExport {
+				t.Fatalf("got slice=%q export=%q want slice=%q export=%q", gotSlice, gotExport, tt.wantSlice, tt.wantExport)
+			}
+		})
 	}
 }
