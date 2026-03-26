@@ -1,0 +1,6 @@
+apiVersion: {{.E2eGroup}}/v1alpha1
+kind: Widget
+metadata:
+  name: {{.WidgetName}}
+spec:
+  note: {{.WidgetNote}}

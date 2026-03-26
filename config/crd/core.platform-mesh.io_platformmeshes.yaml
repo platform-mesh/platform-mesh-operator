@@ -129,7 +129,7 @@ spec:
                           type: boolean
                         apiExportName:
                           description: APIExportName is the APIExport object name
-                            in root:platform-mesh-system used to build RBAC for scoped
+                            in ProviderConnection.Path used to build RBAC for scoped
                             kubeconfig when endpointSliceName is not set (server URL
                             is the workspace cluster URL for Path).
                           type: string
@@ -190,7 +190,7 @@ spec:
                           type: boolean
                         apiExportName:
                           description: APIExportName is the APIExport object name
-                            in root:platform-mesh-system used to build RBAC for scoped
+                            in ProviderConnection.Path used to build RBAC for scoped
                             kubeconfig when endpointSliceName is not set (server URL
                             is the workspace cluster URL for Path).
                           type: string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -26,189 +26,129 @@ const (
 
 	e2eKcpAdminSecretName = "kubeconfig-kcp-admin"
 
-	// First extraProviderConnections entry in test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml (endpointSliceName).
-	e2eScopedKubeconfigSecretName = "e2e-scoped-kubeconfig"
+	// Operator-written Secrets for extraProviderConnections in platform-mesh.yaml (provider1 vs provider2 scenario).
+	e2eScopedKubeconfigProvider1SecretName = "kind-e2e-provider1-scoped-kubeconfig"
+	e2eScopedKubeconfigProvider2SecretName = "kind-e2e-provider2-scoped-kubeconfig"
 
-	// Second extraProviderConnections entry in the same yaml (apiExportName only, no endpointSliceName).
-	e2eScopedKubeconfigAPIExportSecretName = "e2e-scoped-kubeconfig-apiexport"
+	// APIExport / APIExportEndpointSlice name in yaml/kcp-provider-workspaces; kubectl resource for E2EProviderConfig.
+	e2eKindScopedProviderExportName       = "kind-e2e-scoped-provider.platform-mesh.io"
+	e2eScopedProviderConfigResource       = "e2eproviderconfigs.kind-e2e-scoped-provider.platform-mesh.io"
+	e2eKindScopedProviderConfigAPIVersion = "kind-e2e-scoped-provider.platform-mesh.io/v1alpha1"
+
+	// Match test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml extraProviderConnections[].path;
+	// ProvidersecretSubroutine creates scoped SA + ClusterRole + ClusterRoleBinding in each provider workspace.
+	e2eScopedKubeconfigProvider1Path = "root:providers:provider1"
+	e2eScopedKubeconfigProvider2Path = "root:providers:provider2"
+
+	e2eKcpProviderWorkspacesYAMLDir = "../../../test/e2e/kind/yaml/kcp-provider-workspaces"
 )
 
-// Kind e2e — scoped provider kubeconfig (this file). We test:
-//   - Operator writes one Secret per spec.kcp.extraProviderConnections entry (ProvidersecretSubroutine.Process loops
-//     and calls HandleProviderConnection → writeScopedKubeconfigToSecret for adminAuth: false); manifest:
-//     yaml/platform-mesh-resource/platform-mesh.yaml.
-//   - Secret kubeconfig parses (cluster + auth).
-//   - kubectl with that kubeconfig succeeds for org/account + APIExport/APIBinding; fails for unrelated root workspace.
-func (s *KindTestSuite) TestScopedKubeconfigAPIBindingWorkspaceBoundaries() {
-	ctx := context.TODO()
-	s.scopedWaitPlatformMeshReady(ctx)
-
-	// Operator-created secret (adminAuth false + endpointSliceName in applied PlatformMesh).
-	scopedSecret := s.waitForOperatorScopedKubeconfigSecret(ctx)
-	s.assertScopedKubeconfigSecretValid(scopedSecret)
-
-	suffix := fmt.Sprintf("%d", time.Now().UnixNano()%100000)
-	orgName := "e2e-scoped-org-" + suffix
-	accountName := "e2e-scoped-account-" + suffix
-	exportName := "scoped-kcfg-export-" + suffix
-	bindingName := "scoped-kcfg-binding-" + suffix
-	denyWorkspaceName := "scoped-deny-check-" + suffix
-
-	// Admin kubeconfig clients to create workspaces and API objects (not the scoped credential under test).
-	rootClient, err := s.kcpClientForWorkspace(ctx, "root")
-	s.Assert().NoError(err, "kcp client for root")
-	orgsClient, err := s.kcpClientForWorkspace(ctx, "root:orgs")
-	s.Assert().NoError(err, "kcp client for root:orgs")
-
-	// Workspace outside root:orgs tree — later we assert scoped token cannot use it.
-	s.applyWorkspace(ctx, rootClient, denyWorkspaceName, "orgs", "root")
-	s.waitWorkspaceReady(ctx, rootClient, denyWorkspaceName)
-
-	s.applyWorkspace(ctx, orgsClient, orgName, "org", "root")
-	s.waitWorkspaceReady(ctx, orgsClient, orgName)
-
-	orgWorkspacePath := "root:orgs:" + orgName
-	orgWorkspaceClient, err := s.kcpClientForWorkspace(ctx, orgWorkspacePath)
-	s.Assert().NoError(err, "kcp client for org workspace")
-	s.applyWorkspace(ctx, orgWorkspaceClient, accountName, "account", "root")
-	s.waitWorkspaceReady(ctx, orgWorkspaceClient, accountName)
-
-	accountWorkspacePath := orgWorkspacePath + ":" + accountName
-	accountWorkspaceClient, err := s.kcpClientForWorkspace(ctx, accountWorkspacePath)
-	s.Assert().NoError(err, "kcp client for account workspace")
-
-	// Export in org, binding in account — resources scoped token should see when pointed at those workspaces.
-	s.Assert().NoError(s.applyUnstructuredSSA(ctx, orgWorkspaceClient, &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "apis.kcp.io/v1alpha1",
-			"kind":       "APIExport",
-			"metadata": map[string]interface{}{
-				"name": exportName,
-			},
-			"spec": map[string]interface{}{
-				"latestResourceSchemas": []interface{}{},
-			},
-		},
-	}))
-
-	s.Assert().NoError(s.applyUnstructuredSSA(ctx, accountWorkspaceClient, &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "apis.kcp.io/v1alpha1",
-			"kind":       "APIBinding",
-			"metadata": map[string]interface{}{
-				"name": bindingName,
-			},
-			"spec": map[string]interface{}{
-				"reference": map[string]interface{}{
-					"export": map[string]interface{}{
-						"path": orgWorkspacePath,
-						"name": exportName,
-					},
-				},
-			},
-		},
-	}))
-
-	// Point kubectl at a workspace by rewriting cluster.server to .../clusters/<path> (same token each time).
-	clusterURL := func(workspacePath string) string {
-		return fmt.Sprintf("%s/clusters/%s", kcpLocalFrontProxyURL, workspacePath)
-	}
-
-	// Allow: scoped token can read binding in account workspace.
-	s.Eventually(func() bool {
-		out, err := s.runKubectlWithClusterServer(scopedSecret.Data["kubeconfig"], clusterURL(accountWorkspacePath), "get", "apibinding.apis.kcp.io", bindingName, "-o", "jsonpath={.status.phase}")
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("kubectl apibinding check failed")
-			return false
-		}
-		return strings.TrimSpace(string(out)) == "Bound"
-	}, 20*time.Minute, 10*time.Second, "scoped kubeconfig could not access allowed APIBinding workspace")
-
-	// Allow: read APIExport in org workspace.
-	out, err := s.runKubectlWithClusterServer(scopedSecret.Data["kubeconfig"], clusterURL(orgWorkspacePath), "get", "apiexport.apis.kcp.io", exportName, "-o", "jsonpath={.metadata.name}")
-	s.Assert().NoError(err, "scoped kubeconfig should access APIExport in allowed workspace")
-	s.Equal(exportName, strings.TrimSpace(string(out)))
-
-	// Deny: same token must not access unrelated root:<deny> workspace.
-	_, err = s.runKubectlWithClusterServer(scopedSecret.Data["kubeconfig"], clusterURL("root:"+denyWorkspaceName), "get", "logicalclusters.core.kcp.io", "cluster", "-o", "name")
-	s.Require().Error(err, "scoped kubeconfig must not access unrelated workspace")
+// setupScopedProviderKcpBeforePlatformMesh must run from SetupSuite before platform-mesh.yaml is applied:
+// extraProviderConnections need APIExports/slices in kcp, and kcp clients need kubeconfig-kcp-admin.
+// It cannot run inside TestScopedKubeconfig* — the operator already reconciles PlatformMesh after SetupSuite.
+func (s *KindTestSuite) setupScopedProviderKcpBeforePlatformMesh(ctx context.Context) {
+	s.waitForKcpAdminKubeconfigSecret(ctx)
+	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
 }
 
-// Waits for the Secret named e2eScopedKubeconfigAPIExportSecretName created for the second extraProviderConnections
-// item in platform-mesh.yaml (apiExportName: core.platform-mesh.io, no endpointSliceName). Same code path as the first
-// scoped secret: pkg/subroutines/providersecret.go Process → HandleProviderConnection → writeScopedKubeconfigToSecret
-// (api-export-only branch builds cluster.server as .../clusters/<path>).
-func (s *KindTestSuite) TestScopedKubeconfigAPIExportNameWorkspaceServer() {
+// Provider1: APIExport + schema + endpoint slice come from setupScopedProviderKcpBeforePlatformMesh (yaml/kcp-provider-workspaces), like a
+// pre-provisioned workspace. The test uses only the operator-written scoped kubeconfig to create an E2EProviderConfig
+// instance for that export (virtual workspace server).
+func (s *KindTestSuite) TestScopedKubeconfigProvider1() {
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
-	sec := &corev1.Secret{}
-	s.Eventually(func() bool {
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2eScopedKubeconfigAPIExportSecretName,
-			Namespace: e2ePlatformMeshNamespace,
-		}, sec)
-		if err != nil || len(sec.Data["kubeconfig"]) == 0 {
-			return false
-		}
-		return true
-	}, 20*time.Minute, 10*time.Second, "Secret "+e2eScopedKubeconfigAPIExportSecretName+" was not populated")
+	sec := s.waitForOperatorScopedKubeconfigSecret(ctx, e2eScopedKubeconfigProvider1SecretName)
+	kcfg := sec.Data["kubeconfig"]
 
-	s.assertScopedKubeconfigSecretValid(sec)
-	raw := sec.Data["kubeconfig"]
-	cfg, err := clientcmd.Load(raw)
+	name := fmt.Sprintf("e2e-provider1-%d", time.Now().UnixNano())
+	note := "scoped-kubeconfig-provider1-e2e"
+	manifestPath := filepath.Join(s.T().TempDir(), "e2eproviderconfig-provider1.yaml")
+	manifest := fmt.Sprintf(`apiVersion: %s
+kind: E2EProviderConfig
+metadata:
+  name: %s
+spec:
+  note: %s
+`, e2eKindScopedProviderConfigAPIVersion, name, note)
+	s.Require().NoError(os.WriteFile(manifestPath, []byte(manifest), 0o600))
+
+	_, err := s.runKubectlWithRawKubeconfig(kcfg, "apply", "-f", manifestPath)
+	s.Require().NoError(err, "kubectl apply E2EProviderConfig with operator-generated provider1 scoped kubeconfig")
+
+	out, err := s.runKubectlWithRawKubeconfig(kcfg, "get", e2eScopedProviderConfigResource, name, "-o", "jsonpath={.spec.note}")
 	s.Require().NoError(err)
-	var cluster *clientcmdapi.Cluster
-	for _, c := range cfg.Clusters {
-		if c != nil {
-			cluster = c
-			break
-		}
-	}
-	s.Require().NotNil(cluster)
-	s.Require().Contains(cluster.Server, "/clusters/root:platform-mesh-system",
-		"apiExportName-only scoped kubeconfig should point at workspace cluster URL, got %q", cluster.Server)
+	s.Require().Equal(note, strings.TrimSpace(string(out)))
+
+	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider1Path, name)
 }
 
-// Wait until reconciler writes kubeconfig for the extraProviderConnections entry in e2e platform-mesh.yaml.
-func (s *KindTestSuite) waitForOperatorScopedKubeconfigSecret(ctx context.Context) *corev1.Secret {
+// Provider2: same as Provider1 regarding pre-provisioned export YAML; scoped kubeconfig uses workspace cluster URL.
+// Test creates an E2EProviderConfig resource with that kubeconfig only (no APIExport creation in the test).
+func (s *KindTestSuite) TestScopedKubeconfigProvider2() {
+	ctx := context.TODO()
+	s.scopedWaitPlatformMeshReady(ctx)
+
+	sec := s.waitForOperatorScopedKubeconfigSecret(ctx, e2eScopedKubeconfigProvider2SecretName)
+	kcfg := sec.Data["kubeconfig"]
+
+	name := fmt.Sprintf("e2e-provider2-%d", time.Now().UnixNano())
+	note := "scoped-kubeconfig-provider2-e2e"
+	manifestPath := filepath.Join(s.T().TempDir(), "e2eproviderconfig-provider2.yaml")
+	manifest := fmt.Sprintf(`apiVersion: %s
+kind: E2EProviderConfig
+metadata:
+  name: %s
+spec:
+  note: %s
+`, e2eKindScopedProviderConfigAPIVersion, name, note)
+	s.Require().NoError(os.WriteFile(manifestPath, []byte(manifest), 0o600))
+
+	_, err := s.runKubectlWithRawKubeconfig(kcfg, "apply", "-f", manifestPath)
+	s.Require().NoError(err, "kubectl apply E2EProviderConfig with operator-generated provider2 scoped kubeconfig")
+
+	out, err := s.runKubectlWithRawKubeconfig(kcfg, "get", e2eScopedProviderConfigResource, name, "-o", "jsonpath={.spec.note}")
+	s.Require().NoError(err)
+	s.Require().Equal(note, strings.TrimSpace(string(out)))
+
+	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider2Path, name)
+}
+
+// waitForOperatorScopedKubeconfigSecret waits until the reconciler populates the given provider secret
+// (PlatformMesh.spec.kcp.extraProviderConnections[].secret in e2e platform-mesh.yaml).
+func (s *KindTestSuite) waitForOperatorScopedKubeconfigSecret(ctx context.Context, secretName string) *corev1.Secret {
 	sec := &corev1.Secret{}
 	s.Eventually(func() bool {
 		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2eScopedKubeconfigSecretName,
+			Name:      secretName,
 			Namespace: e2ePlatformMeshNamespace,
 		}, sec)
 		if err != nil {
-			s.logger.Warn().Err(err).Str("secret", e2eScopedKubeconfigSecretName).Msg("scoped kubeconfig secret not created by operator yet")
+			s.logger.Warn().Err(err).Str("secret", secretName).Msg("scoped kubeconfig secret not created by operator yet")
 			return false
 		}
 		if len(sec.Data["kubeconfig"]) == 0 {
-			s.logger.Warn().Str("secret", e2eScopedKubeconfigSecretName).Msg("scoped kubeconfig secret missing kubeconfig data")
+			s.logger.Warn().Str("secret", secretName).Msg("scoped kubeconfig secret missing kubeconfig data")
 			return false
 		}
 		return true
-	}, 20*time.Minute, 10*time.Second, "Secret "+e2eScopedKubeconfigSecretName+" from PlatformMesh.spec.kcp.extraProviderConnections was not populated by the operator")
+	}, 20*time.Minute, 10*time.Second, "Secret "+secretName+" from PlatformMesh.spec.kcp.extraProviderConnections was not populated by the operator")
 	return sec
 }
 
-// Sanity-check secret content parses as a kubeconfig with cluster + auth.
-func (s *KindTestSuite) assertScopedKubeconfigSecretValid(sec *corev1.Secret) {
-	raw := sec.Data["kubeconfig"]
-	s.Assert().NotEmpty(raw, "Secret %q must contain kubeconfig data", sec.Name)
-	cfg, err := clientcmd.Load(raw)
-	s.Assert().NoError(err, "scoped kubeconfig must parse")
-	s.Assert().NotEmpty(cfg.Clusters, "scoped kubeconfig must define at least one cluster")
-	s.Assert().NotEmpty(cfg.AuthInfos, "scoped kubeconfig must define at least one user/credential")
-
-	var cluster *clientcmdapi.Cluster
-	for _, c := range cfg.Clusters {
-		if c != nil {
-			cluster = c
-			break
-		}
+func (s *KindTestSuite) deleteE2EProviderConfigOrWarn(ctx context.Context, workspacePath, name string) {
+	cl, err := s.kcpClientForWorkspace(ctx, workspacePath)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("workspace", workspacePath).Msg("cleanup: no kcp client for E2EProviderConfig delete")
+		return
 	}
-	s.Assert().NotNil(cluster, "scoped kubeconfig must have a non-nil cluster entry")
-	s.Assert().NotEmpty(cluster.Server, "scoped kubeconfig cluster must set server URL")
+	obj := &unstructured.Unstructured{}
+	obj.SetAPIVersion(e2eKindScopedProviderConfigAPIVersion)
+	obj.SetKind("E2EProviderConfig")
+	obj.SetName(name)
+	if err := cl.Delete(ctx, obj); err != nil {
+		s.logger.Warn().Err(err).Str("name", name).Str("workspace", workspacePath).Msg("cleanup delete E2EProviderConfig")
+	}
 }
 
 func (s *KindTestSuite) kcpAdminKubeconfigBytes(ctx context.Context) ([]byte, error) {
@@ -245,49 +185,70 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
 }
 
-func (s *KindTestSuite) applyUnstructuredSSA(ctx context.Context, cl client.Client, obj *unstructured.Unstructured) error {
-	return cl.Patch(ctx, obj, client.Apply, client.ForceOwnership, client.FieldOwner("platform-mesh-operator-e2e"))
-}
-
-func (s *KindTestSuite) applyWorkspace(ctx context.Context, cl client.Client, name, workspaceType, workspaceTypePath string) {
-	s.Assert().NoError(s.applyUnstructuredSSA(ctx, cl, &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "tenancy.kcp.io/v1alpha1",
-			"kind":       "Workspace",
-			"metadata": map[string]interface{}{
-				"name": name,
-			},
-			"spec": map[string]interface{}{
-				"type": map[string]interface{}{
-					"name": workspaceType,
-					"path": workspaceTypePath,
-				},
-			},
-		},
-	}))
-}
-
-// Temp kubeconfig with a single cluster server URL, then kubectl (for host-side e2e process).
-func (s *KindTestSuite) runKubectlWithClusterServer(kubeconfigBytes []byte, clusterServer string, kubectlArgs ...string) ([]byte, error) {
-	cfg, err := clientcmd.Load(kubeconfigBytes)
-	if err != nil {
-		return nil, err
-	}
-	for _, c := range cfg.Clusters {
-		if c != nil {
-			c.Server = clusterServer
+// Same style as waitForOperatorScopedKubeconfigSecret(ctx, name): Eventually + Warn while polling (kind e2e convention).
+func (s *KindTestSuite) waitForKcpAdminKubeconfigSecret(ctx context.Context) {
+	sec := &corev1.Secret{}
+	s.Eventually(func() bool {
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name:      e2eKcpAdminSecretName,
+			Namespace: e2ePlatformMeshNamespace,
+		}, sec)
+		if err != nil {
+			s.logger.Warn().Err(err).Str("secret", e2eKcpAdminSecretName).Msg("kcp admin kubeconfig secret not available yet")
+			return false
 		}
-	}
-	rendered, err := clientcmd.Write(*cfg)
-	if err != nil {
-		return nil, err
-	}
-	tmp, err := os.CreateTemp("", "scoped-kubeconfig-*.yaml")
+		if len(sec.Data["kubeconfig"]) == 0 {
+			s.logger.Warn().Str("secret", e2eKcpAdminSecretName).Msg("kcp admin kubeconfig secret missing kubeconfig data")
+			return false
+		}
+		return true
+	}, 20*time.Minute, 10*time.Second, "Secret "+e2eKcpAdminSecretName+" was not populated (needed for kcp workspace setup before PlatformMesh apply)")
+}
+
+// ensureScopedE2EKcpProviderWorkspaces creates root:providers:provider1|provider2 and applies static YAML that models a
+// real deployment: APIExport (+ APIResourceSchema + APIExportEndpointSlice) already exists before tests run; tests only
+// exercise creating resources from that export via scoped kubeconfigs.
+func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context) {
+	emptyTmpl := make(map[string]string)
+	rootClient, err := s.kcpClientForWorkspace(ctx, "root")
+	s.Require().NoError(err, "kcp client for root")
+	s.Require().NoError(
+		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "workspace-providers.yaml"), rootClient, emptyTmpl),
+		"apply workspace-providers.yaml",
+	)
+	s.waitWorkspaceReady(ctx, rootClient, "providers")
+	providersClient, err := s.kcpClientForWorkspace(ctx, "root:providers")
+	s.Require().NoError(err, "kcp client for root:providers")
+	s.Require().NoError(
+		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "workspace-provider1-provider2.yaml"), providersClient, emptyTmpl),
+		"apply workspace-provider1-provider2.yaml",
+	)
+	s.waitWorkspaceReady(ctx, providersClient, "provider1")
+	s.waitWorkspaceReady(ctx, providersClient, "provider2")
+
+	provider1Client, err := s.kcpClientForWorkspace(ctx, e2eScopedKubeconfigProvider1Path)
+	s.Require().NoError(err, "kcp client for provider1")
+	s.Require().NoError(
+		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "provider1-kind-e2e-scoped-provider-export.yaml"), provider1Client, emptyTmpl),
+		"apply root:providers:provider1 "+e2eKindScopedProviderExportName+" export manifests",
+	)
+
+	provider2Client, err := s.kcpClientForWorkspace(ctx, e2eScopedKubeconfigProvider2Path)
+	s.Require().NoError(err, "kcp client for provider2")
+	s.Require().NoError(
+		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "provider2-kind-e2e-scoped-provider-export.yaml"), provider2Client, emptyTmpl),
+		"apply root:providers:provider2 "+e2eKindScopedProviderExportName+" export manifests",
+	)
+}
+
+// kubectl with kubeconfig bytes unchanged (virtual workspace or workspace cluster URL as written by the operator).
+func (s *KindTestSuite) runKubectlWithRawKubeconfig(kubeconfigBytes []byte, kubectlArgs ...string) ([]byte, error) {
+	tmp, err := os.CreateTemp("", "scoped-kubeconfig-raw-*.yaml")
 	if err != nil {
 		return nil, err
 	}
 	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(rendered); err != nil {
+	if _, err := tmp.Write(kubeconfigBytes); err != nil {
 		_ = tmp.Close()
 		return nil, err
 	}

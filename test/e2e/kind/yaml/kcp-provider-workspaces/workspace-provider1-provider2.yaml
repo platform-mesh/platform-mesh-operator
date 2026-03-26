@@ -1,0 +1,18 @@
+# Applied with kcp client scoped to root:providers (after workspace-providers.yaml is Ready).
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: Workspace
+metadata:
+  name: provider1
+spec:
+  type:
+    name: provider
+    path: root
+---
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: Workspace
+metadata:
+  name: provider2
+spec:
+  type:
+    name: provider
+    path: root

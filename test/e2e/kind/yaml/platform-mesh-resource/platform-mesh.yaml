@@ -17,15 +17,16 @@ spec:
   kcp:
     # ProvidersecretSubroutine: one Secret per list entry (see HandleProviderConnection → writeScopedKubeconfigToSecret).
     extraProviderConnections:
-      # kind_scoped_kubeconfig_test.go TestScopedKubeconfigAPIBindingWorkspaceBoundaries — VW server from endpoint slice.
-      - path: root:platform-mesh-system
-        secret: e2e-scoped-kubeconfig
-        endpointSliceName: core.platform-mesh.io
+      # kind_scoped_kubeconfig_test.go — workspaces from yaml/kcp-provider-workspaces (setupScopedProviderKcpBeforePlatformMesh).
+      # provider1: endpointSliceName → virtual workspace; secret + export/slice name tie to kind e2e scoped-provider fixture.
+      - path: root:providers:provider1
+        secret: kind-e2e-provider1-scoped-kubeconfig
+        endpointSliceName: kind-e2e-scoped-provider.platform-mesh.io
         adminAuth: false
-      # kind_scoped_kubeconfig_test.go TestScopedKubeconfigAPIExportNameWorkspaceServer — workspace URL .../clusters/<path>, apiExportName only.
-      - path: root:platform-mesh-system
-        secret: e2e-scoped-kubeconfig-apiexport
-        apiExportName: core.platform-mesh.io
+      # provider2: apiExportName → workspace cluster URL for Path; same export name in root:providers:provider2
+      - path: root:providers:provider2
+        secret: kind-e2e-provider2-scoped-kubeconfig
+        apiExportName: kind-e2e-scoped-provider.platform-mesh.io
         adminAuth: false
   values:
     keycloak:
