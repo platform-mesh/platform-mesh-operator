@@ -35,50 +35,27 @@ const (
 	defaultTokenExpirationSeconds  = 7 * secondsPerDay
 	scopedClusterRolePrefix        = "platform-mesh-provider-"
 	scopedSAPrefix                 = "platform-mesh-provider-"
+	scopedWorkspaceAccessCRBPrefix = "platform-mesh-workspace-access-"
 	kcpWorkspaceAccessRoleName     = "system:kcp:workspace:access"
-	scopedProviderRBACNameDefault  = "scoped"
-	maxRBACNameSuffixLength        = 200
-	platformMeshAPIExportWorkspace = "root:platform-mesh-system"
 )
 
-func sanitizeSecretNameForRBAC(secret string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(secret) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
-			b.WriteRune(r)
-		case r == '_' || r == '.':
-			b.WriteRune('-')
-		default:
-		}
-	}
-	s := strings.Trim(strings.TrimSpace(b.String()), "-")
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	if len(s) > maxRBACNameSuffixLength {
-		s = s[:maxRBACNameSuffixLength]
-		s = strings.TrimRight(s, "-")
-	}
-	if s == "" {
-		return scopedProviderRBACNameDefault
-	}
-	return s
-}
-
+// buildKCPConfigForPath points cfg at a workspace cluster URL. cfg.Host may be bare host:port
+// or include /clusters/...; strip to scheme://host so we do not append a second /clusters/.
 func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config {
 	out := rest.CopyConfig(cfg)
-	schemeHost := cfg.Host
-	if cfg.Host != "" {
-		base := cfg.Host
-		if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
-			base = "https://" + base
-		}
-		if parsed, err := url.Parse(base); err == nil && parsed.Host != "" {
-			schemeHost = parsed.Scheme + "://" + parsed.Host
-		}
+	h := cfg.Host
+	if h == "" {
+		return out
 	}
-	out.Host = schemeHost + "/clusters/" + workspacePath
+	if !strings.HasPrefix(h, "http://") && !strings.HasPrefix(h, "https://") {
+		h = "https://" + h
+	}
+	u, err := url.Parse(h)
+	if err != nil || u.Host == "" {
+		out.Host = h + "/clusters/" + workspacePath
+		return out
+	}
+	out.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
 	return out
 }
 
@@ -187,11 +164,11 @@ func hasUpdatePatchVerbs(verbs []string) bool {
 
 func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, policyRules []rbacv1.PolicyRule, providerSuffix string) (saName string, err error) {
 	if providerSuffix == "" {
-		providerSuffix = scopedProviderRBACNameDefault
+		return "", fmt.Errorf("provider suffix for scoped RBAC is empty")
 	}
 	saName = scopedSAPrefix + providerSuffix
 	crName := scopedClusterRolePrefix + providerSuffix
-	workspaceAccessCRBName := "platform-mesh-workspace-access-" + providerSuffix
+	workspaceAccessCRBName := scopedWorkspaceAccessCRBPrefix + providerSuffix
 	saNamespace := defaultScopedSANamespace
 
 	sa := &corev1.ServiceAccount{
@@ -324,19 +301,22 @@ func apiExportLocationFromEndpointSlice(slice *kcpapiv1alpha1.APIExportEndpointS
 	return slice.Spec.APIExport.Name, slice.Spec.APIExport.Path, nil
 }
 
-// resolveAPIExportVirtualWorkspaceRawPath returns the URL path segment for joining to front-proxy host (admin kubeconfig), from APIExportEndpointSlice status in platformMeshAPIExportWorkspace.
-func resolveAPIExportVirtualWorkspaceRawPath(ctx context.Context, kcpHelper KcpHelper, baseCfg *rest.Config, sliceName string) (string, error) {
+// resolveAPIExportVirtualWorkspaceRawPath returns the URL path segment for joining to front-proxy host (admin kubeconfig), from APIExportEndpointSlice status in sliceWorkspacePath (typically ProviderConnection.Path).
+func resolveAPIExportVirtualWorkspaceRawPath(ctx context.Context, kcpHelper KcpHelper, baseCfg *rest.Config, sliceWorkspacePath, sliceName string) (string, error) {
 	if sliceName == "" {
 		return "", fmt.Errorf("APIExportEndpointSlice name is empty")
 	}
+	if strings.TrimSpace(sliceWorkspacePath) == "" {
+		return "", fmt.Errorf("APIExportEndpointSlice workspace path is empty")
+	}
 	name := sliceName
-	sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(baseCfg), platformMeshAPIExportWorkspace)
+	sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(baseCfg), sliceWorkspacePath)
 	if err != nil {
 		return "", fmt.Errorf("kcp client for APIExportEndpointSlice workspace: %w", err)
 	}
 	var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
 	if err := sliceClient.Get(ctx, client.ObjectKey{Name: name}, &endpointSlice); err != nil {
-		return "", fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", name, platformMeshAPIExportWorkspace, err)
+		return "", fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", name, sliceWorkspacePath, err)
 	}
 	return virtualWorkspacePathFromSlice(&endpointSlice)
 }
@@ -391,13 +371,13 @@ func writeScopedKubeconfigToSecret(
 	var exportWorkspacePath string
 
 	if endpointSliceName != "" {
-		sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), platformMeshAPIExportWorkspace)
+		sliceClient, err := kcpHelper.NewKcpClient(rest.CopyConfig(cfg), pcPath)
 		if err != nil {
 			return errors.Wrap(err, "kcp client for APIExportEndpointSlice workspace")
 		}
 		var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
 		if err := sliceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
-			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, platformMeshAPIExportWorkspace, err)
+			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, pcPath, err)
 		}
 		rawPath, err := virtualWorkspacePathFromSlice(&endpointSlice)
 		if err != nil {
@@ -422,7 +402,7 @@ func writeScopedKubeconfigToSecret(
 			Msg("Using scoped kubeconfig virtual workspace URL")
 	} else {
 		apiExportName = apiExportNameField
-		exportWorkspacePath = platformMeshAPIExportWorkspace
+		exportWorkspacePath = pcPath
 		var errJoin error
 		hostURL, errJoin = url.JoinPath(hostPort, "clusters", pcPath)
 		if errJoin != nil {
@@ -453,8 +433,7 @@ func writeScopedKubeconfigToSecret(
 	if err != nil {
 		return errors.Wrap(err, "create KCP client for provider workspace")
 	}
-	providerSuffix := sanitizeSecretNameForRBAC(pc.Secret)
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, providerSuffix)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret)
 	if err != nil {
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}
