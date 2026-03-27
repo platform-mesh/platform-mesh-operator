@@ -19,7 +19,7 @@ func TestKindSuite(t *testing.T) {
 	suite.Run(t, new(KindTestSuite))
 }
 
-func (s *KindTestSuite) TestResourceReady() {
+func (s *KindTestSuite) Test01ResourceReady() {
 	ctx := context.TODO()
 
 	s.Eventually(func() bool {
@@ -44,7 +44,7 @@ func (s *KindTestSuite) TestResourceReady() {
 
 }
 
-func (s *KindTestSuite) TestExtraWorkspaces() {
+func (s *KindTestSuite) Test02ExtraWorkspaces() {
 	ctx := context.TODO()
 
 	pm := corev1alpha1.PlatformMesh{}

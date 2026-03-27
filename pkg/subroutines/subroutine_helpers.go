@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,7 +54,11 @@ type Helper struct {
 func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error) {
 	config.QPS = 1000.0
 	config.Burst = 2000.0
-	config.Host = config.Host + "/clusters/" + workspacePath
+	u, err := url.Parse(config.Host)
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to parse kcp host: %s", config.Host)
+	}
+	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
@@ -117,25 +122,6 @@ func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte,
 		return []byte{}, nil
 	}
 	return result.Bytes(), nil
-}
-
-func appendDefaultAPIBindingIfMissing(current []interface{}, export, path string) []interface{} {
-	for _, item := range current {
-		m, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		exportVal, _ := m["export"].(string)
-		pathVal, _ := m["path"].(string)
-		if exportVal == export && pathVal == path {
-			return current
-		}
-	}
-
-	return append(current, map[string]interface{}{
-		"export": export,
-		"path":   path,
-	})
 }
 
 func ConvertToUnstructured(webhook admissionv1.MutatingWebhookConfiguration) (*unstructured.Unstructured, error) {
@@ -378,39 +364,38 @@ func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (
 	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
 }
 
-func clusterAdminClientCmdAPIConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpURL string) (*clientcmdapi.Config, error) {
-	ns := operatorCfg.KCP.Namespace
+func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
-	secret, err := GetSecret(client, secretName, ns)
+	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/%s: %w", secretName, ns, err)
+		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/%s is nil", secretName, ns)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/%s has no Data", secretName, ns)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
 	}
 
 	caData, ok := secret.Data["ca.crt"]
 	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf(`secret %s/%s missing or empty key "ca.crt"`, secretName, ns)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
 	}
 
 	tlsCrt, ok := secret.Data["tls.crt"]
 	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf(`secret %s/%s missing or empty key "tls.crt"`, secretName, ns)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
 	}
 
 	tlsKey, ok := secret.Data["tls.key"]
 	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf(`secret %s/%s missing or empty key "tls.key"`, secretName, ns)
+		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
 	}
 
 	cfg := clientcmdapi.NewConfig()
 	cfg.Clusters = map[string]*clientcmdapi.Cluster{
 		"kcp": {
-			Server:                   kcpURL,
+			Server:                   kcpUrl,
 			CertificateAuthorityData: secret.Data["ca.crt"],
 		},
 	}
@@ -427,15 +412,7 @@ func clusterAdminClientCmdAPIConfig(client client.Client, operatorCfg *config.Op
 		},
 	}
 	cfg.CurrentContext = "admin"
-	return cfg, nil
-}
-
-func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
-	apiCfg, err := clusterAdminClientCmdAPIConfig(client, operatorCfg, kcpUrl)
-	if err != nil {
-		return nil, err
-	}
-	return clientcmd.NewDefaultClientConfig(*apiCfg, nil).ClientConfig()
+	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 
 func WaitForWorkspace(
@@ -494,13 +471,6 @@ func ApplyManifestFromFile(
 		if err != nil || !found {
 			currentDefAPiBindings = []interface{}{}
 		}
-		if obj.GetName() == "org" {
-			currentDefAPiBindings = appendDefaultAPIBindingIfMissing(
-				currentDefAPiBindings,
-				"system.platform-mesh.io",
-				"root:platform-mesh-system",
-			)
-		}
 		for _, v := range extraDefaultApiBindings {
 			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}
 			var m map[string]interface{}
@@ -519,7 +489,7 @@ func ApplyManifestFromFile(
 		}
 	}
 
-	if obj.GetKind() == "APIExport" && obj.GetName() == "core.platform-mesh.io" {
+	if (obj.GetKind() == "APIExport" || obj.GetKind() == "APIBinding") && obj.GetName() == "core.platform-mesh.io" {
 		apiExport := kcpapiv1alpha.APIExport{}
 		err = k8sClient.Get(ctx, types.NamespacedName{Name: "system.platform-mesh.io"}, &apiExport)
 		if err != nil {
