@@ -64,7 +64,31 @@ func (s *KindTestSuite) TestScoped01KubeconfigKcpPrereq() {
 	ctx := context.Background()
 	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
+	s.waitScopedProviderConnectionSecretsReady(ctx)
 	s.logger.Info().Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").Msg("done")
+}
+
+func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Context) {
+	secrets := []string{
+		e2eScopedKubeconfigProvider1SecretName,
+		e2eScopedKubeconfigProvider2SecretName,
+		e2eAdminKubeconfigProvider3SecretName,
+	}
+	for _, secretName := range secrets {
+		name := secretName
+		s.Eventually(func() bool {
+			sec := &corev1.Secret{}
+			if err := s.client.Get(ctx, client.ObjectKey{Name: name, Namespace: e2ePlatformMeshNamespace}, sec); err != nil {
+				s.logger.Info().Str("secret", name).Msg("scoped prereq wait: provider secret not yet present")
+				return false
+			}
+			if len(sec.Data["kubeconfig"]) == 0 {
+				s.logger.Info().Str("secret", name).Msg("scoped prereq wait: provider secret kubeconfig empty")
+				return false
+			}
+			return true
+		}, 6*time.Minute, 10*time.Second, "provider secret %s not ready for scoped e2e", name)
+	}
 }
 
 // Provider1: APIExport + schema + endpoint slice come from TestScoped01KubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
