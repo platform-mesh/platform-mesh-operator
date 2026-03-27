@@ -55,22 +55,23 @@ var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{
 	"kcp-system",
 }
 
-// Test03ScopedKubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
-// root:providers:provider1|provider2 with APIExports/slices before Test04/05ScopedKubeconfigProvider1/2.
-// Runs after Test01ResourceReady and Test02ExtraWorkspaces via the TestNN prefix ordering convention.
-func (s *KindTestSuite) Test03ScopedKubeconfigKcpPrereq() {
-	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").Msg("start")
+// TestScoped01KubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
+// root:providers:provider1|provider2 with APIExports/slices before TestScoped02/03KubeconfigProvider1/2.
+// Named TestScoped01… so go test lexicographic order runs it after kind_operator_test.go TestResourceReady / TestExtraWorkspaces
+// (TestE < TestR < TestS); do not use Test01… here or it would run before TestResourceReady.
+func (s *KindTestSuite) TestScoped01KubeconfigKcpPrereq() {
+	s.logger.Info().Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").Msg("start")
 	ctx := context.Background()
 	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
-	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").Msg("done")
+	s.logger.Info().Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").Msg("done")
 }
 
-// Provider1: APIExport + schema + endpoint slice come from Test03ScopedKubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
+// Provider1: APIExport + schema + endpoint slice come from TestScoped01KubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
 // pre-provisioned workspace. The test uses only the operator-written scoped kubeconfig to create an E2EProviderConfig
 // instance for that export (virtual workspace server).
-func (s *KindTestSuite) Test04ScopedKubeconfigProvider1() {
-	s.logger.Info().Str("kind_e2e", "Test04ScopedKubeconfigProvider1").Msg("start")
+func (s *KindTestSuite) TestScoped02KubeconfigProvider1() {
+	s.logger.Info().Str("kind_e2e", "TestScoped02KubeconfigProvider1").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -97,13 +98,13 @@ spec:
 	s.Require().Equal(note, strings.TrimSpace(string(out)))
 
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider1Path, name)
-	s.logger.Info().Str("kind_e2e", "Test04ScopedKubeconfigProvider1").Str("e2eproviderconfig", name).Msg("done")
+	s.logger.Info().Str("kind_e2e", "TestScoped02KubeconfigProvider1").Str("e2eproviderconfig", name).Msg("done")
 }
 
 // Provider2: same as Provider1 regarding pre-provisioned export YAML; scoped kubeconfig uses workspace cluster URL.
 // Test creates an E2EProviderConfig resource with that kubeconfig only (no APIExport creation in the test).
-func (s *KindTestSuite) Test05ScopedKubeconfigProvider2() {
-	s.logger.Info().Str("kind_e2e", "Test05ScopedKubeconfigProvider2").Msg("start")
+func (s *KindTestSuite) TestScoped03KubeconfigProvider2() {
+	s.logger.Info().Str("kind_e2e", "TestScoped03KubeconfigProvider2").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -130,12 +131,12 @@ spec:
 	s.Require().Equal(note, strings.TrimSpace(string(out)))
 
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider2Path, name)
-	s.logger.Info().Str("kind_e2e", "Test05ScopedKubeconfigProvider2").Str("e2eproviderconfig", name).Msg("done")
+	s.logger.Info().Str("kind_e2e", "TestScoped03KubeconfigProvider2").Str("e2eproviderconfig", name).Msg("done")
 }
 
 // Provider3: extraProviderConnections entry with adminAuth true — same slice-based virtual workspace wiring as default providers, admin cert material.
-func (s *KindTestSuite) Test06ExtraProviderAdminKubeconfigProvider3() {
-	s.logger.Info().Str("kind_e2e", "Test06ExtraProviderAdminKubeconfigProvider3").Msg("start")
+func (s *KindTestSuite) TestScoped04ExtraProviderAdminKubeconfigProvider3() {
+	s.logger.Info().Str("kind_e2e", "TestScoped04ExtraProviderAdminKubeconfigProvider3").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -146,7 +147,7 @@ func (s *KindTestSuite) Test06ExtraProviderAdminKubeconfigProvider3() {
 	cluster := cfg.Clusters[clusterName]
 	s.Require().NotNil(cluster)
 	s.Require().Contains(cluster.Server, "front-proxy", "admin provider kubeconfig should use front-proxy host from operator rewrite")
-	s.logger.Info().Str("kind_e2e", "Test06ExtraProviderAdminKubeconfigProvider3").Str("secret", e2eAdminKubeconfigProvider3SecretName).Msg("done")
+	s.logger.Info().Str("kind_e2e", "TestScoped04ExtraProviderAdminKubeconfigProvider3").Str("secret", e2eAdminKubeconfigProvider3SecretName).Msg("done")
 }
 
 func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Context, sec *corev1.Secret) (namespace string, ok bool) {
@@ -276,7 +277,7 @@ func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 		}
 		scopedE2EKcpAdminCertSecretNamespace = ns
 		s.logger.Info().
-			Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").
+			Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").
 			Str("secret", e2eKcpClusterAdminClientCertSecretName).
 			Str("namespace", ns).
 			Msg("cluster-admin TLS secret ready")
@@ -284,14 +285,14 @@ func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	}, 20*time.Minute, 10*time.Second,
 		"Secret "+e2eKcpClusterAdminClientCertSecretName+" was not populated in namespaces "+
 			strings.Join(scopedE2EKcpClusterAdminCertSearchNamespaces, ", ")+
-			" (needed for Test03ScopedKubeconfigKcpPrereq / kcp workspace setup)")
+			" (needed for TestScoped01KubeconfigKcpPrereq / kcp workspace setup)")
 }
 
 // ensureScopedE2EKcpProviderWorkspaces creates root:providers:provider1|provider2 and applies static YAML that models a
 // real deployment: APIExport (+ APIResourceSchema + APIExportEndpointSlice) already exists before tests run; tests only
 // exercise creating resources from that export via scoped kubeconfigs.
 func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context) {
-	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").Msg("seeding root:providers:provider1|provider2 and export YAML")
+	s.logger.Info().Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").Msg("seeding root:providers:provider1|provider2 and export YAML")
 	emptyTmpl := make(map[string]string)
 	rootClient, err := s.kcpClientForWorkspace(ctx, "root")
 	s.Require().NoError(err, "kcp client for root")
@@ -326,7 +327,7 @@ func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context
 		"apply root:providers:provider2 "+e2eKindScopedProviderExportName+" export manifests",
 	)
 	s.logger.Info().
-		Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").
+		Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").
 		Str("export", e2eKindScopedProviderExportName).
 		Msg("provider workspaces and APIExports applied")
 }
@@ -426,7 +427,8 @@ func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl client.Client
 	}, 3*time.Minute, 10*time.Second, "workspace "+workspaceName+" did not become ready")
 }
 
-// Same Ready gate as Test01ResourceReady; scoped test only (not shared with other test files).
+// scopedWaitPlatformMeshReady mirrors kind_operator_test.go TestResourceReady (same Get key, Ready + Status "True", 25m / 10s).
+// On each unsuccessful poll it also logs status.conditions at Debug (turn on debug log level to see in CI).
 func (s *KindTestSuite) scopedWaitPlatformMeshReady(ctx context.Context) {
 	s.Eventually(func() bool {
 		pm := corev1alpha1.PlatformMesh{}
@@ -438,12 +440,32 @@ func (s *KindTestSuite) scopedWaitPlatformMeshReady(ctx context.Context) {
 			s.logger.Warn().Err(err).Msg("Failed to get Platform Mesh resource")
 			return false
 		}
+
 		for _, condition := range pm.Status.Conditions {
 			if condition.Type == "Ready" && condition.Status == "True" {
 				s.logger.Info().Msg("PlatformMesh resource is ready")
 				return true
 			}
 		}
+		s.logPlatformMeshNotReadyDebug(&pm)
 		return false
 	}, 25*time.Minute, 10*time.Second)
+}
+
+func (s *KindTestSuite) logPlatformMeshNotReadyDebug(pm *corev1alpha1.PlatformMesh) {
+	if len(pm.Status.Conditions) == 0 {
+		s.logger.Debug().
+			Msg("PlatformMesh not Ready: status.conditions is empty")
+		return
+	}
+	var b strings.Builder
+	for i, c := range pm.Status.Conditions {
+		if i > 0 {
+			b.WriteString("\n---\n")
+		}
+		_, _ = fmt.Fprintf(&b, "type=%s status=%s reason=%s message=%s", c.Type, c.Status, c.Reason, c.Message)
+	}
+	s.logger.Debug().
+		Str("conditions", b.String()).
+		Msg("PlatformMesh not Ready: current status.conditions")
 }
