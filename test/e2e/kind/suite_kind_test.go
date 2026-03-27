@@ -428,8 +428,6 @@ func (s *KindTestSuite) SetupSuite() {
 		s.FailNow("Failed to apply OCM manifests")
 	}
 
-	s.setupScopedProviderKcpBeforePlatformMesh(ctx)
-
 	// add Platform Mesh resource
 	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client, make(map[string]string)); err != nil {
 		s.FailNow("Failed to apply PlatformMesh resource manifest", err)
