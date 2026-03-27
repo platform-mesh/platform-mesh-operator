@@ -17,7 +17,6 @@ spec:
   kcp:
     # ProvidersecretSubroutine: one Secret per list entry (see HandleProviderConnection; scoped vs admin branch).
     extraProviderConnections:
-      # kind_scoped_kubeconfig_test.go — provider1/2 workspaces from yaml/kcp-provider-workspaces (Test01ScopedKubeconfigKcpPrereq).
       # provider1: endpointSliceName → virtual workspace; secret + export/slice name tie to kind e2e scoped-provider fixture.
       - path: root:providers:provider1
         secret: kind-e2e-provider1-scoped-kubeconfig
