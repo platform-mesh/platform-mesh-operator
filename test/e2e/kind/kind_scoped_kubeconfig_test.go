@@ -54,39 +54,19 @@ var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{
 	"kcp-system",
 }
 
-func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Context, sec *corev1.Secret) (namespace string, ok bool) {
-	for _, ns := range scopedE2EKcpClusterAdminCertSearchNamespaces {
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2eKcpClusterAdminClientCertSecretName,
-			Namespace: ns,
-		}, sec)
-		if err != nil {
-			continue
-		}
-		if sec.Data == nil {
-			continue
-		}
-		if len(sec.Data["ca.crt"]) == 0 || len(sec.Data["tls.crt"]) == 0 || len(sec.Data["tls.key"]) == 0 {
-			continue
-		}
-		return ns, true
-	}
-	return "", false
-}
-
-// Test01ScopedKubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
-// root:providers:provider1|provider2 with APIExports/slices before other suite tests rely on them. The Test01 prefix
-// keeps lexical order before TestExtra* / TestResourceReady / TestScoped* when running the full Kind suite without -shuffle.
 func (s *KindTestSuite) Test01ScopedKubeconfigKcpPrereq() {
+	s.logger.Info().Str("kind_e2e", "Test01ScopedKubeconfigKcpPrereq").Msg("start")
 	ctx := context.Background()
 	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
+	s.logger.Info().Str("kind_e2e", "Test01ScopedKubeconfigKcpPrereq").Msg("done")
 }
 
-// Provider1: APIExport + schema + endpoint slice come from Test01ScopedKubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
+// Provider1: APIExport + schema + endpoint slice come from Test03ScopedKubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
 // pre-provisioned workspace. The test uses only the operator-written scoped kubeconfig to create an E2EProviderConfig
 // instance for that export (virtual workspace server).
-func (s *KindTestSuite) TestScopedKubeconfigProvider1() {
+func (s *KindTestSuite) Test02ScopedKubeconfigProvider1() {
+	s.logger.Info().Str("kind_e2e", "Test02ScopedKubeconfigProvider1").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -113,11 +93,13 @@ spec:
 	s.Require().Equal(note, strings.TrimSpace(string(out)))
 
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider1Path, name)
+	s.logger.Info().Str("kind_e2e", "Test02ScopedKubeconfigProvider1").Str("e2eproviderconfig", name).Msg("done")
 }
 
 // Provider2: same as Provider1 regarding pre-provisioned export YAML; scoped kubeconfig uses workspace cluster URL.
 // Test creates an E2EProviderConfig resource with that kubeconfig only (no APIExport creation in the test).
-func (s *KindTestSuite) TestScopedKubeconfigProvider2() {
+func (s *KindTestSuite) Test03ScopedKubeconfigProvider2() {
+	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigProvider2").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -144,10 +126,12 @@ spec:
 	s.Require().Equal(note, strings.TrimSpace(string(out)))
 
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider2Path, name)
+	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigProvider2").Str("e2eproviderconfig", name).Msg("done")
 }
 
 // Provider3: extraProviderConnections entry with adminAuth true — same slice-based virtual workspace wiring as default providers, admin cert material.
-func (s *KindTestSuite) TestExtraProviderAdminKubeconfigProvider3() {
+func (s *KindTestSuite) Test04ExtraProviderAdminKubeconfigProvider3() {
+	s.logger.Info().Str("kind_e2e", "Test04ExtraProviderAdminKubeconfigProvider3").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -158,6 +142,27 @@ func (s *KindTestSuite) TestExtraProviderAdminKubeconfigProvider3() {
 	cluster := cfg.Clusters[clusterName]
 	s.Require().NotNil(cluster)
 	s.Require().Contains(cluster.Server, "front-proxy", "admin provider kubeconfig should use front-proxy host from operator rewrite")
+	s.logger.Info().Str("kind_e2e", "Test04ExtraProviderAdminKubeconfigProvider3").Str("secret", e2eAdminKubeconfigProvider3SecretName).Msg("done")
+}
+
+func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Context, sec *corev1.Secret) (namespace string, ok bool) {
+	for _, ns := range scopedE2EKcpClusterAdminCertSearchNamespaces {
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name:      e2eKcpClusterAdminClientCertSecretName,
+			Namespace: ns,
+		}, sec)
+		if err != nil {
+			continue
+		}
+		if sec.Data == nil {
+			continue
+		}
+		if len(sec.Data["ca.crt"]) == 0 || len(sec.Data["tls.crt"]) == 0 || len(sec.Data["tls.key"]) == 0 {
+			continue
+		}
+		return ns, true
+	}
+	return "", false
 }
 
 // requireE2EProviderKubeconfigSecret loads the operator-written provider secret (PlatformMesh extraProviderConnections[].secret).
@@ -266,17 +271,23 @@ func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 			return false
 		}
 		scopedE2EKcpAdminCertSecretNamespace = ns
+		s.logger.Info().
+			Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").
+			Str("secret", e2eKcpClusterAdminClientCertSecretName).
+			Str("namespace", ns).
+			Msg("cluster-admin TLS secret ready")
 		return true
 	}, 20*time.Minute, 10*time.Second,
 		"Secret "+e2eKcpClusterAdminClientCertSecretName+" was not populated in namespaces "+
 			strings.Join(scopedE2EKcpClusterAdminCertSearchNamespaces, ", ")+
-			" (needed for Test01ScopedKubeconfigKcpPrereq / kcp workspace setup)")
+			" (needed for Test03ScopedKubeconfigKcpPrereq / kcp workspace setup)")
 }
 
 // ensureScopedE2EKcpProviderWorkspaces creates root:providers:provider1|provider2 and applies static YAML that models a
 // real deployment: APIExport (+ APIResourceSchema + APIExportEndpointSlice) already exists before tests run; tests only
 // exercise creating resources from that export via scoped kubeconfigs.
 func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context) {
+	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").Msg("seeding root:providers:provider1|provider2 and export YAML")
 	emptyTmpl := make(map[string]string)
 	rootClient, err := s.kcpClientForWorkspace(ctx, "root")
 	s.Require().NoError(err, "kcp client for root")
@@ -307,6 +318,10 @@ func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context
 		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "provider2-kind-e2e-scoped-provider-export.yaml"), provider2Client, emptyTmpl),
 		"apply root:providers:provider2 "+e2eKindScopedProviderExportName+" export manifests",
 	)
+	s.logger.Info().
+		Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").
+		Str("export", e2eKindScopedProviderExportName).
+		Msg("provider workspaces and APIExports applied")
 }
 
 // kubectl with kubeconfig bytes unchanged (virtual workspace or workspace cluster URL as written by the operator).
@@ -344,7 +359,7 @@ func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl client.Client
 	}, 3*time.Minute, 10*time.Second, "workspace "+workspaceName+" did not become ready")
 }
 
-// Same Ready gate as TestResourceReady; scoped test only (not shared with other test files).
+// Same Ready gate as Test01ResourceReady; scoped test only (not shared with other test files).
 func (s *KindTestSuite) scopedWaitPlatformMeshReady(ctx context.Context) {
 	s.Eventually(func() bool {
 		pm := corev1alpha1.PlatformMesh{}
