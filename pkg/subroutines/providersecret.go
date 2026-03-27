@@ -24,7 +24,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -47,11 +46,9 @@ func NewProviderSecretSubroutine(
 	client client.Client,
 	helper KcpHelper,
 	helm HelmGetter,
-	kcpUrl string,
 ) *ProvidersecretSubroutine {
 	sub := &ProvidersecretSubroutine{
 		client:    client,
-		kcpUrl:    kcpUrl,
 		kcpHelper: helper,
 		helm:      helm,
 	}
@@ -61,7 +58,6 @@ func NewProviderSecretSubroutine(
 type ProvidersecretSubroutine struct {
 	client    client.Client
 	kcpHelper KcpHelper
-	kcpUrl    string
 	helm      HelmGetter
 }
 
@@ -136,14 +132,37 @@ func (r *ProvidersecretSubroutine) Process(
 		})
 	}
 
-	// Build kcp kubeonfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	// Build kcp kubeconfig
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(instance, &operatorCfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to build kubeconfig"), true, false)
 	}
+	// Load the raw admin kubeconfig for serializing into provider secrets
+	adminKubeconfig, err := loadAdminKubeconfig(ctx, r.client)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load admin kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(errors.Wrap(err, "Failed to load admin kubeconfig"), true, false)
+	}
+
+	// Append root CA to the admin kubeconfig's cluster CA data.
+	// The KCP operator generates kubeconfigs with only the intermediate CA (root-server-ca),
+	// but Node.js clients (e.g. the portal) require the full chain including the self-signed root-ca.
+	rootCASecretName := operatorCfg.KCP.RootShardName + "-ca"
+	rootCASecret, rootCAErr := GetSecret(r.client, rootCASecretName, operatorCfg.KCP.Namespace)
+	if rootCAErr == nil && rootCASecret != nil {
+		if rootCAData, ok := rootCASecret.Data["tls.crt"]; ok && len(rootCAData) > 0 {
+			for clusterName, cluster := range adminKubeconfig.Clusters {
+				if len(cluster.CertificateAuthorityData) > 0 {
+					adminKubeconfig.Clusters[clusterName].CertificateAuthorityData = append(cluster.CertificateAuthorityData, '\n')
+					adminKubeconfig.Clusters[clusterName].CertificateAuthorityData = append(adminKubeconfig.Clusters[clusterName].CertificateAuthorityData, rootCAData...)
+				}
+			}
+		}
+	}
+
 	for _, pc := range providers {
-		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg); opErr != nil {
+		if _, opErr := r.HandleProviderConnection(ctx, instance, pc, cfg, adminKubeconfig); opErr != nil {
 			log.Error().Err(opErr.Err()).Msg("Failed to handle provider connection")
 			return ctrl.Result{}, opErr
 		}
@@ -160,7 +179,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config, adminKubeconfig *clientcmdapi.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -205,20 +224,24 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		address = kcpUrl
 	}
 
-	newConfig := rest.CopyConfig(cfg)
-	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	var hostPort string
 	if pc.External {
-		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
+		hostPort = getExternalKcpHost(instance, &operatorCfg)
+	} else {
+		hostPort = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	}
 	host, err := url.JoinPath(hostPort, address.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	newConfig.Host = host
 
-	apiConfig := restConfigToAPIConfig(newConfig)
-	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
+	// Deep-copy the admin kubeconfig and set the server URL for this provider
+	providerKubeconfig := adminKubeconfig.DeepCopy()
+	for _, cluster := range providerKubeconfig.Clusters {
+		cluster.Server = host
+	}
+	kcpConfigBytes, err := clientcmd.Write(*providerKubeconfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -233,16 +256,15 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 			Name:      pc.Secret,
 			Namespace: namespace,
 		},
-	}
-
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
-		providerSecret.Data = map[string][]byte{
+		Data: map[string][]byte{
 			"kubeconfig": kcpConfigBytes,
-		}
-		return err
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create or update secret")
+		},
+	}
+	providerSecret.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"})
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, providerSecret, client.Apply, client.FieldOwner("platform-mesh-provider-secret"), client.ForceOwnership); err != nil {
+		log.Error().Err(err).Msg("Failed to apply secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
@@ -252,7 +274,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
+	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config, adminKubeconfig *clientcmdapi.Config,
 ) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -273,24 +295,22 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
-	newConfig := rest.CopyConfig(restCfg)
-	apiConfig := restConfigToAPIConfig(newConfig)
-	curr := apiConfig.CurrentContext
-	cluster := apiConfig.Contexts[curr].Cluster
-	apiConfig.Clusters[cluster].Server = wt.Status.VirtualWorkspaces[0].URL
-
-	var url *url.URL
-	url, err = url.Parse(wt.Status.VirtualWorkspaces[0].URL)
+	vwURL, err := url.Parse(wt.Status.VirtualWorkspaces[0].URL)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing virtual workspace URL")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	url.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
-	apiConfig.Clusters[cluster].Server = url.String()
-	log.Debug().Str("url", url.String()).Msg("modified virtual workspace URL")
+	vwURL.Host = fmt.Sprintf("%s-front-proxy:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.FrontProxyPort)
 
-	data, err := clientcmd.Write(*apiConfig)
+	// Deep-copy the admin kubeconfig and set the server URL
+	initKubeconfig := adminKubeconfig.DeepCopy()
+	for _, cluster := range initKubeconfig.Clusters {
+		cluster.Server = vwURL.String()
+	}
+	log.Debug().Str("url", vwURL.String()).Msg("modified virtual workspace URL")
+
+	data, err := clientcmd.Write(*initKubeconfig)
 	if err != nil {
 		log.Error().Err(err).Msg("writing modified kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
@@ -305,49 +325,15 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 			Name:      ic.Secret,
 			Namespace: namespace,
 		},
+		Data: map[string][]byte{"kubeconfig": data},
 	}
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, initializerSecret, func() error {
-		initializerSecret.Data = map[string][]byte{"kubeconfig": data}
-		return err
-	})
-	if err != nil {
+	initializerSecret.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"})
+
+	// Apply using SSA (creates if not exists, updates if exists)
+	if err := r.client.Patch(ctx, initializerSecret, client.Apply, client.FieldOwner("platform-mesh-provider-secret"), client.ForceOwnership); err != nil {
 		log.Error().Err(err).Msg("creating/updating initializer Secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
-	if restCfg == nil {
-		return nil
-	}
-
-	clientConfig := &clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{
-			"default-cluster": {
-				Server:                   restCfg.Host,
-				CertificateAuthorityData: restCfg.CAData,
-				InsecureSkipTLSVerify:    restCfg.Insecure,
-			},
-		},
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"default-auth": {
-				Token:                 restCfg.BearerToken,
-				ClientCertificateData: restCfg.CertData,
-				ClientKeyData:         restCfg.KeyData,
-				Username:              restCfg.Username,
-				Password:              restCfg.Password,
-			},
-		},
-		Contexts: map[string]*clientcmdapi.Context{
-			"default-context": {
-				Cluster:  "default-cluster",
-				AuthInfo: "default-auth",
-			},
-		},
-		CurrentContext: "default-context",
-	}
-
-	return clientConfig
 }

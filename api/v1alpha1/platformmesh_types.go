@@ -23,13 +23,21 @@ import (
 
 // PlatformMeshSpec defines the desired state of PlatformMesh
 type PlatformMeshSpec struct {
-	Exposure       *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp            Kcp                  `json:"kcp,omitempty"`
-	Values         apiextensionsv1.JSON `json:"values,omitempty"`
-	OCM            *OCMConfig           `json:"ocm,omitempty"`
-	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
-	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
-	Wait           *WaitConfig          `json:"wait,omitempty"`
+	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp              Kcp                  `json:"kcp,omitempty"`
+	Values           apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM              *OCMConfig           `json:"ocm,omitempty"`
+	FeatureToggles   []FeatureToggle      `json:"featureToggles,omitempty"`
+	InfraValues      apiextensionsv1.JSON `json:"infraValues,omitempty"`
+	Wait             *WaitConfig          `json:"wait,omitempty"`
+	ProfileConfigMap *ConfigMapReference  `json:"profileConfigMap,omitempty"`
+}
+
+type ConfigMapReference struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 type WaitConfig struct {
@@ -37,13 +45,18 @@ type WaitConfig struct {
 }
 
 type ResourceType struct {
-	metav1.APIVersions      `json:",inline"`
-	metav1.GroupKind        `json:",inline"`
-	Name                    string `json:"name,omitempty"`
-	Namespace               string `json:"namespace,omitempty"`
-	metav1.LabelSelector    `json:",inline,omitempty"`
-	metav1.ConditionStatus  `json:"conditionStatus,omitempty"` // e.g., "True"
-	metav1.RowConditionType `json:"conditionType,omitempty"`   // e.g., "Ready"
+	Versions             []string `json:"versions,omitempty"`
+	Group                string   `json:"group,omitempty"`
+	Kind                 string   `json:"kind,omitempty"`
+	Name                 string   `json:"name,omitempty"`
+	Namespace            string   `json:"namespace,omitempty"`
+	metav1.LabelSelector `json:",inline,omitempty"`
+	ConditionStatus      metav1.ConditionStatus `json:"conditionStatus,omitempty"`
+	ConditionType        string                 `json:"conditionType,omitempty"`
+	// +optional
+	StatusFieldPath []string `json:"statusFieldPath,omitempty"`
+	// +optional
+	StatusValue string `json:"statusValue,omitempty"`
 }
 type FeatureToggle struct {
 	Name       string            `json:"name,omitempty"`
@@ -80,24 +93,17 @@ type Kcp struct {
 	ProviderConnections      []ProviderConnection             `json:"providerConnections,omitempty"`
 	ExtraProviderConnections []ProviderConnection             `json:"extraProviderConnections,omitempty"`
 	ExtraDefaultAPIBindings  []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
-	// ExtraWorkspaces allows declaring additional workspaces that the operator will create.
 	// +optional
 	ExtraWorkspaces []WorkspaceDeclaration `json:"extraWorkspaces,omitempty"`
 }
 
-// WorkspaceDeclaration defines a workspace to be created by the operator.
 type WorkspaceDeclaration struct {
-	// Path is the full logical path of the workspace to be created (e.g., "root:orgs:my-workspace").
-	Path string `json:"path"`
-	// Type defines the WorkspaceType for the new workspace.
+	Path string                 `json:"path"`
 	Type WorkspaceTypeReference `json:"type"`
 }
 
-// WorkspaceTypeReference specifies the type of a workspace.
 type WorkspaceTypeReference struct {
-	// Name is the name of the WorkspaceType.
 	Name string `json:"name"`
-	// Path is the logical cluster path where the WorkspaceType is defined.
 	Path string `json:"path"`
 }
 
@@ -128,10 +134,8 @@ type KCPAPIVersionKindRef struct {
 }
 
 type SecretReference struct {
-	// name is unique within a namespace to reference a secret resource.
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
-	// namespace defines the space within which the secret name must be unique.
 	// +optional
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
@@ -160,15 +164,12 @@ type KcpWorkspace struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",name="KCP",type=string,description="KCP status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].reason",name="KCP_REASON",type=string,description="KCP reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",name="SECRET",type=string,description="Provider Secret status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].reason",name="SECRET_REASON",type=string,description="Provider Secret reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",name="DEPLOYMENT",type=string,description="Deployment status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason",name="DEPLOYMENT_REASON",type=string,description="Deployment reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",name="WAIT",type=string,description="Wait status (shows reason if Unknown)",priority=0
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].reason",name="WAIT_REASON",type=string,description="Wait reason if status is Unknown",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type=='Ready')].status",name="Ready",type=string,description="Shows if resource is ready",priority=0
+// +kubebuilder:printcolumn:name="DEPLOYMENT",type=string,jsonPath=".status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status",description="Deployment status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="KCP",type=string,jsonPath=".status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status",description="KCP status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="SECRET",type=string,jsonPath=".status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status",description="Provider Secret status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="FEATURES",type=string,jsonPath=".status.conditions[?(@.type=='FeatureToggleSubroutine_Ready')].status",description="Feature toggles' status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="WAIT",type=string,jsonPath=".status.conditions[?(@.type=='WaitSubroutine_Ready')].status",description="Wait status (shows reason if Unknown)",priority=0
+// +kubebuilder:printcolumn:name="Ready",type=string,jsonPath=".status.conditions[?(@.type=='Ready')].status",description="Shows if resource is ready",priority=0
 
 // PlatformMesh is the Schema for the platform-mesh API
 type PlatformMesh struct {

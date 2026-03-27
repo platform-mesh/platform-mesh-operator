@@ -15,7 +15,7 @@ func TestNewOperatorConfig(t *testing.T) {
 	assert.Equal(t, "root", cfg.KCP.RootShardName)
 	assert.Equal(t, "frontproxy", cfg.KCP.FrontProxyName)
 	assert.Equal(t, "6443", cfg.KCP.FrontProxyPort)
-	assert.Equal(t, "kcp-cluster-admin-client-cert", cfg.KCP.ClusterAdminSecretName)
+	assert.Equal(t, "kubeconfig-kcp-admin", cfg.KCP.ClusterAdminSecretName)
 
 	assert.True(t, cfg.Subroutines.Deployment.Enabled)
 	assert.Equal(t, "kcp-webhook-secret", cfg.Subroutines.Deployment.AuthorizationWebhookSecretName)

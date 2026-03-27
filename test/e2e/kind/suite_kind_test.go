@@ -29,7 +29,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
@@ -38,6 +37,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
@@ -80,8 +80,10 @@ func checkClusterExists(clusterName string) (bool, error) {
 		return false, fmt.Errorf("failed to get Kind clusters: %w", err)
 	}
 
-	if strings.Contains(string(output), clusterName) {
-		return true, nil
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == clusterName {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -144,7 +146,7 @@ func (s *KindTestSuite) createKindCluster() error {
 		}
 
 		s.logger.Info().Msg("Creating Kind cluster...")
-		if _, err = runCommand("kind", "create", "cluster", "--config", "../../../kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
+		if _, err = runCommand("kind", "create", "cluster", "--config", "kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.35.0"); err != nil {
 			return err
 		}
 	}
@@ -153,6 +155,12 @@ func (s *KindTestSuite) createKindCluster() error {
 	s.logger.Info().Msg("Retrieving kubeconfig for Kind cluster...")
 	var kubeconfig []byte
 	if kubeconfig, err = runCommand("kind", "get", "kubeconfig", "--name", clusterName); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to get kubeconfig")
+		return err
+	}
+
+	if _, err = runCommand("kind", "export", "kubeconfig", "--name", clusterName, "--kubeconfig=kind-testcluster.kubeconfig"); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to export kubeconfig")
 		return err
 	}
 
@@ -258,7 +266,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 	domain_certificate := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "domain-certificate",
-			Namespace: "istio-system",
+			Namespace: "default",
 		},
 		Data: map[string][]byte{
 			"ca.crt":  caRootBytes,
@@ -339,7 +347,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 }
 
 func (s *KindTestSuite) createReleases(ctx context.Context) error {
-	if err := ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/flux2-v2.6.4/flux2-install.yaml", s.client, make(map[string]string)); err != nil {
+	if err := ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/flux2-v2.6.4/flux2-install.yaml", s.client, make(map[string]string)); err != nil {
 		return err
 	}
 	avail := s.Eventually(func() bool {
@@ -374,6 +382,10 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 
 	s.logger.Info().Msg("helm resources ready")
 
+	// if err := ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/virtual-workspaces/vws-cert.yaml", s.client, make(map[string]string)); err != nil {
+	// 	return err
+	// }
+
 	time.Sleep(25 * time.Second)
 	return nil
 }
@@ -400,7 +412,7 @@ func (s *KindTestSuite) SetupSuite() {
 		s.logger.Error().Err(err).Msg("Failed to create certificates")
 		s.T().FailNow()
 	}
-	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/namespaces.yaml", s.client, make(map[string]string)); err != nil {
+	if err = ApplyTemplateFromFile(ctx, "../../../test/e2e/kind/yaml/namespaces.yaml", s.client, make(map[string]string)); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply namespaces.yaml manifest")
 		s.T().FailNow()
 	}
@@ -425,11 +437,16 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("components.delivery.ocm.software CRD established")
 
 	if err = s.applyOCM(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("applyOCM failed")
 		s.FailNow("Failed to apply OCM manifests")
 	}
 
+	// add default profile
+	if err = ApplyFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/default-profile.yaml", s.client); err != nil {
+		s.FailNow("Failed to apply PlatformMesh resource manifest", err)
+	}
 	// add Platform Mesh resource
-	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client, make(map[string]string)); err != nil {
+	if err = ApplyFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml", s.client); err != nil {
 		s.FailNow("Failed to apply PlatformMesh resource manifest", err)
 	}
 
@@ -480,36 +497,49 @@ func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName strin
 
 // applyOCM applies the OCM component and repository to the cluster.
 func (s *KindTestSuite) applyOCM(ctx context.Context) error {
-	clients, err := kapply.NewClients(s.config)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to create kapply clients")
-		return err
+	s.logger.Info().Msg("Applying OCM manifests...")
+	if _, err := runCommand("kubectl", "apply", "--server-side", "--force-conflicts", "-k", "../../../test/e2e/kind/kustomize/components/ocm"); err != nil {
+		return fmt.Errorf("failed to apply OCM manifests: %w", err)
 	}
-
-	return kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/components/ocm", clients)
+	return nil
 }
 
 func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
 
-	clients, err := kapply.NewClients(s.config)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to create kapply clients")
-		return err
-	}
-
-	err = kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/base", clients)
-	if err != nil {
+	// Use kubectl apply -k for base kustomize (aligns with helm-charts local-setup
+	// and handles Flux CRD discovery correctly)
+	s.logger.Info().Msg("Applying base kustomize manifests...")
+	if _, err := runCommand("kubectl", "apply", "--server-side", "--force-conflicts", "-k", "../../../test/e2e/kind/kustomize/base"); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply base kustomize manifests")
 		return err
 	}
 
-	// err = kapply.ApplyDir(ctx, "../../../test/e2e/kind/kustomize/base/kro", clients)
-	// if err != nil {
-	// 	s.logger.Error().Err(err).Msg("Failed to apply kro kustomize manifests")
-	// 	return err
-	// }
+	// wait for Repository CRD to be available
+	time.Sleep(15 * time.Second)
+	avail := s.Eventually(func() bool {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name: "repositories.delivery.ocm.software",
+		}, crd)
+		if err != nil {
+			s.logger.Warn().Err(err).Msg("Repository CRD not found")
+			return false
+		}
+		// Check if the CRD is established (ready to use)
+		for _, condition := range crd.Status.Conditions {
+			if condition.Type == apiextensionsv1.Established && condition.Status == apiextensionsv1.ConditionTrue {
+				return true
+			}
+		}
+		s.logger.Warn().Msg("Repository CRD not yet established")
+		return false
+	}, 120*time.Second, 5*time.Second, "Repository CRD did not become available")
 
-	s.logger.Info().Msg("kapply finished successfully")
+	if !avail {
+		return fmt.Errorf("Repository CRD is not available")
+	}
+
+	s.logger.Info().Msg("kustomize base applied successfully")
 	return nil
 }
 
@@ -517,7 +547,7 @@ func (s *KindTestSuite) TearDownSuite() {
 }
 
 func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
-	err := ApplyManifestFromFile(ctx, "../../../config/crd/core.platform-mesh.io_platformmeshes.yaml", s.client, make(map[string]string))
+	err := ApplyTemplateFromFile(ctx, "../../../config/crd/core.platform-mesh.io_platformmeshes.yaml", s.client, make(map[string]string))
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to apply PlatformMesh CRD manifest")
 		return err
@@ -548,7 +578,9 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"
 	appConfig.KCP.FrontProxyPort = "6443"
-	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	appConfig.KCP.ClusterAdminSecretName = "kubeconfig-kcp-admin"
+	appConfig.RemoteRuntime.Kubeconfig = ""
+	appConfig.RemoteInfra.Kubeconfig = ""
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
@@ -571,14 +603,16 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	s.kubernetesManager = mgr
 
-	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../")
+	imageVersionStore := subroutines.NewImageVersionStore()
+
+	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetClient(), imageVersionStore)
 	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig)
+	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig, mgr.GetClient(), imageVersionStore)
 	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return
