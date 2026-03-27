@@ -74,16 +74,16 @@ func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Contex
 	return "", false
 }
 
-// setupScopedProviderKcpBeforePlatformMesh must run from SetupSuite before platform-mesh.yaml is applied:
-// extraProviderConnections need APIExports/slices in kcp; kcp clients use the same TLS material as the operator
-// (kcp-cluster-admin-client-cert), not kubeconfig-kcp-admin (optional Kubeconfig CR output).
-// It cannot run inside TestScopedKubeconfig* — the operator already reconciles PlatformMesh after SetupSuite.
-func (s *KindTestSuite) setupScopedProviderKcpBeforePlatformMesh(ctx context.Context) {
+// Test01ScopedKubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
+// root:providers:provider1|provider2 with APIExports/slices before other suite tests rely on them. The Test01 prefix
+// keeps lexical order before TestExtra* / TestResourceReady / TestScoped* when running the full Kind suite without -shuffle.
+func (s *KindTestSuite) Test01ScopedKubeconfigKcpPrereq() {
+	ctx := context.Background()
 	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
 }
 
-// Provider1: APIExport + schema + endpoint slice come from setupScopedProviderKcpBeforePlatformMesh (yaml/kcp-provider-workspaces), like a
+// Provider1: APIExport + schema + endpoint slice come from Test01ScopedKubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
 // pre-provisioned workspace. The test uses only the operator-written scoped kubeconfig to create an E2EProviderConfig
 // instance for that export (virtual workspace server).
 func (s *KindTestSuite) TestScopedKubeconfigProvider1() {
@@ -270,7 +270,7 @@ func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	}, 20*time.Minute, 10*time.Second,
 		"Secret "+e2eKcpClusterAdminClientCertSecretName+" was not populated in namespaces "+
 			strings.Join(scopedE2EKcpClusterAdminCertSearchNamespaces, ", ")+
-			" (needed for kcp workspace setup before PlatformMesh apply)")
+			" (needed for Test01ScopedKubeconfigKcpPrereq / kcp workspace setup)")
 }
 
 // ensureScopedE2EKcpProviderWorkspaces creates root:providers:provider1|provider2 and applies static YAML that models a
