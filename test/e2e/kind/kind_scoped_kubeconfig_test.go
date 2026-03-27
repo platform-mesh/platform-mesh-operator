@@ -25,7 +25,7 @@ const (
 	e2ePlatformMeshNamespace = "platform-mesh-system"
 	e2ePlatformMeshName      = "platform-mesh"
 
-	// Same as runOperator appConfig.KCP.ClusterAdminSecretName / operator default (not kubeconfig-kcp-admin from Kubeconfig CR).
+	// Infra chart Certificate secretName; may live in platform-mesh-system or kcp-system (.Values.kcp.namespace default).
 	e2eKcpClusterAdminClientCertSecretName = "kcp-cluster-admin-client-cert"
 
 	// Operator-written Secrets for extraProviderConnections in platform-mesh.yaml (provider1 vs provider2 scenario).
@@ -45,6 +45,34 @@ const (
 
 	e2eKcpProviderWorkspacesYAMLDir = "../../../test/e2e/kind/yaml/kcp-provider-workspaces"
 )
+
+// scopedE2EKcpAdminCertSecretNamespace is set by waitForKcpClusterAdminClientCert in this file only.
+var scopedE2EKcpAdminCertSecretNamespace string
+
+var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{
+	e2ePlatformMeshNamespace,
+	"kcp-system",
+}
+
+func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Context, sec *corev1.Secret) (namespace string, ok bool) {
+	for _, ns := range scopedE2EKcpClusterAdminCertSearchNamespaces {
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name:      e2eKcpClusterAdminClientCertSecretName,
+			Namespace: ns,
+		}, sec)
+		if err != nil {
+			continue
+		}
+		if sec.Data == nil {
+			continue
+		}
+		if len(sec.Data["ca.crt"]) == 0 || len(sec.Data["tls.crt"]) == 0 || len(sec.Data["tls.key"]) == 0 {
+			continue
+		}
+		return ns, true
+	}
+	return "", false
+}
 
 // setupScopedProviderKcpBeforePlatformMesh must run from SetupSuite before platform-mesh.yaml is applied:
 // extraProviderConnections need APIExports/slices in kcp; kcp clients use the same TLS material as the operator
@@ -161,19 +189,30 @@ func (s *KindTestSuite) deleteE2EProviderConfigOrWarn(ctx context.Context, works
 }
 
 func (s *KindTestSuite) kcpAdminKubeconfigBytes(ctx context.Context) ([]byte, error) {
-	var sec corev1.Secret
-	if err := s.client.Get(ctx, client.ObjectKey{
-		Name:      e2eKcpClusterAdminClientCertSecretName,
-		Namespace: e2ePlatformMeshNamespace,
-	}, &sec); err != nil {
-		return nil, err
+	sec := &corev1.Secret{}
+	var ns string
+	var ok bool
+	if scopedE2EKcpAdminCertSecretNamespace != "" {
+		ns = scopedE2EKcpAdminCertSecretNamespace
+		err := s.client.Get(ctx, client.ObjectKey{
+			Name:      e2eKcpClusterAdminClientCertSecretName,
+			Namespace: ns,
+		}, sec)
+		if err != nil {
+			return nil, err
+		}
+		ok = sec.Data != nil && len(sec.Data["ca.crt"]) > 0 && len(sec.Data["tls.crt"]) > 0 && len(sec.Data["tls.key"]) > 0
 	}
-	if sec.Data == nil {
-		return nil, fmt.Errorf("secret %s/%s has no Data", e2ePlatformMeshNamespace, e2eKcpClusterAdminClientCertSecretName)
+	if !ok {
+		ns, ok = scopedTryLoadKcpClusterAdminClientCert(s, ctx, sec)
+		if !ok {
+			return nil, fmt.Errorf("secret %s not found with TLS data in namespaces %v",
+				e2eKcpClusterAdminClientCertSecretName, scopedE2EKcpClusterAdminCertSearchNamespaces)
+		}
 	}
 	ca, crt, key := sec.Data["ca.crt"], sec.Data["tls.crt"], sec.Data["tls.key"]
 	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing ca.crt, tls.crt, or tls.key", e2ePlatformMeshNamespace, e2eKcpClusterAdminClientCertSecretName)
+		return nil, fmt.Errorf("secret %s/%s missing ca.crt, tls.crt, or tls.key", ns, e2eKcpClusterAdminClientCertSecretName)
 	}
 	apiCfg := clientcmdapi.NewConfig()
 	apiCfg.Clusters = map[string]*clientcmdapi.Cluster{
@@ -214,29 +253,24 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
 }
 
-// waitForKcpClusterAdminClientCert polls until kcp-cluster-admin-client-cert has TLS material (same as operator buildKubeconfig path).
+// waitForKcpClusterAdminClientCert polls until the infra TLS secret exists (platform-mesh-system or kcp-system).
 func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	sec := &corev1.Secret{}
 	s.Eventually(func() bool {
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2eKcpClusterAdminClientCertSecretName,
-			Namespace: e2ePlatformMeshNamespace,
-		}, sec)
-		if err != nil {
-			s.logger.Warn().Err(err).Str("secret", e2eKcpClusterAdminClientCertSecretName).
-				Msg("kcp cluster-admin client cert secret not available yet")
+		ns, ok := scopedTryLoadKcpClusterAdminClientCert(s, ctx, sec)
+		if !ok {
+			s.logger.Warn().
+				Str("secret", e2eKcpClusterAdminClientCertSecretName).
+				Strs("searchedNamespaces", scopedE2EKcpClusterAdminCertSearchNamespaces).
+				Msg("kcp cluster-admin client cert secret not available yet in any candidate namespace")
 			return false
 		}
-		if sec.Data == nil {
-			return false
-		}
-		if len(sec.Data["ca.crt"]) == 0 || len(sec.Data["tls.crt"]) == 0 || len(sec.Data["tls.key"]) == 0 {
-			s.logger.Warn().Str("secret", e2eKcpClusterAdminClientCertSecretName).
-				Msg("kcp cluster-admin client cert secret missing ca.crt / tls.crt / tls.key")
-			return false
-		}
+		scopedE2EKcpAdminCertSecretNamespace = ns
 		return true
-	}, 20*time.Minute, 10*time.Second, "Secret "+e2eKcpClusterAdminClientCertSecretName+" was not populated (needed for kcp workspace setup before PlatformMesh apply)")
+	}, 20*time.Minute, 10*time.Second,
+		"Secret "+e2eKcpClusterAdminClientCertSecretName+" was not populated in namespaces "+
+			strings.Join(scopedE2EKcpClusterAdminCertSearchNamespaces, ", ")+
+			" (needed for kcp workspace setup before PlatformMesh apply)")
 }
 
 // ensureScopedE2EKcpProviderWorkspaces creates root:providers:provider1|provider2 and applies static YAML that models a
