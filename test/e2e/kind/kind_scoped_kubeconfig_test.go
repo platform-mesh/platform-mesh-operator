@@ -11,6 +11,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -54,19 +55,22 @@ var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{
 	"kcp-system",
 }
 
-func (s *KindTestSuite) Test01ScopedKubeconfigKcpPrereq() {
-	s.logger.Info().Str("kind_e2e", "Test01ScopedKubeconfigKcpPrereq").Msg("start")
+// Test03ScopedKubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
+// root:providers:provider1|provider2 with APIExports/slices before Test04/05ScopedKubeconfigProvider1/2.
+// Runs after Test01ResourceReady and Test02ExtraWorkspaces via the TestNN prefix ordering convention.
+func (s *KindTestSuite) Test03ScopedKubeconfigKcpPrereq() {
+	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").Msg("start")
 	ctx := context.Background()
 	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
-	s.logger.Info().Str("kind_e2e", "Test01ScopedKubeconfigKcpPrereq").Msg("done")
+	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigKcpPrereq").Msg("done")
 }
 
 // Provider1: APIExport + schema + endpoint slice come from Test03ScopedKubeconfigKcpPrereq (yaml/kcp-provider-workspaces), like a
 // pre-provisioned workspace. The test uses only the operator-written scoped kubeconfig to create an E2EProviderConfig
 // instance for that export (virtual workspace server).
-func (s *KindTestSuite) Test02ScopedKubeconfigProvider1() {
-	s.logger.Info().Str("kind_e2e", "Test02ScopedKubeconfigProvider1").Msg("start")
+func (s *KindTestSuite) Test04ScopedKubeconfigProvider1() {
+	s.logger.Info().Str("kind_e2e", "Test04ScopedKubeconfigProvider1").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -93,13 +97,13 @@ spec:
 	s.Require().Equal(note, strings.TrimSpace(string(out)))
 
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider1Path, name)
-	s.logger.Info().Str("kind_e2e", "Test02ScopedKubeconfigProvider1").Str("e2eproviderconfig", name).Msg("done")
+	s.logger.Info().Str("kind_e2e", "Test04ScopedKubeconfigProvider1").Str("e2eproviderconfig", name).Msg("done")
 }
 
 // Provider2: same as Provider1 regarding pre-provisioned export YAML; scoped kubeconfig uses workspace cluster URL.
 // Test creates an E2EProviderConfig resource with that kubeconfig only (no APIExport creation in the test).
-func (s *KindTestSuite) Test03ScopedKubeconfigProvider2() {
-	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigProvider2").Msg("start")
+func (s *KindTestSuite) Test05ScopedKubeconfigProvider2() {
+	s.logger.Info().Str("kind_e2e", "Test05ScopedKubeconfigProvider2").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -126,12 +130,12 @@ spec:
 	s.Require().Equal(note, strings.TrimSpace(string(out)))
 
 	s.deleteE2EProviderConfigOrWarn(ctx, e2eScopedKubeconfigProvider2Path, name)
-	s.logger.Info().Str("kind_e2e", "Test03ScopedKubeconfigProvider2").Str("e2eproviderconfig", name).Msg("done")
+	s.logger.Info().Str("kind_e2e", "Test05ScopedKubeconfigProvider2").Str("e2eproviderconfig", name).Msg("done")
 }
 
 // Provider3: extraProviderConnections entry with adminAuth true — same slice-based virtual workspace wiring as default providers, admin cert material.
-func (s *KindTestSuite) Test04ExtraProviderAdminKubeconfigProvider3() {
-	s.logger.Info().Str("kind_e2e", "Test04ExtraProviderAdminKubeconfigProvider3").Msg("start")
+func (s *KindTestSuite) Test06ExtraProviderAdminKubeconfigProvider3() {
+	s.logger.Info().Str("kind_e2e", "Test06ExtraProviderAdminKubeconfigProvider3").Msg("start")
 	ctx := context.TODO()
 	s.scopedWaitPlatformMeshReady(ctx)
 
@@ -142,7 +146,7 @@ func (s *KindTestSuite) Test04ExtraProviderAdminKubeconfigProvider3() {
 	cluster := cfg.Clusters[clusterName]
 	s.Require().NotNil(cluster)
 	s.Require().Contains(cluster.Server, "front-proxy", "admin provider kubeconfig should use front-proxy host from operator rewrite")
-	s.logger.Info().Str("kind_e2e", "Test04ExtraProviderAdminKubeconfigProvider3").Str("secret", e2eAdminKubeconfigProvider3SecretName).Msg("done")
+	s.logger.Info().Str("kind_e2e", "Test06ExtraProviderAdminKubeconfigProvider3").Str("secret", e2eAdminKubeconfigProvider3SecretName).Msg("done")
 }
 
 func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Context, sec *corev1.Secret) (namespace string, ok bool) {
@@ -295,6 +299,7 @@ func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context
 		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "workspace-providers.yaml"), rootClient, emptyTmpl),
 		"apply workspace-providers.yaml",
 	)
+	s.logWorkspaceObservedAfterApply(ctx, rootClient, "providers")
 	s.waitWorkspaceReady(ctx, rootClient, "providers")
 	providersClient, err := s.kcpClientForWorkspace(ctx, "root:providers")
 	s.Require().NoError(err, "kcp client for root:providers")
@@ -302,6 +307,8 @@ func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context
 		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "workspace-provider1-provider2.yaml"), providersClient, emptyTmpl),
 		"apply workspace-provider1-provider2.yaml",
 	)
+	s.logWorkspaceObservedAfterApply(ctx, providersClient, "provider1")
+	s.logWorkspaceObservedAfterApply(ctx, providersClient, "provider2")
 	s.waitWorkspaceReady(ctx, providersClient, "provider1")
 	s.waitWorkspaceReady(ctx, providersClient, "provider2")
 
@@ -342,6 +349,65 @@ func (s *KindTestSuite) runKubectlWithRawKubeconfig(kubeconfigBytes []byte, kube
 	return runCommand("kubectl", args...)
 }
 
+// logWorkspaceObservedAfterApply helps CI debug: confirms whether the Workspace object is visible right after SSA apply.
+func (s *KindTestSuite) logWorkspaceObservedAfterApply(ctx context.Context, cl client.Client, workspaceName string) {
+	ws := &unstructured.Unstructured{}
+	ws.SetAPIVersion("tenancy.kcp.io/v1alpha1")
+	ws.SetKind("Workspace")
+	if err := cl.Get(ctx, client.ObjectKey{Name: workspaceName}, ws); err != nil {
+		if kerrors.IsNotFound(err) {
+			s.logger.Warn().Str("workspace", workspaceName).
+				Msg("workspace not visible immediately after apply (apiserver may lag); wait loop will retry")
+			return
+		}
+		s.logger.Warn().Err(err).Str("workspace", workspaceName).
+			Msg("could not get workspace right after apply")
+		return
+	}
+	s.logWorkspacePhaseAndConditionMessages(ws, workspaceName, false, "workspace observed after apply")
+}
+
+// logWorkspacePhaseAndConditionMessages logs status.phase and each condition's message field in full (no truncation).
+func (s *KindTestSuite) logWorkspacePhaseAndConditionMessages(ws *unstructured.Unstructured, workspaceName string, warn bool, msg string) {
+	phase, _, _ := unstructured.NestedString(ws.Object, "status", "phase")
+	var messages []string
+	conditions, ok, _ := unstructured.NestedSlice(ws.Object, "status", "conditions")
+	if ok {
+		for _, raw := range conditions {
+			cm, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			condType, _, _ := unstructured.NestedString(cm, "type")
+			m, _, _ := unstructured.NestedString(cm, "message")
+			reason, _, _ := unstructured.NestedString(cm, "reason")
+			switch {
+			case m != "":
+				messages = append(messages, m)
+			case reason != "":
+				// kcp often omits message on True conditions; False frequently sets reason only.
+				if condType != "" {
+					messages = append(messages, condType+": "+reason)
+				} else {
+					messages = append(messages, reason)
+				}
+			}
+		}
+	}
+	evt := s.logger.Info()
+	if warn {
+		evt = s.logger.Warn()
+	}
+	evt = evt.Str("workspace", workspaceName)
+	if phase != "" {
+		evt = evt.Str("phase", phase)
+	}
+	if len(messages) > 0 {
+		evt = evt.Str("condition_messages", strings.Join(messages, "\n---\n"))
+	}
+	evt.Msg(msg)
+}
+
 func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl client.Client, workspaceName string) {
 	s.Eventually(func() bool {
 		ws := &unstructured.Unstructured{}
@@ -353,6 +419,7 @@ func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl client.Client
 		}
 		phase, found, err := unstructured.NestedString(ws.Object, "status", "phase")
 		if err != nil || !found || phase != "Ready" {
+			s.logWorkspacePhaseAndConditionMessages(ws, workspaceName, true, "workspace exists but not Ready yet")
 			return false
 		}
 		return true
