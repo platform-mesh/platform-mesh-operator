@@ -1,8 +1,4 @@
 name: pipeline
-permissions:
-  contents: write
-  pull-requests: write
-  packages: write
 on:
   workflow_call:
     inputs:
@@ -84,20 +80,29 @@ on:
 jobs:
   auto-labeler:
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+    permissions:
+      pull-requests: write
+      contents: read
     uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
     secrets: inherit
 
   createVersion:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    permissions:
+      contents: write
     uses: platform-mesh/.github/.github/workflows/job-create-version.yml@main
     secrets: inherit
 
   lint:
+    permissions:
+      contents: read
     uses: platform-mesh/.github/.github/workflows/job-golang-lint.yml@main
     with:
       useTask: ${{ inputs.useTask }}
 
   testSource:
+    permissions:
+      contents: read
     uses: ./.github/workflows/job-golang-test-source.yml
     secrets: inherit
     with:
@@ -110,6 +115,9 @@ jobs:
 
   dockerBuild:
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+    permissions:
+      packages: write
+      contents: read
     uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
@@ -120,6 +128,9 @@ jobs:
   dockerBuildAndPush:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     needs: [createVersion,lint,testSource]
+    permissions:
+      packages: write
+      contents: read
     uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
@@ -131,6 +142,8 @@ jobs:
   updateVersion:
     needs: [createVersion, dockerBuildAndPush]
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+    permissions:
+      contents: read
     uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@main
     secrets: inherit
     with:
