@@ -14,3 +14,4 @@ spec:
     - endpointSliceName: core.platform-mesh.io
       path: root:platform-mesh-system
       secret: platform-mesh-operator-kubeconfig
+      adminAuth: true

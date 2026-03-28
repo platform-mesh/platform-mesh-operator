@@ -14,6 +14,8 @@ spec:
     referencePath: []
   featureToggles:
    - name: "feature-enable-getting-started"
+  kcp:
+    {}
   values:
     keycloak:
       enabled: true
