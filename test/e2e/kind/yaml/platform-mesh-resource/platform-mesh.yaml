@@ -15,23 +15,7 @@ spec:
   featureToggles:
    - name: "feature-enable-getting-started"
   kcp:
-    # ProvidersecretSubroutine: one Secret per list entry (see HandleProviderConnection; scoped vs admin branch).
-    extraProviderConnections:
-      # provider1: endpointSliceName → virtual workspace; secret + export/slice name tie to kind e2e scoped-provider fixture.
-      - path: root:providers:provider1
-        secret: kind-e2e-provider1-scoped-kubeconfig
-        endpointSliceName: kind-e2e-scoped-provider.platform-mesh.io
-        adminAuth: false
-      # provider2: apiExportName → workspace cluster URL for Path; same export name in root:providers:provider2
-      - path: root:providers:provider2
-        secret: kind-e2e-provider2-scoped-kubeconfig
-        apiExportName: kind-e2e-scoped-provider.platform-mesh.io
-        adminAuth: false
-      # provider3: admin kubeconfig (ProvidersecretSubroutine admin branch) — virtual workspace URL from slice in Path workspace.
-      - path: root:platform-mesh-system
-        secret: kind-e2e-provider3-admin-kubeconfig
-        endpointSliceName: core.platform-mesh.io
-        adminAuth: true
+    {}
   values:
     keycloak:
       enabled: true
