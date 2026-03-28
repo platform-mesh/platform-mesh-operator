@@ -84,16 +84,16 @@ on:
 jobs:
   auto-labeler:
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@07550bab80de7691f4947214ee342351896e209b # main
+    uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
     secrets: inherit
 
   createVersion:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-create-version.yml@07550bab80de7691f4947214ee342351896e209b # main
+    uses: platform-mesh/.github/.github/workflows/job-create-version.yml@main
     secrets: inherit
 
   lint:
-    uses: platform-mesh/.github/.github/workflows/job-golang-lint.yml@07550bab80de7691f4947214ee342351896e209b # main
+    uses: platform-mesh/.github/.github/workflows/job-golang-lint.yml@main
     with:
       useTask: ${{ inputs.useTask }}
 
@@ -110,7 +110,7 @@ jobs:
 
   dockerBuild:
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@07550bab80de7691f4947214ee342351896e209b # main
+    uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
       release_branch: ${{ inputs.release_branch }}
@@ -120,7 +120,7 @@ jobs:
   dockerBuildAndPush:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     needs: [createVersion,lint,testSource]
-    uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@07550bab80de7691f4947214ee342351896e209b # main
+    uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
       imageTagName: ${{ inputs.imageTagName }}
       version: ${{ needs.createVersion.outputs.version }}
@@ -131,7 +131,7 @@ jobs:
   updateVersion:
     needs: [createVersion, dockerBuildAndPush]
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@07550bab80de7691f4947214ee342351896e209b # main
+    uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@main
     secrets: inherit
     with:
       appVersion: ${{ needs.createVersion.outputs.version }}
