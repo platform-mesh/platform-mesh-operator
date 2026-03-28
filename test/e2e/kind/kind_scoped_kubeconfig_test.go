@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -507,10 +506,7 @@ func (s *KindTestSuite) ensureProvider2ExportBootstrapAPIBindingReady(ctx contex
 			return false
 		}
 		phase, _, _ := unstructured.NestedString(current.Object, "status", "phase")
-		if phase == "Bound" {
-			return true
-		}
-		return false
+		return phase == "Bound"
 	}, 3*time.Minute, 5*time.Second, "provider2 bootstrap APIBinding %s not bound", bindingName)
 }
 
