@@ -124,8 +124,13 @@ func getPolicyRulesFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.Pol
 	})
 
 	rules = append(rules, rbacv1.PolicyRule{
-		NonResourceURLs: []string{"/api", "/api/*", "/apis", "/apis/*", "/clusters/*"},
-		Verbs:           []string{"get"},
+		NonResourceURLs: []string{
+			"/api", "/api/*",
+			"/apis", "/apis/*",
+			"/clusters/*",
+			"/services", "/services/*",
+		},
+		Verbs: []string{"get"},
 	})
 
 	return rules, nil
@@ -148,6 +153,9 @@ func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient cl
 	crName := scopedClusterRolePrefix + providerSuffix
 	workspaceAccessCRBName := scopedWorkspaceAccessCRBPrefix + providerSuffix
 	saNamespace := defaultScopedSANamespace
+	if err := ensureScopedNamespaceExists(ctx, kcpClient, saNamespace); err != nil {
+		return "", fmt.Errorf("ensure namespace %s for scoped ServiceAccount: %w", saNamespace, err)
+	}
 
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
@@ -213,6 +221,19 @@ func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient cl
 		return "", fmt.Errorf("create or update ClusterRoleBinding %s for workspace access: %w", workspaceAccessCRBName, err)
 	}
 	return saName, nil
+}
+
+func ensureScopedNamespaceExists(ctx context.Context, kcpClient client.Client, namespace string) error {
+	if namespace == "" {
+		return fmt.Errorf("namespace is empty")
+	}
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: namespace},
+	}
+	if err := kcpClient.Create(ctx, ns); err != nil && !kerrors.IsAlreadyExists(err) {
+		return err
+	}
+	return nil
 }
 
 func createTokenForSA(ctx context.Context, kcpWorkspaceClient client.Client, namespace, saName string, expirationSeconds int64) (string, error) {
