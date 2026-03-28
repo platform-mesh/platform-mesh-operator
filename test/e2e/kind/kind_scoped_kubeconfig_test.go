@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -64,8 +66,83 @@ func (s *KindTestSuite) TestScoped01KubeconfigKcpPrereq() {
 	ctx := context.Background()
 	s.waitForKcpClusterAdminClientCert(ctx)
 	s.ensureScopedE2EKcpProviderWorkspaces(ctx)
+	s.ensureScopedE2EProviderConnections(ctx)
 	s.waitScopedProviderConnectionSecretsReady(ctx)
 	s.logger.Info().Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").Msg("done")
+}
+
+func (s *KindTestSuite) ensureScopedE2EProviderConnections(ctx context.Context) {
+	pm := &corev1alpha1.PlatformMesh{}
+	err := s.client.Get(ctx, client.ObjectKey{
+		Name:      e2ePlatformMeshName,
+		Namespace: e2ePlatformMeshNamespace,
+	}, pm)
+	s.Require().NoError(err, "get PlatformMesh for scoped e2e provider connections")
+
+	desired := []corev1alpha1.ProviderConnection{
+		{
+			Path:              e2eScopedKubeconfigProvider1Path,
+			Secret:            e2eScopedKubeconfigProvider1SecretName,
+			EndpointSliceName: ptr.To(e2eKindScopedProviderExportName),
+			AdminAuth:         ptr.To(false),
+		},
+		{
+			Path:          e2eScopedKubeconfigProvider2Path,
+			Secret:        e2eScopedKubeconfigProvider2SecretName,
+			APIExportName: ptr.To(e2eKindScopedProviderExportName),
+			AdminAuth:     ptr.To(false),
+		},
+		{
+			Path:              "root:platform-mesh-system",
+			Secret:            e2eAdminKubeconfigProvider3SecretName,
+			EndpointSliceName: ptr.To("core.platform-mesh.io"),
+			AdminAuth:         ptr.To(true),
+		},
+	}
+
+	currentBySecret := make(map[string]int, len(pm.Spec.Kcp.ExtraProviderConnections))
+	for i, pc := range pm.Spec.Kcp.ExtraProviderConnections {
+		currentBySecret[pc.Secret] = i
+	}
+
+	changed := false
+	for _, d := range desired {
+		if idx, ok := currentBySecret[d.Secret]; ok {
+			if !providerConnectionEquivalent(pm.Spec.Kcp.ExtraProviderConnections[idx], d) {
+				pm.Spec.Kcp.ExtraProviderConnections[idx] = d
+				changed = true
+			}
+			continue
+		}
+		pm.Spec.Kcp.ExtraProviderConnections = append(pm.Spec.Kcp.ExtraProviderConnections, d)
+		changed = true
+	}
+
+	if !changed {
+		s.logger.Info().
+			Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").
+			Msg("scoped e2e provider connections already present")
+		return
+	}
+
+	s.Require().NoError(
+		s.client.Update(ctx, pm),
+		"update PlatformMesh with scoped e2e provider connections",
+	)
+	s.logger.Info().
+		Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").
+		Msg("scoped e2e provider connections updated")
+}
+
+func providerConnectionEquivalent(a, b corev1alpha1.ProviderConnection) bool {
+	return a.Path == b.Path &&
+		a.Secret == b.Secret &&
+		a.External == b.External &&
+		ptr.Deref(a.EndpointSliceName, "") == ptr.Deref(b.EndpointSliceName, "") &&
+		ptr.Deref(a.APIExportName, "") == ptr.Deref(b.APIExportName, "") &&
+		ptr.Deref(a.RawPath, "") == ptr.Deref(b.RawPath, "") &&
+		ptr.Deref(a.Namespace, "") == ptr.Deref(b.Namespace, "") &&
+		ptr.Deref(a.AdminAuth, false) == ptr.Deref(b.AdminAuth, false)
 }
 
 func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Context) {
@@ -114,7 +191,7 @@ spec:
 `, e2eKindScopedProviderConfigAPIVersion, name, note)
 	s.Require().NoError(os.WriteFile(manifestPath, []byte(manifest), 0o600))
 
-	_, err := s.runKubectlWithRawKubeconfig(kcfg, "apply", "-f", manifestPath)
+	_, err := s.runKubectlWithRawKubeconfig(kcfg, "apply", "--validate=false", "-f", manifestPath)
 	s.Require().NoError(err, "kubectl apply E2EProviderConfig with operator-generated provider1 scoped kubeconfig")
 
 	out, err := s.runKubectlWithRawKubeconfig(kcfg, "get", e2eScopedProviderConfigResource, name, "-o", "jsonpath={.spec.note}")
@@ -147,7 +224,7 @@ spec:
 `, e2eKindScopedProviderConfigAPIVersion, name, note)
 	s.Require().NoError(os.WriteFile(manifestPath, []byte(manifest), 0o600))
 
-	_, err := s.runKubectlWithRawKubeconfig(kcfg, "apply", "-f", manifestPath)
+	_, err := s.runKubectlWithRawKubeconfig(kcfg, "apply", "--validate=false", "-f", manifestPath)
 	s.Require().NoError(err, "kubectl apply E2EProviderConfig with operator-generated provider2 scoped kubeconfig")
 
 	out, err := s.runKubectlWithRawKubeconfig(kcfg, "get", e2eScopedProviderConfigResource, name, "-o", "jsonpath={.spec.note}")
@@ -343,6 +420,7 @@ func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context
 		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "provider1-kind-e2e-scoped-provider-export.yaml"), provider1Client, emptyTmpl),
 		"apply root:providers:provider1 "+e2eKindScopedProviderExportName+" export manifests",
 	)
+	s.ensureProvider1EndpointSliceBootstrapAPIBinding(ctx, provider1Client)
 
 	provider2Client, err := s.kcpClientForWorkspace(ctx, e2eScopedKubeconfigProvider2Path)
 	s.Require().NoError(err, "kcp client for provider2")
@@ -350,10 +428,90 @@ func (s *KindTestSuite) ensureScopedE2EKcpProviderWorkspaces(ctx context.Context
 		ApplyManifestFromFile(ctx, filepath.Join(e2eKcpProviderWorkspacesYAMLDir, "provider2-kind-e2e-scoped-provider-export.yaml"), provider2Client, emptyTmpl),
 		"apply root:providers:provider2 "+e2eKindScopedProviderExportName+" export manifests",
 	)
+	s.ensureProvider2ExportBootstrapAPIBindingReady(ctx, provider2Client)
+
+	// Provider1 scoped kubeconfig uses endpointSliceName, so wait for slice status endpoints before reconciling provider secrets.
+	s.waitAPIExportEndpointSliceEndpointsReady(ctx, e2eScopedKubeconfigProvider1Path, e2eKindScopedProviderExportName)
 	s.logger.Info().
 		Str("kind_e2e", "TestScoped01KubeconfigKcpPrereq").
 		Str("export", e2eKindScopedProviderExportName).
 		Msg("provider workspaces and APIExports applied")
+}
+
+func (s *KindTestSuite) waitAPIExportEndpointSliceEndpointsReady(ctx context.Context, workspacePath, sliceName string) {
+	cl, err := s.kcpClientForWorkspace(ctx, workspacePath)
+	s.Require().NoError(err, "kcp client for endpoint slice workspace %s", workspacePath)
+
+	s.Eventually(func() bool {
+		slice := &unstructured.Unstructured{}
+		slice.SetAPIVersion("apis.kcp.io/v1alpha1")
+		slice.SetKind("APIExportEndpointSlice")
+		if err := cl.Get(ctx, client.ObjectKey{Name: sliceName}, slice); err != nil {
+			return false
+		}
+		endpoints, foundEndpoints, _ := unstructured.NestedSlice(slice.Object, "status", "endpoints")
+		apiExportEndpoints, foundAPIExportEndpoints, _ := unstructured.NestedSlice(slice.Object, "status", "apiExportEndpoints")
+		activeEndpoints := endpoints
+		if len(activeEndpoints) == 0 && len(apiExportEndpoints) > 0 {
+			activeEndpoints = apiExportEndpoints
+		}
+		if (!foundEndpoints && !foundAPIExportEndpoints) || len(activeEndpoints) == 0 {
+			return false
+		}
+		return true
+	}, 6*time.Minute, 10*time.Second, "APIExportEndpointSlice %s in %s has no endpoints", sliceName, workspacePath)
+}
+
+func (s *KindTestSuite) ensureProvider1EndpointSliceBootstrapAPIBinding(ctx context.Context, provider1Client client.Client) {
+	binding := &unstructured.Unstructured{}
+	binding.SetAPIVersion("apis.kcp.io/v1alpha2")
+	binding.SetKind("APIBinding")
+	binding.SetName("e2e-provider1-endpoint-bootstrap")
+	binding.Object["spec"] = map[string]interface{}{
+		"reference": map[string]interface{}{
+			"export": map[string]interface{}{
+				"path": e2eScopedKubeconfigProvider1Path,
+				"name": e2eKindScopedProviderExportName,
+			},
+		},
+	}
+	err := provider1Client.Create(ctx, binding)
+	if err != nil && !kerrors.IsAlreadyExists(err) {
+		s.Require().NoError(err, "create provider1 bootstrap APIBinding")
+	}
+}
+
+func (s *KindTestSuite) ensureProvider2ExportBootstrapAPIBindingReady(ctx context.Context, provider2Client client.Client) {
+	const bindingName = "e2e-provider2-export-bootstrap"
+	binding := &unstructured.Unstructured{}
+	binding.SetAPIVersion("apis.kcp.io/v1alpha2")
+	binding.SetKind("APIBinding")
+	binding.SetName(bindingName)
+	binding.Object["spec"] = map[string]interface{}{
+		"reference": map[string]interface{}{
+			"export": map[string]interface{}{
+				"path": e2eScopedKubeconfigProvider2Path,
+				"name": e2eKindScopedProviderExportName,
+			},
+		},
+	}
+	err := provider2Client.Create(ctx, binding)
+	if err != nil && !kerrors.IsAlreadyExists(err) {
+		s.Require().NoError(err, "create provider2 bootstrap APIBinding")
+	}
+	s.Eventually(func() bool {
+		current := &unstructured.Unstructured{}
+		current.SetAPIVersion("apis.kcp.io/v1alpha2")
+		current.SetKind("APIBinding")
+		if err := provider2Client.Get(ctx, client.ObjectKey{Name: bindingName}, current); err != nil {
+			return false
+		}
+		phase, _, _ := unstructured.NestedString(current.Object, "status", "phase")
+		if phase == "Bound" {
+			return true
+		}
+		return false
+	}, 3*time.Minute, 5*time.Second, "provider2 bootstrap APIBinding %s not bound", bindingName)
 }
 
 // kubectl with kubeconfig bytes unchanged (virtual workspace or workspace cluster URL as written by the operator).
