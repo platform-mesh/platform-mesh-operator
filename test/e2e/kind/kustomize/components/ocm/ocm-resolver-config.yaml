@@ -1,0 +1,16 @@
+apiVersion: v1
+data:
+  .ocmconfig: |
+    type: generic.config.ocm.software/v1
+    configurations:
+      - type: resolvers.config.ocm.software
+        resolvers:
+          - repository:
+              type: OCIRegistry/v1
+              baseUrl: europe-docker.pkg.dev
+              subPath: gardener-project/releases
+            componentNamePattern: "github.com/gardener/*"
+kind: ConfigMap
+metadata:
+  name: ocm-resolver-config
+  namespace: platform-mesh-system

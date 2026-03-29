@@ -29,9 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
 )
 
@@ -74,10 +76,19 @@ func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.Co
 	return builder.Complete(r)
 }
 
-func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig) *ResourceReconciler {
+func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, clientInfra client.Client, imageVersionStore *subroutines.ImageVersionStore) *ResourceReconciler {
 	var subs []subroutine.Subroutine
 
-	subs = append(subs, resource.NewResourceSubroutine(mgr))
+	// If no dedicated infra client is provided, default to the manager client.
+	if clientInfra == nil {
+		clientInfra = mgr.GetClient()
+	}
+
+	resourceSubroutine := resource.NewResourceSubroutine(clientInfra, cfg, imageVersionStore)
+	// Set the runtime client for reading profile ConfigMaps (they're in the runtime cluster)
+	resourceSubroutine.SetRuntimeClient(mgr.GetClient())
+
+	subs = append(subs, resourceSubroutine)
 
 	return &ResourceReconciler{
 		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,

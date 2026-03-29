@@ -1,4 +1,4 @@
-# permissions for end users to edit platformeshs.
+# permissions for end users to edit platformmeshes.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -10,7 +10,7 @@ rules:
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformeshs
+  - platformmeshes
   verbs:
   - create
   - delete
@@ -22,6 +22,6 @@ rules:
 - apiGroups:
   - core.platform-mesh.io
   resources:
-  - platformeshs/status
+  - platformmeshes/status
   verbs:
   - get

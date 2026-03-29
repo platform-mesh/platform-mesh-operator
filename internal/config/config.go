@@ -40,6 +40,16 @@ type WaitSubroutineConfig struct {
 	Enabled bool
 }
 
+type RemoteClusterConfig struct {
+	Kubeconfig      string
+	InfraSecretName string
+	InfraSecretKey  string
+}
+
+func (r *RemoteClusterConfig) IsEnabled() bool {
+	return r.Kubeconfig != ""
+}
+
 type SubroutinesConfig struct {
 	Deployment     DeploymentSubroutineConfig
 	KcpSetup       KcpSetupSubroutineConfig
@@ -50,10 +60,12 @@ type SubroutinesConfig struct {
 
 // OperatorConfig struct to hold the app config
 type OperatorConfig struct {
-	WorkspaceDir string
-	KCP          KCPConfig
-	IDP          IDPConfig
-	Subroutines  SubroutinesConfig
+	WorkspaceDir  string
+	KCP           KCPConfig
+	IDP           IDPConfig
+	Subroutines   SubroutinesConfig
+	RemoteRuntime RemoteClusterConfig
+	RemoteInfra   RemoteClusterConfig
 }
 
 func NewOperatorConfig() OperatorConfig {
@@ -64,7 +76,7 @@ func NewOperatorConfig() OperatorConfig {
 			RootShardName:          "root",
 			FrontProxyName:         "frontproxy",
 			FrontProxyPort:         "6443",
-			ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
+			ClusterAdminSecretName: "kubeconfig-kcp-admin",
 		},
 		Subroutines: SubroutinesConfig{
 			Deployment: DeploymentSubroutineConfig{
@@ -115,4 +127,10 @@ func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.Subroutines.ProviderSecret.Enabled, "subroutines-provider-secret-enabled", c.Subroutines.ProviderSecret.Enabled, "Enable provider secret subroutine")
 	fs.BoolVar(&c.Subroutines.FeatureToggles.Enabled, "subroutines-feature-toggles-enabled", c.Subroutines.FeatureToggles.Enabled, "Enable feature toggles subroutine")
 	fs.BoolVar(&c.Subroutines.Wait.Enabled, "subroutines-wait-enabled", c.Subroutines.Wait.Enabled, "Enable wait subroutine")
+
+	fs.StringVar(&c.RemoteRuntime.Kubeconfig, "remote-runtime-kubeconfig", c.RemoteRuntime.Kubeconfig, "Kubeconfig for remote runtime cluster")
+	fs.StringVar(&c.RemoteRuntime.InfraSecretName, "remote-runtime-infra-secret-name", c.RemoteRuntime.InfraSecretName, "Secret name for remote runtime infra kubeconfig")
+	fs.StringVar(&c.RemoteRuntime.InfraSecretKey, "remote-runtime-infra-secret-key", c.RemoteRuntime.InfraSecretKey, "Secret key for remote runtime infra kubeconfig")
+
+	fs.StringVar(&c.RemoteInfra.Kubeconfig, "remote-infra-kubeconfig", c.RemoteInfra.Kubeconfig, "Kubeconfig for remote infra cluster")
 }
