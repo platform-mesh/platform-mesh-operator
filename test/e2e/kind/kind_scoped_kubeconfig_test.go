@@ -512,12 +512,16 @@ func (s *KindTestSuite) ensureProvider2ExportBootstrapAPIBindingReady(ctx contex
 
 // kubectl with kubeconfig bytes unchanged (virtual workspace or workspace cluster URL as written by the operator).
 func (s *KindTestSuite) runKubectlWithRawKubeconfig(kubeconfigBytes []byte, kubectlArgs ...string) ([]byte, error) {
+	normalizedKubeconfigBytes, err := normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes)
+	if err != nil {
+		return nil, err
+	}
 	tmp, err := os.CreateTemp("", "scoped-kubeconfig-raw-*.yaml")
 	if err != nil {
 		return nil, err
 	}
 	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(kubeconfigBytes); err != nil {
+	if _, err := tmp.Write(normalizedKubeconfigBytes); err != nil {
 		_ = tmp.Close()
 		return nil, err
 	}
@@ -526,6 +530,36 @@ func (s *KindTestSuite) runKubectlWithRawKubeconfig(kubeconfigBytes []byte, kube
 	}
 	args := append([]string{"--kubeconfig", tmp.Name()}, kubectlArgs...)
 	return runCommand("kubectl", args...)
+}
+
+// normalizeScopedKubeconfigServerForLocalRun handles scoped e2e cases.
+// This is test-only behavior for host-run kubectl in local/CI e2e, not generic production kubeconfig rewriting.
+func normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes []byte) ([]byte, error) {
+	cfg, err := clientcmd.Load(kubeconfigBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	currentContext := cfg.Contexts[cfg.CurrentContext]
+	cluster := cfg.Clusters[currentContext.Cluster]
+
+	server := cluster.Server
+
+	// provider2: in-cluster front-proxy DNS is not resolvable from host-run kubectl.
+	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:6443", "localhost:8443", 1)
+
+	// provider1: virtual workspace URL from endpoint slice is flaky for create/get in host-run kubectl.
+	// For this fixed fixture, use the concrete provider1 workspace cluster URL.
+	if strings.Contains(server, "/services/apiexport/") {
+		server = "https://localhost:8443/clusters/" + e2eScopedKubeconfigProvider1Path
+	}
+
+	cluster.Server = server
+	out, err := clientcmd.Write(*cfg)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // logWorkspaceObservedAfterApply helps CI debug: confirms whether the Workspace object is visible right after SSA apply.

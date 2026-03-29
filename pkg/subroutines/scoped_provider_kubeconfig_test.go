@@ -12,6 +12,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 func TestVirtualWorkspacePathFromSlice(t *testing.T) {
@@ -160,6 +161,30 @@ func TestVirtualWorkspaceServerURLFromSlice(t *testing.T) {
 				},
 			},
 			want: "https://root.kcp.localhost:8443/services/apiexport/158ffh0myu3e6xhu/core.platform-mesh.io",
+		},
+		{
+			name: "real cluster provider1 URL from APIExportEndpointSlice status (docs: use URL as published)",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "kind-e2e-scoped-provider.platform-mesh.io"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://localhost:8443/services/apiexport/2yrxttxw0pyrhs0z/kind-e2e-scoped-provider.platform-mesh.io"},
+					},
+				},
+			},
+			want: "https://localhost:8443/services/apiexport/2yrxttxw0pyrhs0z/kind-e2e-scoped-provider.platform-mesh.io",
+		},
+		{
+			name: "real cluster provider2 URL from APIExportEndpointSlice status (docs: use URL as published)",
+			slice: &kcpapiv1alpha1.APIExportEndpointSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: "kind-e2e-scoped-provider.platform-mesh.io"},
+				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
+					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
+						{URL: "https://localhost:8443/services/apiexport/7mjkv2qzlbt8rig7/kind-e2e-scoped-provider.platform-mesh.io"},
+					},
+				},
+			},
+			want: "https://localhost:8443/services/apiexport/7mjkv2qzlbt8rig7/kind-e2e-scoped-provider.platform-mesh.io",
 		},
 		{
 			name: "in-cluster front-proxy host from slice status",
@@ -405,6 +430,65 @@ func TestWorkspaceClusterScopedServerURLJoinPath(t *testing.T) {
 	if got != want {
 		t.Fatalf("server URL: got %q want %q", got, want)
 	}
+}
+
+func TestEndpointSlicePathRewrittenToFrontProxyHost(t *testing.T) {
+	t.Parallel()
+
+	// Official providersecret behavior: parse endpoint URL from slice status and keep only path,
+	// then join that path with configured front-proxy host.
+	endpointURL := "https://localhost:8443/services/apiexport/2yrxttxw0pyrhs0z/kind-e2e-scoped-provider.platform-mesh.io"
+	address, err := url.Parse(endpointURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:6443"
+	got, err := url.JoinPath(hostPort, address.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2yrxttxw0pyrhs0z/kind-e2e-scoped-provider.platform-mesh.io"
+	if got != want {
+		t.Fatalf("server URL: got %q want %q", got, want)
+	}
+}
+
+func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
+	t.Parallel()
+
+	operatorCfg := config.NewOperatorConfig()
+	instance := &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Exposure: &corev1alpha1.ExposureConfig{
+				BaseDomain: "localhost",
+				Port:       8443,
+			},
+		},
+	}
+
+	t.Run("in-cluster front-proxy URL for workspace path", func(t *testing.T) {
+		got, err := createScopedKubeconfigURLForAPIExportName(operatorCfg, instance, "root:providers:provider2", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:providers:provider2"
+		if got != want {
+			t.Fatalf("server URL: got %q want %q", got, want)
+		}
+	})
+
+	t.Run("external URL uses exposure domain and port", func(t *testing.T) {
+		got, err := createScopedKubeconfigURLForAPIExportName(operatorCfg, instance, "root:providers:provider2", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "https://kcp.api.localhost:8443/clusters/root:providers:provider2"
+		if got != want {
+			t.Fatalf("server URL: got %q want %q", got, want)
+		}
+	})
 }
 
 func TestParseScopedKubeconfigExportSource(t *testing.T) {

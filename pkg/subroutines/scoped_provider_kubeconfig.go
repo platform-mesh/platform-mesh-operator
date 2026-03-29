@@ -350,6 +350,18 @@ func parseScopedKubeconfigExportSource(pc corev1alpha1.ProviderConnection) (endp
 	return endpointSliceName, apiExportName, nil
 }
 
+func createScopedKubeconfigURLForAPIExportName(operatorCfg config.OperatorConfig, instance *corev1alpha1.PlatformMesh, pcPath string, external bool) (string, error) {
+	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	if external {
+		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
+	}
+	hostURL, err := url.JoinPath(hostPort, "clusters", pcPath)
+	if err != nil {
+		return "", errors.Wrap(err, "build scoped workspace cluster server URL")
+	}
+	return hostURL, nil
+}
+
 // writeScopedKubeconfigToSecret builds a scoped kubeconfig: ServiceAccount token in pc.Path, RBAC from APIExport; server is virtual workspace when endpointSliceName is set, else workspace cluster URL when apiExportName is set.
 func writeScopedKubeconfigToSecret(
 	ctx context.Context,
@@ -399,23 +411,20 @@ func writeScopedKubeconfigToSecret(
 			Str("path", pcPath).
 			Str("endpointSlice", endpointSliceName).
 			Str("apiExport", apiExportName).
+			Str("hostURL", hostURL).
 			Msg("Using scoped kubeconfig virtual workspace URL")
 	} else {
 		apiExportName = apiExportNameField
 		exportWorkspacePath = pcPath
-		hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
-		if pc.External {
-			hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
-		}
-		var errJoin error
-		hostURL, errJoin = url.JoinPath(hostPort, "clusters", pcPath)
-		if errJoin != nil {
-			return errors.Wrap(errJoin, "build scoped workspace cluster server URL")
+		hostURL, err = createScopedKubeconfigURLForAPIExportName(operatorCfg, instance, pcPath, pc.External)
+		if err != nil {
+			return err
 		}
 		log.Info().
 			Str("secret", pc.Secret).
 			Str("path", pcPath).
 			Str("apiExport", apiExportName).
+			Str("hostURL", hostURL).
 			Msg("Using scoped kubeconfig workspace cluster URL")
 	}
 
