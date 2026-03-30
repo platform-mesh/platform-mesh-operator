@@ -85,7 +85,6 @@ tasks:
               PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 12m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
-                # ...
                 exit 1
               }
             else

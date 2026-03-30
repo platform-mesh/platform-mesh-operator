@@ -1594,6 +1594,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	instance.Spec.Kcp.ProviderConnections = nil
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
+			AdminAuth:         ptr.To(true),
 			EndpointSliceName: ptr.To(""),
 			Path:              "root:platform-mesh-system",
 			Secret:            "external-kubeconfig",

@@ -21,49 +21,62 @@ var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core
 var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
+
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "account-operator-kubeconfig",
+		Path:      "root:platform-mesh-system",
+		Secret:    "account-operator-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "rebac-authz-webhook-kubeconfig",
+		Path:      "root:platform-mesh-system",
+		Secret:    "rebac-authz-webhook-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "security-operator-kubeconfig",
+		Path:      "root:platform-mesh-system",
+		Secret:    "security-operator-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
+		AdminAuth:         ptr.To(true),
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "extension-manager-operator-kubeconfig",
+		Path:      "root:platform-mesh-system",
+		Secret:    "extension-manager-operator-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "iam-service-kubeconfig",
+		Path:      "root:platform-mesh-system",
+		Secret:    "iam-service-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		RawPath: ptr.To("/services/contentconfigurations"),
-		Secret:  "portal-kubeconfig",
+		Path:      "root:orgs",
+		RawPath:   ptr.To("/services/contentconfigurations"),
+		Secret:    "portal-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:   "root",
-		Secret: "security-initializer-kubeconfig",
+		Path:      "root",
+		Secret:    "security-initializer-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:   "root",
-		Secret: "security-terminator-kubeconfig",
+		Path:      "root",
+		Secret:    "security-terminator-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:   "root:platform-mesh-system",
-		Secret: "init-agent-kubeconfig",
+		Path:      "root:platform-mesh-system",
+		Secret:    "init-agent-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 }
+
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
 		Name:      AccountOperatorWebhookSecretName,

@@ -341,6 +341,11 @@ func (in *ProviderConnection) DeepCopyInto(out *ProviderConnection) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.APIExportName != nil {
+		in, out := &in.APIExportName, &out.APIExportName
+		*out = new(string)
+		**out = **in
+	}
 	if in.RawPath != nil {
 		in, out := &in.RawPath, &out.RawPath
 		*out = new(string)
@@ -349,6 +354,11 @@ func (in *ProviderConnection) DeepCopyInto(out *ProviderConnection) {
 	if in.Namespace != nil {
 		in, out := &in.Namespace, &out.Namespace
 		*out = new(string)
+		**out = **in
+	}
+	if in.AdminAuth != nil {
+		in, out := &in.AdminAuth, &out.AdminAuth
+		*out = new(bool)
 		**out = **in
 	}
 }

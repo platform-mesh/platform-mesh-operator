@@ -83,11 +83,8 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pm
 		Complete(r)
 }
 
-// NewPlatformMeshReconciler wires subroutines and lifecycle for PlatformMesh.
 func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) (*PlatformMeshReconciler, error) {
-	//FIXME swith back to the commented out variation when the front-proxy certificate accepts it
-	//kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
-	kcpUrl := fmt.Sprintf("https://%s-front-proxy:%s", cfg.KCP.FrontProxyName, cfg.KCP.FrontProxyPort)
+	kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	if cfg.KCP.Url != "" {
 		kcpUrl = cfg.KCP.Url
 	}
