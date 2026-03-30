@@ -168,9 +168,9 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 	if !ptr.Deref(pc.AdminAuth, false) {
 		if err := writeScopedKubeconfigToSecret(ctx, r.client, r.kcpHelper, cfg, instance, pc); err != nil {
 			log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to write scoped provider kubeconfig")
-			return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+			return subroutines.OK(), err
 		}
-		return ctrl.Result{}, nil
+		return subroutines.OK(), nil
 	}
 
 	var address *url.URL
