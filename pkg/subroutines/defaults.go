@@ -36,7 +36,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	},
 	{
 		Path:              "root:platform-mesh-system",
-		Secret:            "kubernetes-graphql-gateway-kubeconfig",
+		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 		AdminAuth:         ptr.To(true),
 	},
 	{
