@@ -132,6 +132,7 @@ jobs:
     needs: [createVersion, dockerBuildAndPush]
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     uses: platform-mesh/.github/.github/workflows/job-sbom.yml@main
+    secrets: inherit
     with:
       imageReference: ${{ inputs.imageTagName }}:${{ needs.createVersion.outputs.version }}
 
