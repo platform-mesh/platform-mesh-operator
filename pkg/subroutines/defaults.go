@@ -35,7 +35,6 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		EndpointSliceName: ptr.To("core.platform-mesh.io"),
 		Path:              "root:platform-mesh-system",
 		Secret:            "kubernetes-grapqhl-gateway-kubeconfig",
 		AdminAuth:         ptr.To(true),
