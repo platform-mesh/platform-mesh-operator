@@ -83,6 +83,10 @@ on:
 
 jobs:
   auto-labeler:
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
     uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
     secrets: inherit
