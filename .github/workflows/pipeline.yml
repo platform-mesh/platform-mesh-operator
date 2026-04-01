@@ -3,6 +3,7 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
+  id-token: write
 on:
   workflow_call:
     inputs:
