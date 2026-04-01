@@ -82,11 +82,6 @@ on:
 
 
 jobs:
-  auto-labeler:
-    if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
-    secrets: inherit
-
   createVersion:
     if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
     uses: platform-mesh/.github/.github/workflows/job-create-version.yml@main
