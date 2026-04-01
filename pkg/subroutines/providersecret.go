@@ -66,8 +66,9 @@ type ProvidersecretSubroutine struct {
 }
 
 const (
-	ProvidersecretSubroutineName      = "ProvidersecretSubroutine"
-	ProvidersecretSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
+	ProvidersecretSubroutineName         = "ProvidersecretSubroutine"
+	ProvidersecretSubroutineFinalizer    = "platform-mesh.core.platform-mesh.io/finalizer"
+	KcpOperatorAdminKubeconfigSecretName = "kubeconfig-kcp-admin"
 )
 
 func (r *ProvidersecretSubroutine) Finalize(
@@ -214,7 +215,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		address = kcpUrl
 	}
 
-	newConfig := rest.CopyConfig(cfg)
+	namespace := "platform-mesh-system"
+	if ptr.Deref(pc.Namespace, "") != "" {
+		namespace = *pc.Namespace
+	}
+
 	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if pc.External {
 		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
@@ -224,33 +229,13 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
-	newConfig.Host = host
 
-	apiConfig := restConfigToAPIConfig(newConfig)
-	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
+	adminKubeconfigData, err := loadKcpOperatorAdminKubeconfig(r.client, operatorCfg.KCP.Namespace)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to write kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kcp-operator admin kubeconfig")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
-
-	namespace := "platform-mesh-system"
-	if ptr.Deref(pc.Namespace, "") != "" {
-		namespace = *pc.Namespace
-	}
-	providerSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pc.Secret,
-			Namespace: namespace,
-		},
-	}
-
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, providerSecret, func() error {
-		providerSecret.Data = map[string][]byte{
-			"kubeconfig": kcpConfigBytes,
-		}
-		return err
-	})
-	if err != nil {
+	if err := writeProviderSecretFromKcpOperatorAdminKubeconfig(ctx, r.client, adminKubeconfigData, host, cfg.CAData, pc.Secret, namespace); err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
 		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
 	}
@@ -325,6 +310,64 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// loadKcpOperatorAdminKubeconfig reads kubeconfig-kcp-admin from the kcp workspace namespace
+// (PlatformMesh/operator KCP config; same as helm infra .Values.kcp.namespace).
+func loadKcpOperatorAdminKubeconfig(k8sClient client.Client, namespace string) ([]byte, error) {
+	if namespace == "" {
+		return nil, fmt.Errorf("read %s: kcp namespace is empty", KcpOperatorAdminKubeconfigSecretName)
+	}
+	secret, err := GetSecret(k8sClient, KcpOperatorAdminKubeconfigSecretName, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("read %s from namespace %s: %w", KcpOperatorAdminKubeconfigSecretName, namespace, err)
+	}
+	if secret == nil || len(secret.Data["kubeconfig"]) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing key kubeconfig", namespace, KcpOperatorAdminKubeconfigSecretName)
+	}
+	return secret.Data["kubeconfig"], nil
+}
+
+func writeProviderSecretFromKcpOperatorAdminKubeconfig(
+	ctx context.Context,
+	k8sClient client.Client,
+	adminKubeconfigData []byte,
+	targetServerURL string,
+	frontProxyCAData []byte,
+	providerSecretName, providerSecretNamespace string,
+) error {
+	apiCfg, err := clientcmd.Load(adminKubeconfigData)
+	if err != nil {
+		return fmt.Errorf("load kcp-operator admin kubeconfig: %w", err)
+	}
+	for _, c := range apiCfg.Clusters {
+		if c == nil {
+			continue
+		}
+		if len(frontProxyCAData) > 0 {
+			c.CertificateAuthorityData = frontProxyCAData
+			c.CertificateAuthority = ""
+			c.InsecureSkipTLSVerify = false
+		}
+		c.Server = targetServerURL
+	}
+	out, err := clientcmd.Write(*apiCfg)
+	if err != nil {
+		return fmt.Errorf("serialize provider kubeconfig: %w", err)
+	}
+	providerSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      providerSecretName,
+			Namespace: providerSecretNamespace,
+		},
+	}
+	_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, providerSecret, func() error {
+		providerSecret.Data = map[string][]byte{
+			"kubeconfig": out,
+		}
+		return nil
+	})
+	return err
 }
 
 func restConfigToAPIConfig(restCfg *rest.Config) *clientcmdapi.Config {
