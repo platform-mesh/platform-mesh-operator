@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -42,6 +44,50 @@ func (f fakeHelm) GetRelease(ctx context.Context, cli client.Client, name, ns st
 		"status": map[string]interface{}{"ready": f.ready},
 	}}
 	return u, nil
+}
+
+func wantProviderKubeconfigServer(t *testing.T, inst *corev1alpha1.PlatformMesh, op config.OperatorConfig, pc corev1alpha1.ProviderConnection, kcpURL string) string {
+	t.Helper()
+	scheme := "https"
+	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Protocol != "" {
+		scheme = inst.Spec.Exposure.Protocol
+	}
+	host := strings.TrimPrefix(strings.TrimPrefix(kcpURL, "https://"), "http://")
+	var base string
+	if pc.External {
+		if inst.Spec.Exposure != nil && inst.Spec.Exposure.BaseDomain != "" {
+			port := inst.Spec.Exposure.Port
+			if port == 0 {
+				port = 443
+			}
+			base = fmt.Sprintf("%s://kcp.api.%s:%d", scheme, inst.Spec.Exposure.BaseDomain, port)
+		} else {
+			base = scheme + "://" + host
+		}
+	} else {
+		base = fmt.Sprintf("%s://%s-front-proxy.%s:%s", scheme, op.KCP.FrontProxyName, op.KCP.Namespace, op.KCP.FrontProxyPort)
+	}
+	switch {
+	case ptr.Deref(pc.RawPath, "") != "":
+		u, err := url.JoinPath(base, ptr.Deref(pc.RawPath, ""))
+		if err != nil {
+			t.Fatalf("join kubeconfig server URL: %v", err)
+		}
+		return u
+	case pc.EndpointSliceName != nil && strings.TrimSpace(*pc.EndpointSliceName) != "":
+		n := strings.TrimSpace(*pc.EndpointSliceName)
+		u, err := url.JoinPath(base, "/services/apiexport/stubhash/"+n)
+		if err != nil {
+			t.Fatalf("join kubeconfig server URL: %v", err)
+		}
+		return u
+	default:
+		u, err := url.JoinPath(base, "clusters", pc.Path)
+		if err != nil {
+			t.Fatalf("join kubeconfig server URL: %v", err)
+		}
+		return u
+	}
 }
 
 type ProvidersecretTestSuite struct {
@@ -1751,6 +1797,15 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		},
 	).Once()
 
+	opCfg := config.NewOperatorConfig()
+	s.clientMock.EXPECT().Get(mock.Anything,
+		types.NamespacedName{Name: subroutines.KcpOperatorAdminKubeconfigSecretName, Namespace: opCfg.KCP.Namespace},
+		mock.AnythingOfType("*v1.Secret")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			*obj.(*corev1.Secret) = corev1.Secret{Data: map[string][]byte{"kubeconfig": secretKubeconfigData}}
+			return nil
+		}).Times(len(subroutines.DefaultProviderConnections) + 1)
+
 	// Setup mock expectations for each provider connection
 	for _, pc := range subroutines.DefaultProviderConnections {
 		s.clientMock.
@@ -1794,7 +1849,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					}
 					ctx := cfg.Contexts[cfg.CurrentContext]
 					cluster := cfg.Clusters[ctx.Cluster]
-					want := fmt.Sprintf("http://example.com/clusters/%s", pc.Path)
+					want := wantProviderKubeconfigServer(s.T(), instance, opCfg, pc, "example.com")
 					if cluster.Server != want {
 						s.log.Error().Msgf("server URL = %q; want %q", cluster.Server, want)
 						return false
@@ -1815,13 +1870,8 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	// Run test
 	s.testObj = subroutines.NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
 
-	// Add the missing operator config context
-	operatorCfg := config.OperatorConfig{
-		KCP: config.OperatorConfig{}.KCP,
-	}
-
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
+	ctx = context.WithValue(ctx, keys.ConfigCtxKey, opCfg)
 	res, opErr := s.testObj.Process(ctx, instance)
 	s.Require().Nil(opErr)
 	s.Assert().Equal(ctrl.Result{}, res)
