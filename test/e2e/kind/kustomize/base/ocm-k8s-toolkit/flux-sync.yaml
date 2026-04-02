@@ -1,38 +1,34 @@
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
+kind: HelmRepository
 metadata:
   name: ocm-k8s-toolkit
   namespace: default
 spec:
-  interval: 1m
-  url: https://github.com/open-component-model/open-component-model
-  ref:
-    commit: 0c8ad3c6f96172bd0b7c3e5385c4f859ad4e7043
+  type: oci
+  interval: 5m
+  url: oci://ghcr.io/open-component-model/kubernetes/controller
 ---
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
   name: ocm-k8s-toolkit
   namespace: default
 spec:
+  releaseName: ocm-k8s-toolkit
   interval: 1m
+  timeout: 15m
   targetNamespace: ocm-system
-  sourceRef:
-    kind: GitRepository
-    name: ocm-k8s-toolkit
-  path: ./kubernetes/controller/config/default
-  prune: true
-  patches:
-    - patch: |
-        - op: replace
-          path: /spec/template/spec/containers/0/args
-          value:
-            - --health-probe-bind-address=:8081
-            - --resource-controller-concurrency=21
-            - --zap-log-level=4
-        - op: replace
-          path: /spec/template/spec/containers/0/image
-          value: ghcr.io/open-component-model/kubernetes/controller@sha256:5e790dad020adcfd0793f249d177a28429ef22446def39c9286eab90c52175c1
-      target:
-        kind: Deployment
-        name: controller-manager
+  chart:
+    spec:
+      chart: chart
+      version: "0.2.0"
+      sourceRef:
+        kind: HelmRepository
+        name: ocm-k8s-toolkit
+  values:
+    manager:
+      concurrency:
+        resource: 21
+      logging:
+        level: "4"

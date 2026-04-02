@@ -451,7 +451,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"cluster-admin-secret":
@@ -860,7 +860,7 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -949,7 +949,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1062,7 +1062,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1159,7 +1159,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1264,7 +1264,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1393,7 +1393,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1533,7 +1533,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"portal-kubeconfig",
 						"external-kubeconfig":
@@ -1668,7 +1668,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 					case "account-operator-kubeconfig",
 						"rebac-authz-webhook-kubeconfig",
 						"security-operator-kubeconfig",
-						"kubernetes-grapqhl-gateway-kubeconfig",
+						"kubernetes-graphql-gateway-kubeconfig",
 						"extension-manager-operator-kubeconfig",
 						"iam-service-kubeconfig",
 						"portal-kubeconfig",
