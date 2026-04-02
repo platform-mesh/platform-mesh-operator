@@ -1,155 +1,106 @@
-name: pipeline
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
 permissions:
   contents: write
-  pull-requests: write
-  packages: write
   id-token: write
-on:
-  workflow_call:
-    inputs:
-      imageTagName:
-        required: true
-        type: string
-        default: false
-      coverageThresholdFile:
-        required: false
-        type: number
-        default: 80
-      coverageThresholdPackage:
-        required: false
-        type: number
-        default: 80
-      coverageThresholdTotal:
-        required: false
-        type: number
-        default: 95
-      useLocalCoverageConfig:
-        required: false
-        type: boolean
-        default: false
-      release_branch:
-        required: false
-        type: string
-        default: 'main'
-      repoVersionUpdate:
-        required: false
-        type: string
-        default: 'platform-mesh/helm-charts'
-      doubleTagging:
-        required: false
-        type: boolean
-        default: false
-      useTask:
-        required: false
-        type: boolean
-        default: false
-    outputs:
-      version:
-        description: "The created Version"
-        value: ${{ jobs.createVersion.outputs.version }}
-  workflow_dispatch:
-    inputs:
-      imageTagName:
-        required: true
-        type: string
-      useTask:
-        required: false
-        type: boolean
-        default: false
-      coverageThresholdFile:
-        required: false
-        type: number
-        default: 80
-      coverageThresholdPackage:
-        required: false
-        type: number
-        default: 80
-      coverageThresholdTotal:
-        required: false
-        type: number
-        default: 95
-      useLocalCoverageConfig:
-        required: false
-        type: boolean
-        default: false
-      release_branch:
-        required: false
-        type: string
-        default: 'main'
-      repoVersionUpdate:
-        required: false
-        type: string
-        default: 'platform-mesh/helm-charts'
+  issues: write
+  packages: write
+  pull-requests: write
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  createVersion:
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-create-version.yml@main
-    secrets: inherit
-
   lint:
     uses: platform-mesh/.github/.github/workflows/job-golang-lint.yml@main
     with:
-      useTask: ${{ inputs.useTask }}
+      useTask: true
 
-  testSource:
+  test:
     uses: ./.github/workflows/job-golang-test-source.yml
     secrets: inherit
     with:
       runsOn: 'ubuntu-latest-large'
-      useTask: ${{ inputs.useTask }}
-      useLocalCoverageConfig: ${{ inputs.useLocalCoverageConfig }}
-      coverageThresholdFile: ${{ inputs.coverageThresholdFile }}
-      coverageThresholdPackage: ${{ inputs.coverageThresholdPackage }}
-      coverageThresholdTotal: ${{ inputs.coverageThresholdTotal }}
 
-  dockerBuild:
-    if: ${{ (github.head_ref || github.ref) != format('refs/heads/{0}',inputs.release_branch) }}
+  docker-build:
+    if: github.event_name == 'pull_request'
     uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
-      imageTagName: ${{ inputs.imageTagName }}
-      release_branch: ${{ inputs.release_branch }}
-      multiarch: false
+      imageTagName: ghcr.io/platform-mesh/platform-mesh-operator
     secrets: inherit
 
-  dockerBuildAndPush:
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    needs: [createVersion,lint,testSource]
+  quality-gate:
+    if: always()
+    permissions: {}
+    needs: [lint, test, docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "test failed"
+            exit 1
+          fi
+          # docker-build is skipped on main pushes — allow skipped
+          if [[ "${{ needs.docker-build.result }}" != "success" && "${{ needs.docker-build.result }}" != "skipped" ]]; then
+            echo "docker-build failed"
+            exit 1
+          fi
+
+  create-version:
+    if: github.ref == 'refs/heads/main'
+    uses: platform-mesh/.github/.github/workflows/job-create-version.yml@main
+    secrets: inherit
+
+  docker-build-push:
+    if: github.ref == 'refs/heads/main'
+    needs: [create-version, lint, test]
     uses: platform-mesh/.github/.github/workflows/job-docker-build-push.yml@main
     with:
-      imageTagName: ${{ inputs.imageTagName }}
-      version: ${{ needs.createVersion.outputs.version }}
-      release_branch: ${{ inputs.release_branch }}
+      imageTagName: ghcr.io/platform-mesh/platform-mesh-operator
+      version: ${{ needs.create-version.outputs.version }}
       multiarch: true
     secrets: inherit
 
-  sbom:
-    needs: [createVersion, dockerBuildAndPush]
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-sbom.yml@main
-    secrets: inherit
-    with:
-      imageReference: ${{ inputs.imageTagName }}:${{ needs.createVersion.outputs.version }}
-
-  imageOcm:
-    needs: [createVersion, dockerBuildAndPush, sbom]
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
-    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@main
-    secrets: inherit
-    with:
-      imageReference: ${{ inputs.imageTagName }}:${{ needs.createVersion.outputs.version }}
-      appVersion: ${{ needs.createVersion.outputs.version }}
-      repoName: ${{ github.event.repository.name }}
-      commit: ${{ github.sha }}
-
-  updateVersion:
-    needs: [createVersion, dockerBuildAndPush]
-    if: ${{ (github.head_ref || github.ref) == format('refs/heads/{0}',inputs.release_branch) }}
+  update-version:
+    if: github.ref == 'refs/heads/main'
+    needs: [create-version, docker-build-push]
     uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@main
     secrets: inherit
     with:
-      appVersion: ${{ needs.createVersion.outputs.version }}
-      chart: ${{ github.event.repository.name }}
-      targetRepository: ${{ inputs.repoVersionUpdate }}
+      appVersion: ${{ needs.create-version.outputs.version }}
+      chart: platform-mesh-operator
+      targetRepository: platform-mesh/helm-charts
 
+  sbom:
+    if: github.ref == 'refs/heads/main'
+    needs: [create-version, docker-build-push]
+    uses: platform-mesh/.github/.github/workflows/job-sbom.yml@main
+    with:
+      imageReference: ghcr.io/platform-mesh/platform-mesh-operator:${{ needs.create-version.outputs.version }}
+
+  image-ocm:
+    if: github.ref == 'refs/heads/main'
+    needs: [create-version, docker-build-push, sbom]
+    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@main
+    secrets: inherit
+    with:
+      imageReference: ghcr.io/platform-mesh/platform-mesh-operator:${{ needs.create-version.outputs.version }}
+      appVersion: ${{ needs.create-version.outputs.version }}
+      repoName: platform-mesh-operator
+      commit: ${{ github.sha }}
