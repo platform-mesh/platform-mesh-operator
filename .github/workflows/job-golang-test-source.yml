@@ -2,28 +2,10 @@ name: Golang Test Source
 on:
   workflow_call:
     inputs:
-      useTask:
-        required: false
-        type: boolean
-        default: false
-      coverageThresholdFile:
-        type: number
-      coverageThresholdPackage:
-        type: number
-      coverageThresholdTotal:
-        type: number
-      useLocalCoverageConfig:
-        required: false
-        type: boolean
-        default: false
       runsOn:
         required: false
         type: string
         default: 'ubuntu-latest'
-      envArgs:
-        required: false
-        type: string
-        default: ''
 
 jobs:
   test:
@@ -31,31 +13,21 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: 'go.mod'
           cache: true
       - name: Install Task
         uses: arduino/setup-task@v2
-        if: ${{ inputs.useTask }}
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Test Go
-        if: ${{ inputs.useTask == false }}
-        run: go test ./... -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
-      - name: export tokens
+      - name: Export tokens
         run: |
           echo "WORKFLOW_GITHUB_PAT=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-      - name: Test task
-        if: ${{ inputs.useTask == true }}
-        env: ${{ fromJSON(inputs.envArgs != '' && inputs.envArgs || '{}') }}
+      - name: Run tests
         run: |
           GITHUB_WORKFLOW=ci task test ADDITIONAL_COMMAND_ARGS="-covermode=atomic -coverpkg=./..."
       - name: Install Code Coverage
         run: go install github.com/vladopajic/go-test-coverage/v2@v2.18.3
       - name: Check Test Coverage
-        run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out
-        if: ${{ inputs.useLocalCoverageConfig == false }}
-      - name: Check Test Coverage with Config
-        run: go-test-coverage --threshold-file ${{ inputs.coverageThresholdFile }} --threshold-package ${{ inputs.coverageThresholdPackage }} --threshold-total ${{ inputs.coverageThresholdTotal }} --profile cover.out --config ./.testcoverage.yml
-        if: ${{ inputs.useLocalCoverageConfig == true }}
+        run: go-test-coverage --profile cover.out --config ./.testcoverage.yml
