@@ -28,6 +28,14 @@ spec:
       - '*'
     state: Accepted
     identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
+  - resource: stores
+    group: core.platform-mesh.io
+    selector:
+      matchAll: true
+    verbs:
+      - '*'
+    state: Accepted
+    identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
   - resource: apibindings
     group: apis.kcp.io
     selector:
