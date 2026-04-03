@@ -21,6 +21,7 @@ spec:
       referencePath: 
         {{ .referencePath }}
         - name: platform-mesh-operator-components
+        - name: chart
       resource:
         name: chart
   skipVerify: true
