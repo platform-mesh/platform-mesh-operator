@@ -1,4 +1,4 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
@@ -9,15 +9,14 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	"github.com/platform-mesh/subroutines"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -26,7 +25,7 @@ type WaitTestSuite struct {
 	clientMock    *mocks.Client
 	kcpClientMock *mocks.Client
 	kcpHelperMock *mocks.KcpHelper
-	testObj       *subroutines.WaitSubroutine
+	testObj       *WaitSubroutine
 	log           *logger.Logger
 	cfg           config.OperatorConfig
 }
@@ -48,7 +47,7 @@ func (s *WaitTestSuite) SetupTest() {
 	logCfg.NoJSON = true
 	logCfg.Name = "WaitTestSuite"
 	s.log, _ = logger.New(logCfg)
-	s.testObj = subroutines.NewWaitSubroutine(s.clientMock, s.kcpHelperMock, &s.cfg, "https://kcp.example.com")
+	s.testObj = NewWaitSubroutine(s.clientMock, s.kcpHelperMock, &s.cfg, "https://kcp.example.com")
 }
 
 func (s *WaitTestSuite) TearDownTest() {
@@ -118,7 +117,7 @@ func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
 	result, err := s.testObj.Process(ctx, instance)
 
 	s.Assert().Nil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Equal(subroutines.OK(), result)
 }
 
 func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
@@ -161,7 +160,7 @@ func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
 	result, err := s.testObj.Process(ctx, instance)
 
 	s.Assert().Nil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Equal(subroutines.OK(), result)
 }
 
 func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
@@ -209,9 +208,9 @@ func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
 
 	result, err := s.testObj.Process(ctx, instance)
 
-	s.Assert().NotNil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
-	s.Assert().Contains(err.Err().Error(), "is not ready yet")
+	s.Assert().Nil(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Contains(result.Message(), "is not ready yet")
 }
 
 func (s *WaitTestSuite) TestProcess_ListError() {
@@ -235,9 +234,9 @@ func (s *WaitTestSuite) TestProcess_ListError() {
 
 	result, err := s.testObj.Process(ctx, instance)
 
-	s.Assert().NotNil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
-	s.Assert().Contains(err.Err().Error(), "mock list error")
+	s.Assert().Nil(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Contains(result.Message(), "list resources")
 }
 
 func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
@@ -277,12 +276,12 @@ func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 	result, err := s.testObj.Process(ctx, instance)
 
 	s.Assert().Nil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Equal(subroutines.OK(), result)
 }
 
 func (s *WaitTestSuite) TestGetName() {
 	name := s.testObj.GetName()
-	s.Assert().Equal(subroutines.WaitSubroutineName, name)
+	s.Assert().Equal(WaitSubroutineName, name)
 }
 
 func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
@@ -328,7 +327,7 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 	result, err := s.testObj.Process(ctx, instance)
 
 	s.Assert().Nil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Equal(subroutines.OK(), result)
 }
 
 func (s *WaitTestSuite) TestFinalize() {
@@ -344,7 +343,7 @@ func (s *WaitTestSuite) TestFinalize() {
 	result, err := s.testObj.Finalize(ctx, instance)
 
 	s.Assert().Nil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Equal(subroutines.OK(), result)
 }
 
 func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
@@ -389,5 +388,5 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 	result, err := s.testObj.Process(ctx, instance)
 
 	s.Assert().Nil(err)
-	s.Assert().Equal(ctrl.Result{}, result)
+	s.Assert().Equal(subroutines.OK(), result)
 }

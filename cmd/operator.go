@@ -25,9 +25,11 @@ import (
 	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/golang-commons/traces"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -87,7 +89,16 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+
+	var leaderCfg *rest.Config
+	if defaultCfg.LeaderElectionEnabled {
+		leaderCfg, err = rest.InClusterConfig()
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get in-cluster config")
+		}
+	}
+
+	mgr, err := mcmanager.New(restCfg, nil, mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -98,6 +109,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
 		LeaderElection:                defaultCfg.LeaderElectionEnabled,
 		LeaderElectionID:              "81924e50.platform-mesh.org",
+		LeaderElectionConfig:          leaderCfg,
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
@@ -107,14 +119,22 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
-	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
-	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir)
+	if err != nil {
+		setupLog.Error(err, "unable to create PlatformMesh reconciler")
+		os.Exit(1)
+	}
+	if err := pmReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg)
-	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+	resourceReconciler, err := controller.NewResourceReconciler(mgr, &operatorCfg)
+	if err != nil {
+		setupLog.Error(err, "unable to create Resource reconciler")
+		os.Exit(1)
+	}
+	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
