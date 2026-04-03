@@ -10,7 +10,6 @@ spec:
   - v250704-6d57f16.contentconfigurations.ui.platform-mesh.io
   - v250725-732d200.providermetadatas.ui.platform-mesh.io
   - v260112-5925c7e.authorizationmodels.core.platform-mesh.io
-  - v250718-a64f278.stores.core.platform-mesh.io
   - v260213-fbdf981.invites.core.platform-mesh.io
   permissionClaims:
     - all: true
@@ -25,6 +24,10 @@ spec:
       group: core.platform-mesh.io
       identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
       resource: identityproviderconfigurations
+    - all: true
+      group: core.platform-mesh.io
+      identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
+      resource: stores
     - resource: apibindings
       group: apis.kcp.io
       all: true
