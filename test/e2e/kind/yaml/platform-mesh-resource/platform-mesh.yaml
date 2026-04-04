@@ -61,8 +61,10 @@ spec:
             clusterIP: "10.96.0.100"
     kcp:
       enabled: false
+      external: true
     kcp-operator:
       enabled: true
+      external: true
       imageResource:
         enabled: true
         labels:
