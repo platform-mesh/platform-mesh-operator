@@ -281,7 +281,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(ociRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(strings.TrimSuffix(inst.GetName(), "-chart"))
 	obj.SetNamespace(inst.GetNamespace())
 	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag")

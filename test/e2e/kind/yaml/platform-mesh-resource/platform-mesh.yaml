@@ -37,6 +37,7 @@ spec:
           packages:
             - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
+      external: true
       dependsOn:
         - name: kcp-operator
           namespace: default
@@ -61,8 +62,10 @@ spec:
             clusterIP: "10.96.0.100"
     kcp:
       enabled: false
+      external: true
     kcp-operator:
       enabled: true
+      external: true
       imageResource:
         enabled: true
         labels:
