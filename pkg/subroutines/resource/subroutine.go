@@ -200,7 +200,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(inst), obj)
+	err = r.mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
