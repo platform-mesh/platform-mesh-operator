@@ -133,7 +133,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
 
-	obj.SetName(inst.GetName())
+	obj.SetName(strings.TrimSuffix(inst.GetName(), "-chart"))
 	obj.SetNamespace(inst.GetNamespace())
 
 	forVal := getMetadataValue(inst, "for")
@@ -192,7 +192,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (ctrl.Result, errors.OperatorError) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(strings.TrimSuffix(inst.GetName(), "-chart"))
 	obj.SetNamespace(inst.GetNamespace())
 
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
@@ -230,7 +230,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(strings.TrimSuffix(inst.GetName(), "-chart"))
 	obj.SetNamespace(inst.GetNamespace())
 	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, url, "spec", "url")
@@ -329,7 +329,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	obj := &unstructured.Unstructured{}
 
 	obj.SetGroupVersionKind(gitRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(strings.TrimSuffix(inst.GetName(), "-chart"))
 	obj.SetNamespace(inst.GetNamespace())
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.mgr.GetClient(), obj, func() error {

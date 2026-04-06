@@ -37,7 +37,6 @@ spec:
           packages:
             - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
-      external: true
       dependsOn:
         - name: kcp-operator
           namespace: default
