@@ -181,6 +181,10 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
 
+	if getMetadataValue(inst, "unsuspend") == "true" {
+		_ = unstructured.SetNestedField(obj.Object, false, "spec", "suspend")
+	}
+
 	err = r.mgr.GetClient().Update(ctx, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
@@ -210,6 +214,10 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+	}
+
+	if getMetadataValue(inst, "unsuspend") == "true" {
+		_ = unstructured.SetNestedField(obj.Object, false, "spec", "suspend")
 	}
 
 	err = r.mgr.GetClient().Update(ctx, obj)
