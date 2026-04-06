@@ -133,7 +133,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
 
-	obj.SetName(strings.TrimSuffix(inst.GetName(), "-chart"))
+	obj.SetName(strings.TrimSuffix(inst.GetName(), "-image"))
 	obj.SetNamespace(inst.GetNamespace())
 
 	forVal := getMetadataValue(inst, "for")
