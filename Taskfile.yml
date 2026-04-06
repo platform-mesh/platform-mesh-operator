@@ -94,12 +94,22 @@ tasks:
                 kubectl get ocirepositories -A
                 kubectl -n platform-mesh-system describe PlatformMesh platform-mesh
                 echo "---Non-Running Pods"
-                kubectl get pods -A --field-selector=status.phase!=Running
+                kubectl get pods -A
                 kubectl get pods -A -o json | jq -r '.items[] | select(.status.phase != "Running") | "\(.metadata.namespace)/\(.metadata.name)"' | while read pod; do
                   echo "=== describe $pod ==="
                   kubectl describe pod -n "${pod%%/*}" "${pod##*/}"
                   echo "=== logs $pod ==="
                   kubectl logs -n "${pod%%/*}" "${pod##*/}" --all-containers --tail=50 2>&1 || true
+                done
+                echo "---OpenFGA Pods (all)"
+                kubectl get pods -n platform-mesh-system -l app.kubernetes.io/name=openfga -o wide 2>&1 || true
+                kubectl get pods -n platform-mesh-system -l app.kubernetes.io/name=postgres -o wide 2>&1 || true
+                kubectl get pods -n platform-mesh-system | grep -iE "openfga|postgres" || true
+                for pod in $(kubectl get pods -n platform-mesh-system -o name 2>/dev/null | grep -iE "openfga|postgres"); do
+                  echo "=== describe $pod ==="
+                  kubectl -n platform-mesh-system describe "$pod" 2>&1 || true
+                  echo "=== logs $pod ==="
+                  kubectl -n platform-mesh-system logs "$pod" --all-containers --tail=100 2>&1 || true
                 done
                 exit 1
               }
