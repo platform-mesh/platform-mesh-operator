@@ -120,6 +120,7 @@ spec:
           enabled: true
     openfga:
       enabled: true
+      suspend: true
       values:
         datastore:
           uri: "postgres://postgres:password@openfga-postgres.platform-mesh-system.svc.cluster.local:5432/postgres?sslmode=disable"
