@@ -90,6 +90,8 @@ tasks:
                   echo "=== $hr ==="
                   kubectl describe helmrelease -n "${hr%%/*}" "${hr##*/}"
                 done
+                kubectl get resources -A
+                kubectl get ocirepositories -A
                 exit 1
               }
             else
