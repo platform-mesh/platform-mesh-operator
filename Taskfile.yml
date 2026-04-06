@@ -82,9 +82,14 @@ tasks:
       - cmd: |
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
-              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 10m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
+                echo "---Describing non-ready HelmReleases"
+                kubectl get helmreleases -A -o json | jq -r '.items[] | select(.status.conditions // [] | map(select(.type=="Ready" and .status=="True")) | length == 0) | "\(.metadata.namespace)/\(.metadata.name)"' | while read hr; do
+                  echo "=== $hr ==="
+                  kubectl describe helmrelease -n "${hr%%/*}" "${hr##*/}"
+                done
                 exit 1
               }
             else
