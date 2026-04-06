@@ -82,7 +82,7 @@ tasks:
       - cmd: |
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
-              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 20m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 12m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
                 echo "---Describing non-ready HelmReleases"
@@ -93,6 +93,14 @@ tasks:
                 kubectl get resources -A
                 kubectl get ocirepositories -A
                 kubectl -n platform-mesh-system describe PlatformMesh platform-mesh
+                echo "---Non-Running Pods"
+                kubectl get pods -A --field-selector=status.phase!=Running
+                kubectl get pods -A -o json | jq -r '.items[] | select(.status.phase != "Running") | "\(.metadata.namespace)/\(.metadata.name)"' | while read pod; do
+                  echo "=== describe $pod ==="
+                  kubectl describe pod -n "${pod%%/*}" "${pod##*/}"
+                  echo "=== logs $pod ==="
+                  kubectl logs -n "${pod%%/*}" "${pod##*/}" --all-containers --tail=50 2>&1 || true
+                done
                 exit 1
               }
             else
