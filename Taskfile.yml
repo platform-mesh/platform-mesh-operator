@@ -22,7 +22,7 @@ tasks:
   setup:mockery:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/mockery || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vektra/mockery/v2@v2.53.3
+      - test -s {{.LOCAL_BIN}}/mockery || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vektra/mockery/v3@v3.7.0
   setup:go-test-coverage:
     internal: true
     cmds:
