@@ -3,8 +3,10 @@ package subroutines
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/url"
 	"os"
@@ -91,6 +93,133 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 		return nil, errors.Wrap(err, "Failed to get secret")
 	}
 	return &secret, nil
+}
+
+// AppendRootShardCAPEMIfMissing loads {RootShardName}-ca tls.crt and appends it to caData when the root cert is not already in the bundle.
+func AppendRootShardCAPEMIfMissing(ctx context.Context, k8sClient client.Client, operatorCfg *config.OperatorConfig, caData []byte) []byte {
+	log := logger.LoadLoggerFromContext(ctx)
+	if len(caData) == 0 {
+		log.Debug().Msg("Skip appending root-shard CA: empty CA data")
+		return caData
+	}
+	if operatorCfg == nil {
+		log.Debug().Msg("Skip appending root-shard CA: operator config is nil")
+		return caData
+	}
+	if operatorCfg.KCP.RootShardName == "" || operatorCfg.KCP.Namespace == "" {
+		log.Debug().
+			Str("rootShardName", operatorCfg.KCP.RootShardName).
+			Str("kcpNamespace", operatorCfg.KCP.Namespace).
+			Msg("Skip appending root-shard CA: empty KCP root shard name or namespace")
+		return caData
+	}
+	secretName := operatorCfg.KCP.RootShardName + "-ca"
+	ns := operatorCfg.KCP.Namespace
+	rootSecret, rootErr := GetSecret(k8sClient, secretName, ns)
+	if rootErr != nil {
+		if kerrors.IsNotFound(rootErr) {
+			log.Debug().
+				Str("secret", secretName).
+				Str("namespace", ns).
+				Msg("Root-shard CA secret not found, leaving CA bundle unchanged")
+		} else {
+			log.Warn().Err(rootErr).
+				Str("secret", secretName).
+				Str("namespace", ns).
+				Msg("Failed to get root-shard CA secret, leaving CA bundle unchanged")
+		}
+		return caData
+	}
+	if rootSecret == nil {
+		log.Debug().Str("secret", secretName).Str("namespace", ns).Msg("Root-shard CA secret is nil, leaving CA bundle unchanged")
+		return caData
+	}
+	rootPEM, ok := rootSecret.Data["tls.crt"]
+	if !ok || len(rootPEM) == 0 {
+		log.Debug().
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Root-shard CA secret has no tls.crt, leaving CA bundle unchanged")
+		return caData
+	}
+	merged, outcome, mergeErr := mergeRootCAPEMIfMissing(caData, rootPEM)
+	switch outcome {
+	case mergeRootCAAppended:
+		log.Info().
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Appended root-shard CA to PEM bundle")
+	case mergeRootCAUnchangedAlreadyPresent:
+		log.Debug().
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Root-shard CA already present in PEM bundle, not appended")
+	case mergeRootCAUnchangedInvalidRootPEM:
+		log.Warn().Err(mergeErr).
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Root-shard CA tls.crt is not valid PEM certificate data, not appended")
+	}
+	return merged
+}
+
+func firstCertificateFromPEM(pemData []byte) (*x509.Certificate, error) {
+	for {
+		var block *pem.Block
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return nil, fmt.Errorf("no PEM certificate found")
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		return x509.ParseCertificate(block.Bytes)
+	}
+}
+
+func pemBundleContainsCertificate(pemData []byte, want *x509.Certificate) bool {
+	if want == nil {
+		return false
+	}
+	for {
+		var block *pem.Block
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return false
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		if bytes.Equal(block.Bytes, want.Raw) {
+			return true
+		}
+	}
+}
+
+// mergeRootCAOutcome describes why mergeRootCAPEMIfMissing did or did not change caData.
+type mergeRootCAOutcome int
+
+const (
+	mergeRootCAUnchangedNoMerge mergeRootCAOutcome = iota // empty caData or rootPEM (caller typically skips logging)
+	mergeRootCAUnchangedInvalidRootPEM
+	mergeRootCAUnchangedAlreadyPresent
+	mergeRootCAAppended
+)
+
+// mergeRootCAPEMIfMissing appends rootPEM to caData when the root cert is not already in the bundle.
+// mergeErr is set only when outcome is mergeRootCAUnchangedInvalidRootPEM.
+func mergeRootCAPEMIfMissing(caData, rootPEM []byte) (merged []byte, outcome mergeRootCAOutcome, mergeErr error) {
+	if len(caData) == 0 || len(rootPEM) == 0 {
+		return caData, mergeRootCAUnchangedNoMerge, nil
+	}
+	rootCert, err := firstCertificateFromPEM(rootPEM)
+	if err != nil {
+		return caData, mergeRootCAUnchangedInvalidRootPEM, err
+	}
+	if pemBundleContainsCertificate(caData, rootCert) {
+		return caData, mergeRootCAUnchangedAlreadyPresent, nil
+	}
+	return append(append(append([]byte(nil), caData...), '\n'), rootPEM...), mergeRootCAAppended, nil
 }
 
 func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte, error) {

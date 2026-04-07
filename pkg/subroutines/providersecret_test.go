@@ -1795,6 +1795,11 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			return nil
 		},
 	).Once()
+	s.clientMock.EXPECT().Get(mock.Anything,
+		types.NamespacedName{Name: "root-ca", Namespace: "platform-mesh-system"},
+		mock.AnythingOfType("*v1.Secret")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "root-ca")).
+		Times(len(subroutines.DefaultProviderConnections) + 1) // default providers + one extra connection
 
 	opCfg := config.NewOperatorConfig()
 	s.clientMock.EXPECT().Get(mock.Anything,
