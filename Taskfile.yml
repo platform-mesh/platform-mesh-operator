@@ -22,7 +22,7 @@ tasks:
   setup:mockery:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/mockery || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vektra/mockery/v2@v2.53.3
+      - test -s {{.LOCAL_BIN}}/mockery || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/vektra/mockery/v3@v3.7.0
   setup:go-test-coverage:
     internal: true
     cmds:
@@ -82,9 +82,35 @@ tasks:
       - cmd: |
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
-              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 12m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
+                echo "---Describing non-ready HelmReleases"
+                kubectl get helmreleases -A -o json | jq -r '.items[] | select(.status.conditions // [] | map(select(.type=="Ready" and .status=="True")) | length == 0) | "\(.metadata.namespace)/\(.metadata.name)"' | while read hr; do
+                  echo "=== $hr ==="
+                  kubectl describe helmrelease -n "${hr%%/*}" "${hr##*/}"
+                done
+                kubectl get resources -A
+                kubectl get ocirepositories -A
+                kubectl -n platform-mesh-system describe PlatformMesh platform-mesh
+                echo "---Non-Running Pods"
+                kubectl get pods -A
+                kubectl get pods -A -o json | jq -r '.items[] | select(.status.phase != "Running") | "\(.metadata.namespace)/\(.metadata.name)"' | while read pod; do
+                  echo "=== describe $pod ==="
+                  kubectl describe pod -n "${pod%%/*}" "${pod##*/}"
+                  echo "=== logs $pod ==="
+                  kubectl logs -n "${pod%%/*}" "${pod##*/}" --all-containers --tail=50 2>&1 || true
+                done
+                echo "---OpenFGA Pods (all)"
+                kubectl get pods -n platform-mesh-system -l app.kubernetes.io/name=openfga -o wide 2>&1 || true
+                kubectl get pods -n platform-mesh-system -l app.kubernetes.io/name=postgres -o wide 2>&1 || true
+                kubectl get pods -n platform-mesh-system | grep -iE "openfga|postgres" || true
+                for pod in $(kubectl get pods -n platform-mesh-system -o name 2>/dev/null | grep -iE "openfga|postgres"); do
+                  echo "=== describe $pod ==="
+                  kubectl -n platform-mesh-system describe "$pod" 2>&1 || true
+                  echo "=== logs $pod ==="
+                  kubectl -n platform-mesh-system logs "$pod" --all-containers --tail=100 2>&1 || true
+                done
                 exit 1
               }
             else

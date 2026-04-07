@@ -1,21 +1,31 @@
-with-expecter: true
+template: testify
+template-data:
+  unroll-variadic: true
 packages:
-  # internal
   github.com/platform-mesh/platform-mesh-operator/pkg/subroutines:
     config:
       dir: pkg/subroutines/mocks
-      outpkg: mocks
+      pkgname: mocks
+      filename: mock_KcpHelper.go
     interfaces:
       KcpHelper:
         config:
-          mockname: KcpHelper
-
-  # external
+          structname: KcpHelper
   sigs.k8s.io/controller-runtime/pkg/client:
     config:
       dir: pkg/subroutines/mocks
-      outpkg: mocks
+      pkgname: mocks
+      filename: mock_Client.go
     interfaces:
       Client:
         config:
-          mockname: Client
+          structname: Client
+  sigs.k8s.io/controller-runtime/pkg/manager:
+    config:
+      dir: pkg/subroutines/mocks
+      pkgname: mocks
+      filename: mock_Manager.go
+    interfaces:
+      Manager:
+        config:
+          structname: Manager

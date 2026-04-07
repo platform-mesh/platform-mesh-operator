@@ -148,7 +148,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
 
-	obj.SetName(inst.GetName())
+	obj.SetName(trimPMSuffixes(inst.GetName()))
 	obj.SetNamespace(inst.GetNamespace())
 
 	forVal := getMetadataValue(inst, "for")
@@ -196,6 +196,10 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutines.StopWithRequeue(requeueShort, "set nested field"), nil
 	}
 
+	if getMetadataValue(inst, "unsuspend") == "true" {
+		_ = unstructured.SetNestedField(obj.Object, false, "spec", "suspend")
+	}
+
 	err = r.client.Update(ctx, obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
@@ -207,7 +211,7 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmReleaseGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(trimPMSuffixes(inst.GetName()))
 	obj.SetNamespace(inst.GetNamespace())
 
 	version, found, err := unstructured.NestedString(inst.Object, "status", "resource", "version")
@@ -215,7 +219,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		log.Info().Err(err).Msg("Failed to get version from Resource status")
 	}
 
-	err = r.client.Get(ctx, client.ObjectKeyFromObject(inst), obj)
+	err = r.client.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get HelmRelease")
 		return subroutines.OK(), err
@@ -225,6 +229,10 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set version in HelmRelease spec")
 		return subroutines.StopWithRequeue(requeueShort, "set chart version"), nil
+	}
+
+	if getMetadataValue(inst, "unsuspend") == "true" {
+		_ = unstructured.SetNestedField(obj.Object, false, "spec", "suspend")
 	}
 
 	err = r.client.Update(ctx, obj)
@@ -245,7 +253,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(trimPMSuffixes(inst.GetName()))
 	obj.SetNamespace(inst.GetNamespace())
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, url, "spec", "url")
@@ -296,7 +304,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(ociRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(trimPMSuffixes(inst.GetName()))
 	obj.SetNamespace(inst.GetNamespace())
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
 		err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag")
@@ -344,7 +352,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	obj := &unstructured.Unstructured{}
 
 	obj.SetGroupVersionKind(gitRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(trimPMSuffixes(inst.GetName()))
 	obj.SetNamespace(inst.GetNamespace())
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, obj, func() error {
@@ -371,4 +379,14 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 		return subroutines.OK(), err
 	}
 	return subroutines.OK(), nil
+}
+
+func trimPMSuffixes(name string) string {
+	if strings.HasSuffix(name, "-image") {
+		return strings.TrimSuffix(name, "-image")
+	}
+	if strings.HasSuffix(name, "-chart") {
+		return strings.TrimSuffix(name, "-chart")
+	}
+	return name
 }
