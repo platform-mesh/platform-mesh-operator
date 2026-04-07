@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
 
@@ -21,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -242,7 +244,9 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kcp-operator admin kubeconfig")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
 	}
-	if err := writeProviderSecretFromKcpOperatorAdminKubeconfig(ctx, r.client, adminKubeconfigData, host, cfg.CAData, pc.Secret, namespace); err != nil {
+	frontProxyCA := append([]byte(nil), cfg.CAData...)
+	frontProxyCA = AppendRootShardCAPEMIfMissing(ctx, r.client, &operatorCfg, frontProxyCA)
+	if err := writeProviderSecretFromKcpOperatorAdminKubeconfig(ctx, r.client, adminKubeconfigData, host, frontProxyCA, pc.Secret, namespace); err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
 		return subroutines.OK(), err
 	}
