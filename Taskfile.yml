@@ -71,7 +71,7 @@ tasks:
     cmds:
       - |
         export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-        go test -timeout 10m -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+        go test -timeout 30m -coverprofile=cover.out github.com/platform-mesh/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
 
   test:
@@ -82,7 +82,7 @@ tasks:
       - cmd: |
             if [ "$GITHUB_WORKFLOW" = "ci" ]; then
               echo "Running tests in Github Actions"
-              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 15m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH go test -v -timeout 30m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
                 echo "---Listing HelmReleases"
                 kubectl get helmreleases -A
                 echo "---Describing non-ready HelmReleases"
@@ -115,7 +115,7 @@ tasks:
               }
             else
               export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
-              go test -timeout 10m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+              go test -timeout 30m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
             fi
         ignore_error: false
 

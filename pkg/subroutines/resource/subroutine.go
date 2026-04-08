@@ -285,6 +285,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "imageReference")
 	if err != nil || !found {
 		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+		return subroutines.StopWithRequeue(requeueShort, "imageReference status"), nil
 	}
 
 	url = strings.TrimPrefix(url, "oci://")
@@ -339,12 +340,14 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutines.Result, error) {
 	commit, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "commit")
 	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get version from Resource status")
+		log.Info().Err(err).Msg("Failed to get commit from Resource status")
+		return subroutines.StopWithRequeue(requeueShort, "commit status"), nil
 	}
 
 	url, found, err := unstructured.NestedString(inst.Object, "status", "resource", "access", "repoUrl")
 	if err != nil || !found {
-		log.Info().Err(err).Msg("Failed to get imageReference from Resource status")
+		log.Info().Err(err).Msg("Failed to get repoUrl from Resource status")
+		return subroutines.StopWithRequeue(requeueShort, "repoUrl status"), nil
 	}
 
 	// Update or create oci repo
