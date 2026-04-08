@@ -12,7 +12,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 )
 
-// these are needed to allow testing private functions in the subroutines_test namespace
+// Test hooks for private functions (used by tests in package subroutines).
 
 func (r *KcpsetupSubroutine) GetCaBundle(ctx context.Context, webhookConfig *corev1alpha1.WebhookConfiguration) ([]byte, error) {
 	return r.getCaBundle(ctx, webhookConfig)

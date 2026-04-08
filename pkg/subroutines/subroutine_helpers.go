@@ -501,7 +501,8 @@ func ApplyManifestFromFile(
 		templateData["apiExportSystemPlatformMeshIoIdentityHash"] = apiExport.Status.IdentityHash
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
+	err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
+		client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
