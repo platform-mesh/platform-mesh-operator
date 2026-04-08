@@ -13,27 +13,26 @@ spec:
       name: platform-mesh
     referencePath: []
   featureToggles:
-   - name: "feature-enable-getting-started"
-  kcp:
-    {}
+  - name: "feature-enable-getting-started"
+  kcp: {}
   values:
     keycloak:
       enabled: true
       suspend: true
       imageResources:
-        - name: keycloak-image
-          annotations:
-            repo: oci
-            artifact: image
-            for: keycloak
-        - name: keycloak-postgresql-image
-          resource: postgresql-image
-          annotations:
-            repo: oci
-            artifact: image
-            for: keycloak
-            path: postgresql.image.tag
-            unsuspend: "true"
+      - name: keycloak-image
+        annotations:
+          repo: oci
+          artifact: image
+          for: keycloak
+      - name: keycloak-postgresql-image
+        resource: postgresql-image
+        annotations:
+          repo: oci
+          artifact: image
+          for: keycloak
+          path: postgresql.image.tag
+          unsuspend: "true"
       values:
         service:
           clusterIP: 10.96.0.110
@@ -50,14 +49,12 @@ spec:
       values:
         provider:
           packages:
-            - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
+          - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
       dependsOn:
-        - name: kcp-operator
-          namespace: default
+      - name: kcp-operator
+        namespace: default
       values:
-        kcp:
-          shards: []
         cors:
           enabled: true
           accessControlAllowOriginList:
@@ -74,6 +71,7 @@ spec:
         hostAliases:
           enabled: true
         kcp:
+          shards: []
           frontProxy:
             clusterIP: "10.96.0.100"
     kcp:
@@ -118,21 +116,21 @@ spec:
               sectionName: websecure
               kind: Gateway
         extraEnvVars:
-          - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-            value: https://${org-subdomain}portal.localhost:8443/iam/graphql
-          - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-            value: "https://${org-subdomain}portal.localhost:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
-          - name: NODE_EXTRA_CA_CERTS
-            value: /etc/ssl/certs/domain-ca.crt
+        - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
+          value: https://${org-subdomain}portal.localhost:8443/iam/graphql
+        - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
+          value: "https://${org-subdomain}portal.localhost:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+        - name: NODE_EXTRA_CA_CERTS
+          value: /etc/ssl/certs/domain-ca.crt
         extraVolumes:
-          - name: domain-ca
-            secret:
-              secretName: domain-certificate-ca
+        - name: domain-ca
+          secret:
+            secretName: domain-certificate-ca
         extraVolumeMounts:
-          - name: domain-ca
-            mountPath: /etc/ssl/certs/domain-ca.crt
-            subPath: tls.crt
-            readOnly: true
+        - name: domain-ca
+          mountPath: /etc/ssl/certs/domain-ca.crt
+          subPath: tls.crt
+          readOnly: true
         hostAliases:
           enabled: true
     openfga:
@@ -170,12 +168,12 @@ spec:
           virtualWorkspacesConfig:
             content:
               virtualWorkspaces:
-                - kubeconfig: /app/kubeconfig/kubeconfig
-                  name: contentconfigurations
-                  url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations
-                - kubeconfig: /app/kubeconfig/kubeconfig
-                  name: marketplace
-                  url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
+              - kubeconfig: /app/kubeconfig/kubeconfig
+                name: contentconfigurations
+                url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations
+              - kubeconfig: /app/kubeconfig/kubeconfig
+                name: marketplace
+                url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
             enabled: true
     iam-service:
       enabled: false
