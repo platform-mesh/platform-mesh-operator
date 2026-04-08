@@ -783,7 +783,7 @@ func (suite *ProvidersecretTestSuite) TestConstructor() {
 func (s *ProvidersecretTestSuite) TestFinalize() {
 	res, err := s.testObj.Finalize(context.Background(), nil)
 	s.Assert().Nil(err)
-	s.Assert().Equal(subroutines.OK(), res)
+	s.Assert().Equal(res, subroutines.OK())
 }
 
 func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
@@ -1799,16 +1799,16 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		types.NamespacedName{Name: "root-ca", Namespace: "platform-mesh-system"},
 		mock.AnythingOfType("*v1.Secret")).
 		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "root-ca")).
-		Times(len(subroutines.DefaultProviderConnections) + 1) // default providers + one extra connection
+		Times(len(DefaultProviderConnections) + 1) // default providers + one extra connection
 
 	opCfg := config.NewOperatorConfig()
 	s.clientMock.EXPECT().Get(mock.Anything,
-		types.NamespacedName{Name: subroutines.KcpOperatorAdminKubeconfigSecretName, Namespace: opCfg.KCP.Namespace},
+		types.NamespacedName{Name: KcpOperatorAdminKubeconfigSecretName, Namespace: opCfg.KCP.Namespace},
 		mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			*obj.(*corev1.Secret) = corev1.Secret{Data: map[string][]byte{"kubeconfig": secretKubeconfigData}}
 			return nil
-		}).Times(len(subroutines.DefaultProviderConnections) + 1)
+		}).Times(len(DefaultProviderConnections) + 1)
 
 	// Setup mock expectations for each provider connection
 	for _, pc := range DefaultProviderConnections {
