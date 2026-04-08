@@ -22,8 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -230,19 +228,11 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		log.Error().Err(err).Msg("Failed to join path for provider connection")
 		return subroutines.OK(), err
 	}
-	newConfig.Host = host
-
-	apiConfig := restConfigToAPIConfig(newConfig)
-	kcpConfigBytes, err := clientcmd.Write(*apiConfig)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to write kubeconfig")
-		return subroutines.OK(), err
-	}
 
 	adminKubeconfigData, err := loadKcpOperatorAdminKubeconfig(r.client, operatorCfg.KCP.Namespace)
 	if err != nil {
 		log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kcp-operator admin kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+		return subroutines.OK(), err
 	}
 	frontProxyCA := append([]byte(nil), cfg.CAData...)
 	frontProxyCA = AppendRootShardCAPEMIfMissing(ctx, r.client, &operatorCfg, frontProxyCA)
