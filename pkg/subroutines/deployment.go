@@ -118,15 +118,16 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 
 	// Wait for cert-manager to be ready
-	rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get cert-manager Release")
-		return subroutines.OK(), err
-	}
-	if !matchesConditionWithStatus(rel, "Ready", "True") {
-		log.Info().Msg("cert-manager Release is not ready..")
-		return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
-	}
+	// rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
+	// if err != nil {
+	// 	log.Error().Err(err).Msg("Failed to get cert-manager Release")
+	// 	return subroutines.OK(), err
+	// }
+	// if !matchesConditionWithStatus(rel, "Ready", "True") {
+	// 	log.Info().Msg("cert-manager Release is not ready..")
+	// 	return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
+	// }
+	fmt.Println("################################################################### NOT WAITING FOR CERT-MANAGER")
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
 	if err != nil {
