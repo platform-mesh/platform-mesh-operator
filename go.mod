@@ -24,7 +24,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/otiai10/copy v1.14.1
 	github.com/platform-mesh/golang-commons v0.14.0
-	github.com/platform-mesh/subroutines v0.2.1
+	github.com/platform-mesh/subroutines v0.2.6
 	github.com/rs/zerolog v1.35.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
