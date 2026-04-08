@@ -56,6 +56,8 @@ spec:
         - name: kcp-operator
           namespace: default
       values:
+        kcp:
+          shards: []
         cors:
           enabled: true
           accessControlAllowOriginList:
