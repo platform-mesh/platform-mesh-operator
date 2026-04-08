@@ -19,29 +19,35 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/filter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
-	"github.com/platform-mesh/golang-commons/logger"
+	"github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines/conditions"
+	"github.com/platform-mesh/subroutines/lifecycle"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 var (
 	pmReconcilerName = "PlatformMeshReconciler"
-	operatorName     = "platform-mesh-operator"
 )
 
 // PlatformMeshReconciler reconciles a PlatformMesh object
 type PlatformMeshReconciler struct {
-	lifecycle *controllerruntime.LifecycleManager
+	lifecycle   *lifecycle.Lifecycle
+	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
 }
 
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes,verbs=get;list;watch;create;update;patch;delete
@@ -57,50 +63,62 @@ type PlatformMeshReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
-func (r *PlatformMeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.PlatformMesh{})
+func (r *PlatformMeshReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+	return r.lifecycle.Reconcile(ctx, req)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PlatformMeshReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.CommonServiceConfig,
-	log *logger.Logger, eventPredicates ...predicate.Predicate) error {
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, pmReconcilerName, &corev1alpha1.PlatformMesh{},
-		cfg.DebugLabelValue, log, eventPredicates...)
-	if err != nil {
-		return err
+func (r *PlatformMeshReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconfig.CommonServiceConfig,
+	eventPredicates ...predicate.Predicate) error {
+	opts := controller.TypedOptions[mcreconcile.Request]{
+		MaxConcurrentReconciles: cfg.MaxConcurrentReconciles,
+		RateLimiter:             r.rateLimiter,
 	}
-	return builder.Complete(r)
+	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
+	return mcbuilder.ControllerManagedBy(mgr).
+		Named(pmReconcilerName).
+		For(&corev1alpha1.PlatformMesh{}).
+		WithOptions(opts).
+		WithEventFilter(predicate.And(predicates...)).
+		Complete(r)
 }
 
-func NewPlatformMeshReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) *PlatformMeshReconciler {
+func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string) (*PlatformMeshReconciler, error) {
 	kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	if cfg.KCP.Url != "" {
 		kcpUrl = cfg.KCP.Url
 	}
 
-	var subs []subroutine.Subroutine
+	localCl := mgr.GetLocalManager().GetClient()
+
+	var subs []subroutines.Subroutine
 	if cfg.Subroutines.Deployment.Enabled {
-		subs = append(subs, subroutines.NewDeploymentSubroutine(mgr.GetClient(), commonCfg, cfg))
+		subs = append(subs, pmsubs.NewDeploymentSubroutine(localCl, commonCfg, cfg))
 	}
 	if cfg.Subroutines.KcpSetup.Enabled {
-		subs = append(subs, subroutines.NewKcpsetupSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, dir+"/manifests/kcp", kcpUrl))
+		subs = append(subs, pmsubs.NewKcpsetupSubroutine(localCl, &pmsubs.Helper{}, cfg, dir+"/manifests/kcp", kcpUrl))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
-		subs = append(subs, subroutines.NewProviderSecretSubroutine(mgr.GetClient(), &subroutines.Helper{}, subroutines.DefaultHelmGetter{}, kcpUrl))
+		subs = append(subs, pmsubs.NewProviderSecretSubroutine(localCl, &pmsubs.Helper{}, pmsubs.DefaultHelmGetter{}, kcpUrl))
 	}
 	if cfg.Subroutines.FeatureToggles.Enabled {
-		subs = append(subs, subroutines.NewFeatureToggleSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, kcpUrl))
+		subs = append(subs, pmsubs.NewFeatureToggleSubroutine(localCl, &pmsubs.Helper{}, cfg, kcpUrl))
 	}
 	if cfg.Subroutines.Wait.Enabled {
-		subs = append(subs, subroutines.NewWaitSubroutine(mgr.GetClient(), &subroutines.Helper{}, cfg, kcpUrl))
+		subs = append(subs, pmsubs.NewWaitSubroutine(localCl, &pmsubs.Helper{}, cfg, kcpUrl))
 	}
+
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
+	if err != nil {
+		return nil, fmt.Errorf("creating rate limiter: %w", err)
+	}
+
+	lc := lifecycle.New(mgr, pmReconcilerName, func() client.Object {
+		return &corev1alpha1.PlatformMesh{}
+	}, subs...).WithConditions(conditions.NewManager())
+
 	return &PlatformMeshReconciler{
-		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
-			pmReconcilerName, mgr.GetClient(), log).WithConditionManagement().WithStaticThenExponentialRateLimiter(
-			ratelimiter.WithRequeueDelay(5*time.Second),
-			ratelimiter.WithStaticWindow(10*time.Minute),
-			ratelimiter.WithExponentialInitialBackoff(10*time.Second),
-			ratelimiter.WithExponentialMaxBackoff(120*time.Second),
-		),
-	}
+		lifecycle:   lc,
+		rateLimiter: rl,
+	}, nil
 }

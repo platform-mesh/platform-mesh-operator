@@ -31,7 +31,8 @@ func ApplyManifestFromFile(
 		if obj.Object == nil {
 			continue
 		}
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"))
+		err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
+			client.FieldOwner("platform-mesh-operator"))
 		if err != nil {
 			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}

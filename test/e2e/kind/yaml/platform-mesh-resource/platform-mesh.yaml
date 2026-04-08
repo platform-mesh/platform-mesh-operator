@@ -19,6 +19,21 @@ spec:
   values:
     keycloak:
       enabled: true
+      suspend: true
+      imageResources:
+        - name: keycloak-image
+          annotations:
+            repo: oci
+            artifact: image
+            for: keycloak
+        - name: keycloak-postgresql-image
+          resource: postgresql-image
+          annotations:
+            repo: oci
+            artifact: image
+            for: keycloak
+            path: postgresql.image.tag
+            unsuspend: "true"
       values:
         service:
           clusterIP: 10.96.0.110

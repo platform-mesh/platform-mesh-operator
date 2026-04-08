@@ -1,7 +1,8 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/logger"
@@ -10,10 +11,10 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -26,12 +27,27 @@ type DeployTestSuite struct {
 	suite.Suite
 	clientMock *mocks.Client
 	helperMock *mocks.KcpHelper
-	testObj    *subroutines.DeploymentSubroutine
+	testObj    *DeploymentSubroutine
 	log        *logger.Logger
 }
 
 func TestDeployTestSuite(t *testing.T) {
 	suite.Run(t, new(DeployTestSuite))
+}
+
+// unstructuredFromApplyConfig unwraps objects produced by
+// client.ApplyConfigurationFromUnstructured (unexported wrapper type).
+func unstructuredFromApplyConfig(obj k8sruntime.ApplyConfiguration) *unstructured.Unstructured {
+	v := reflect.ValueOf(obj)
+	if v.Kind() != reflect.Pointer || v.IsNil() {
+		return nil
+	}
+	f := v.Elem().FieldByName("Unstructured")
+	if !f.IsValid() || f.IsNil() {
+		return nil
+	}
+	u, _ := f.Interface().(*unstructured.Unstructured)
+	return u
 }
 
 func (s *DeployTestSuite) SetupTest() {
@@ -48,7 +64,7 @@ func (s *DeployTestSuite) SetupTest() {
 		WorkspaceDir: "../../",
 	}
 
-	s.testObj = subroutines.NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
+	s.testObj = NewDeploymentSubroutine(s.clientMock, &cfg, &operatorCfg)
 }
 
 func (s *DeployTestSuite) Test_applyReleaseWithValues() {
@@ -64,10 +80,10 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 
 	// mocks
 	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "rebac-authz-webhook-cert"}, mock.Anything).Return(nil).Twice()
-	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-			// Simulate a successful patch operation
-			hr := obj.(*unstructured.Unstructured)
+	s.clientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj k8sruntime.ApplyConfiguration, opts ...client.ApplyOption) error {
+			hr := unstructuredFromApplyConfig(obj)
+			s.Require().NotNil(hr)
 
 			// Extract .spec
 			spec, found, err := unstructured.NestedFieldNoCopy(hr.Object, "spec")
@@ -94,7 +110,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	).Once()
 
 	// Create DeploymentComponents Version
-	templateVars, err := subroutines.TemplateVars(ctx, inst, s.clientMock)
+	templateVars, err := TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
 	vals := apiextensionsv1.JSON{Raw: []byte(`{"services": {"platform-mesh-operator": {"version": "v1.0.0"}}}`)}
@@ -104,7 +120,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	}
 
-	mergedValues, err := subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err := MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
@@ -115,13 +131,13 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		Port: 443,
 	}
 
-	templateVars, err = subroutines.TemplateVars(ctx, inst, s.clientMock)
+	templateVars, err = TemplateVars(ctx, inst, s.clientMock)
 	s.Assert().NoError(err, "TemplateVars should not return an error")
 
-	s.clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-			// Simulate a successful patch operation
-			hr := obj.(*unstructured.Unstructured)
+	s.clientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, obj k8sruntime.ApplyConfiguration, opts ...client.ApplyOption) error {
+			hr := unstructuredFromApplyConfig(obj)
+			s.Require().NotNil(hr)
 
 			// Extract .spec
 			spec, found, err := unstructured.NestedFieldNoCopy(hr.Object, "spec")
@@ -147,7 +163,7 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 		},
 	).Once()
 
-	mergedValues, err = subroutines.MergeValuesAndServices(instance, templateVars)
+	mergedValues, err = MergeValuesAndServices(instance, templateVars)
 	s.Assert().NoError(err, "MergeValuesAndServices should not return an error")
 
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)

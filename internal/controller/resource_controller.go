@@ -18,18 +18,23 @@ package controller
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
+	"github.com/platform-mesh/golang-commons/controller/filter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
-	"github.com/platform-mesh/golang-commons/logger"
+	"github.com/platform-mesh/subroutines"
+	"github.com/platform-mesh/subroutines/lifecycle"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
@@ -39,54 +44,66 @@ var (
 	resourceReconcilerName = "ResourceReconciler"
 )
 
-// ResourceReconciler reconciles a PlatformMesh object
-type ResourceReconciler struct {
-	lifecycle *controllerruntime.LifecycleManager
-}
-
 var gvk = schema.GroupVersionKind{
 	Group:   "delivery.ocm.software",
 	Version: "v1alpha1",
 	Kind:    "Resource",
 }
 
-func (r *ResourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(gvk)
-	return r.lifecycle.Reconcile(ctx, req, obj)
+// ResourceReconciler reconciles OCM Resource objects
+type ResourceReconciler struct {
+	lifecycle   *lifecycle.Lifecycle
+	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
+}
+
+func (r *ResourceReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+	return r.lifecycle.Reconcile(ctx, req)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager, cfg *pmconfig.CommonServiceConfig,
-	log *logger.Logger, eventPredicates ...predicate.Predicate) error {
+func (r *ResourceReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconfig.CommonServiceConfig,
+	eventPredicates ...predicate.Predicate) error {
 
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(gvk)
+	localMgr := mgr.GetLocalManager()
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(gvk)
 
-	mgr.GetScheme().AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
-	mgr.GetScheme().AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
+	localMgr.GetScheme().AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+	localMgr.GetScheme().AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
 
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, resourceReconcilerName, obj,
-		cfg.DebugLabelValue, log, eventPredicates...)
-	if err != nil {
-		return err
+	opts := controller.TypedOptions[mcreconcile.Request]{
+		MaxConcurrentReconciles: cfg.MaxConcurrentReconciles,
+		RateLimiter:             r.rateLimiter,
 	}
-	return builder.Complete(r)
+	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
+	return mcbuilder.ControllerManagedBy(mgr).
+		Named(resourceReconcilerName).
+		For(u).
+		WithOptions(opts).
+		WithEventFilter(predicate.And(predicates...)).
+		Complete(r)
 }
 
-func NewResourceReconciler(log *logger.Logger, mgr ctrl.Manager, cfg *config.OperatorConfig) *ResourceReconciler {
-	var subs []subroutine.Subroutine
+// NewResourceReconciler wires the read-only Resource subroutine lifecycle.
+func NewResourceReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig) (*ResourceReconciler, error) {
+	localCl := mgr.GetLocalManager().GetClient()
+	subs := []subroutines.Subroutine{
+		resource.NewResourceSubroutine(localCl),
+	}
 
-	subs = append(subs, resource.NewResourceSubroutine(mgr))
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
+	if err != nil {
+		return nil, fmt.Errorf("creating rate limiter: %w", err)
+	}
+
+	lc := lifecycle.New(mgr, resourceReconcilerName, func() client.Object {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(gvk)
+		return u
+	}, subs...).WithReadOnly()
 
 	return &ResourceReconciler{
-		lifecycle: controllerruntime.NewLifecycleManager(subs, operatorName,
-			resourceReconcilerName, mgr.GetClient(), log).WithReadOnly().
-			WithStaticThenExponentialRateLimiter(
-				ratelimiter.WithRequeueDelay(5*time.Second),
-				ratelimiter.WithStaticWindow(10*time.Minute),
-				ratelimiter.WithExponentialInitialBackoff(10*time.Second),
-				ratelimiter.WithExponentialMaxBackoff(120*time.Second),
-			),
-	}
+		lifecycle:   lc,
+		rateLimiter: rl,
+	}, nil
 }
