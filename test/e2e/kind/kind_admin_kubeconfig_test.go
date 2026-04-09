@@ -7,7 +7,6 @@ import (
 	"time"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,21 +20,24 @@ const (
 	kindE2EAdminProviderWorkspacePath        = "root:platform-mesh-system"
 )
 
-var adminE2EKcpClusterAdminCertSearchNamespaces = []string{e2ePlatformMeshNamespace}
-
-func (s *KindTestSuite) TestAdminKubeconfig01SelfContained() {
-	s.logger.Info().Str("kind_e2e", "TestAdminKubeconfig01SelfContained").Msg("start")
+// It registers an extra AdminAuth ProviderConnection so the operator
+// materializes a provider kubeconfig from kubeconfig-kcp-admin (admin path), then verifies TLS + API access.
+func (s *KindTestSuite) Test03AdminKubeconfigSelfContained() {
+	s.logger.Info().Str("kind_e2e", "Test03AdminKubeconfigSelfContained").Msg("start")
 	ctx := context.Background()
+	s.runAdminKubeconfigSelfContainedE2E(ctx)
+	s.logger.Info().Str("kind_e2e", "Test03AdminKubeconfigSelfContained").Msg("done")
+}
 
-	s.adminE2EWaitKubeconfigKcpAdminSecret(ctx)
-	s.adminE2EWaitPlatformMeshReady(ctx)
-	s.adminE2EEnsureAdminProviderConnection(ctx)
+func (s *KindTestSuite) runAdminKubeconfigSelfContainedE2E(ctx context.Context) {
+	s.adminE2EPatchExtraProviderConnectionForAdminKubeconfig(ctx)
 	s.adminE2EWaitAdminProviderKubeconfigSecret(ctx)
 
 	sec := s.adminE2ERequireAdminProviderSecret(ctx)
 	kcfg := sec.Data["kubeconfig"]
 
-	kcfg, err := normalizeAdminProviderKubeconfigForLocalRun(kcfg)
+	var err error
+	kcfg, err = normalizeAdminProviderKubeconfigForLocalRun(kcfg)
 	s.Require().NoError(err, "normalize admin provider kubeconfig for host must succeed")
 
 	dyn, err := dynamicClientForKubeconfig(kcfg)
@@ -48,61 +50,9 @@ func (s *KindTestSuite) TestAdminKubeconfig01SelfContained() {
 		}(),
 		"list accounts.core.platform-mesh.io with admin provider kubeconfig must succeed",
 	)
-
-	s.logger.Info().Str("kind_e2e", "TestAdminKubeconfig01SelfContained").Msg("done")
 }
 
-func (s *KindTestSuite) adminE2EWaitKubeconfigKcpAdminSecret(ctx context.Context) {
-	name := subroutines.KcpOperatorAdminKubeconfigSecretName
-	s.Eventually(func() bool {
-		for _, ns := range adminE2EKcpClusterAdminCertSearchNamespaces {
-			sec := &corev1.Secret{}
-			if err := s.client.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, sec); err != nil {
-				continue
-			}
-			if len(sec.Data["kubeconfig"]) == 0 {
-				s.logger.Info().Str("secret", name).Str("namespace", ns).Msg("admin e2e: kubeconfig key empty")
-				continue
-			}
-			s.logger.Info().
-				Str("kind_e2e", "TestAdminKubeconfig01SelfContained").
-				Str("secret", name).
-				Str("namespace", ns).
-				Msg("kcp-operator admin kubeconfig secret ready")
-			return true
-		}
-		s.logger.Warn().
-			Str("secret", name).
-			Strs("searchedNamespaces", adminE2EKcpClusterAdminCertSearchNamespaces).
-			Msg("admin e2e: kubeconfig-kcp-admin not ready")
-		return false
-	}, 20*time.Minute, 10*time.Second,
-		"Secret %s with non-empty data[kubeconfig] not found in %v (required for admin provider secrets)",
-		name, adminE2EKcpClusterAdminCertSearchNamespaces)
-}
-
-func (s *KindTestSuite) adminE2EWaitPlatformMeshReady(ctx context.Context) {
-	s.Eventually(func() bool {
-		pm := corev1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
-			Name:      e2ePlatformMeshName,
-			Namespace: e2ePlatformMeshNamespace,
-		}, &pm)
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("admin e2e: get PlatformMesh")
-			return false
-		}
-		for _, condition := range pm.Status.Conditions {
-			if condition.Type == "Ready" && condition.Status == "True" {
-				s.logger.Info().Msg("admin e2e: PlatformMesh Ready")
-				return true
-			}
-		}
-		return false
-	}, 25*time.Minute, 10*time.Second, "PlatformMesh %s/%s not Ready", e2ePlatformMeshNamespace, e2ePlatformMeshName)
-}
-
-func (s *KindTestSuite) adminE2EEnsureAdminProviderConnection(ctx context.Context) {
+func (s *KindTestSuite) adminE2EPatchExtraProviderConnectionForAdminKubeconfig(ctx context.Context) {
 	pm := &corev1alpha1.PlatformMesh{}
 	err := s.client.Get(ctx, client.ObjectKey{
 		Name:      e2ePlatformMeshName,

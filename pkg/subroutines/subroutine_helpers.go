@@ -222,6 +222,30 @@ func mergeRootCAPEMIfMissing(caData, rootPEM []byte) (merged []byte, outcome mer
 	return append(append(append([]byte(nil), caData...), '\n'), rootPEM...), mergeRootCAAppended, nil
 }
 
+// appendPEMCertsDedupe appends PEM CERTIFICATE blocks from extra to bundle when the cert is not already present.
+func appendPEMCertsDedupe(bundle, extra []byte) []byte {
+	rest := extra
+	for len(rest) > 0 {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+		if pemBundleContainsCertificate(bundle, cert) {
+			continue
+		}
+		bundle = append(bundle, pem.EncodeToMemory(block)...)
+	}
+	return bundle
+}
+
 func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte, error) {
 	funcMap := template.FuncMap{
 		"indent": func(spaces int, s string) string {

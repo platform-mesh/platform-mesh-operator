@@ -20,6 +20,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -234,9 +235,12 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to read kcp-operator admin kubeconfig")
 		return subroutines.OK(), err
 	}
-	frontProxyCA := append([]byte(nil), cfg.CAData...)
-	frontProxyCA = AppendRootShardCAPEMIfMissing(ctx, r.client, &operatorCfg, frontProxyCA)
-	if err := writeProviderSecretFromKcpOperatorAdminKubeconfig(ctx, r.client, adminKubeconfigData, host, frontProxyCA, pc.Secret, namespace); err != nil {
+	trustBundle, err := buildAdminAuthTrustBundle(ctx, r.client, adminKubeconfigData, &operatorCfg)
+	if err != nil {
+		log.Error().Err(err).Str("secret", pc.Secret).Msg("Failed to build admin auth trust bundle from kubeconfig-kcp-admin and root shard CA")
+		return subroutines.OK(), err
+	}
+	if err := writeProviderSecretFromKcpOperatorAdminKubeconfig(ctx, r.client, adminKubeconfigData, host, trustBundle, pc.Secret, namespace); err != nil {
 		log.Error().Err(err).Msg("Failed to create or update secret")
 		return subroutines.OK(), err
 	}
@@ -327,6 +331,45 @@ func loadKcpOperatorAdminKubeconfig(k8sClient client.Client, namespace string) (
 		return nil, fmt.Errorf("secret %s/%s missing key kubeconfig", namespace, KcpOperatorAdminKubeconfigSecretName)
 	}
 	return secret.Data["kubeconfig"], nil
+}
+
+// buildAdminAuthTrustBundle merges cluster certificate-authority-data from kubeconfig-kcp-admin with PEMs from
+// Secret {RootShardName}-ca (tls.crt, and ca.crt when it differs from tls.crt).
+func buildAdminAuthTrustBundle(ctx context.Context, k8sClient client.Client, adminKubeconfigData []byte, operatorCfg *config.OperatorConfig) ([]byte, error) {
+	apiCfg, err := clientcmd.Load(adminKubeconfigData)
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig-kcp-admin for CA: %w", err)
+	}
+	var bundle []byte
+	for _, c := range apiCfg.Clusters {
+		if c == nil || len(c.CertificateAuthorityData) == 0 {
+			continue
+		}
+		bundle = appendPEMCertsDedupe(bundle, c.CertificateAuthorityData)
+	}
+	if operatorCfg != nil && operatorCfg.KCP.RootShardName != "" && operatorCfg.KCP.Namespace != "" {
+		secretName := operatorCfg.KCP.RootShardName + "-ca"
+		var rootSecret corev1.Secret
+		key := types.NamespacedName{Name: secretName, Namespace: operatorCfg.KCP.Namespace}
+		if err := k8sClient.Get(ctx, key, &rootSecret); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return nil, fmt.Errorf("get %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+			}
+		} else if rootSecret.Data != nil {
+			tlsData := rootSecret.Data["tls.crt"]
+			caKey := rootSecret.Data["ca.crt"]
+			if len(tlsData) > 0 {
+				bundle = appendPEMCertsDedupe(bundle, tlsData)
+			}
+			if len(caKey) > 0 && (len(tlsData) == 0 || string(caKey) != string(tlsData)) {
+				bundle = appendPEMCertsDedupe(bundle, caKey)
+			}
+		}
+	}
+	if len(bundle) == 0 {
+		return nil, fmt.Errorf("no CA certificates after merging kubeconfig-kcp-admin clusters and %s-ca", operatorCfg.KCP.RootShardName)
+	}
+	return bundle, nil
 }
 
 func writeProviderSecretFromKcpOperatorAdminKubeconfig(
