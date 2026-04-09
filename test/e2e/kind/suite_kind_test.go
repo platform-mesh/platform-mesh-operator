@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
@@ -42,7 +43,7 @@ import (
 )
 
 type KindTestSuite struct {
-	kubernetesManager ctrl.Manager
+	kubernetesManager mcmanager.Manager
 	suite.Suite
 	client client.Client
 	config *rest.Config
@@ -562,8 +563,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 			BindAddress: "0",
 		},
 	}
-	mgr, err := ctrl.NewManager(s.config, options)
-
+	mgr, err := mcmanager.New(s.config, nil, options)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create manager")
 		return
@@ -571,15 +571,22 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	s.kubernetesManager = mgr
 
-	pmReconciler := controller.NewPlatformMeshReconciler(s.logger, s.kubernetesManager, &appConfig, commonConfig, "../../../")
-	err = pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger)
+	pmReconciler, err := controller.NewPlatformMeshReconciler(s.kubernetesManager, &appConfig, commonConfig, "../../../")
 	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to create PlatformMesh reconciler")
+		return
+	}
+	if err := pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(s.logger, s.kubernetesManager, &appConfig)
-	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig, s.logger); err != nil {
+	resourceReconciler, err := controller.NewResourceReconciler(s.kubernetesManager, &appConfig)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("unable to create Resource reconciler")
+		return
+	}
+	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return
 	}
