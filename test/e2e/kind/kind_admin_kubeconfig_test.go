@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"strings"
 	"time"
@@ -20,7 +22,9 @@ const (
 	kindE2EAdminProviderWorkspacePath        = "root:platform-mesh-system"
 )
 
-// It registers an extra AdminAuth ProviderConnection so the operator
+// Test03AdminKubeconfigSelfContained runs after Test01/Test02 (lexical order). Those tests and the Kind
+// suite already bring up PlatformMesh and kcp-operator secrets; this test does not re-wait for Ready
+// or for kubeconfig-kcp-admin. It registers an extra AdminAuth ProviderConnection so the operator
 // materializes a provider kubeconfig from kubeconfig-kcp-admin (admin path), then verifies TLS + API access.
 func (s *KindTestSuite) Test03AdminKubeconfigSelfContained() {
 	s.logger.Info().Str("kind_e2e", "Test03AdminKubeconfigSelfContained").Msg("start")
@@ -35,6 +39,7 @@ func (s *KindTestSuite) runAdminKubeconfigSelfContainedE2E(ctx context.Context) 
 
 	sec := s.adminE2ERequireAdminProviderSecret(ctx)
 	kcfg := sec.Data["kubeconfig"]
+	s.assertGeneratedAdminProviderKubeconfigCABundleFormsChain(kcfg)
 
 	var err error
 	kcfg, err = normalizeAdminProviderKubeconfigForLocalRun(kcfg)
@@ -60,6 +65,8 @@ func (s *KindTestSuite) adminE2EPatchExtraProviderConnectionForAdminKubeconfig(c
 	}, pm)
 	s.Require().NoError(err, "get PlatformMesh for admin e2e provider connection")
 
+	// ExtraProviderConnections is the supported way to add a one-off AdminAuth provider secret without
+	// changing the chart defaults; the operator reconciles it like other admin kubeconfigs.
 	desired := corev1alpha1.ProviderConnection{
 		Path:              kindE2EAdminProviderWorkspacePath,
 		Secret:            kindE2EAdminProviderKubeconfigSecretName,
@@ -127,4 +134,80 @@ func normalizeAdminProviderKubeconfigForLocalRun(kubeconfigBytes []byte) ([]byte
 	}
 	cluster.Server = server
 	return clientcmd.Write(*cfg)
+}
+
+func parsePEMCertificates(pemBytes []byte) ([]*x509.Certificate, error) {
+	var certs []*x509.Certificate
+	rest := pemBytes
+	for len(rest) > 0 {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		c, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		certs = append(certs, c)
+	}
+	return certs, nil
+}
+
+func isSelfSigned(cert *x509.Certificate) bool {
+	if cert == nil {
+		return false
+	}
+	if cert.Subject.String() != cert.Issuer.String() {
+		return false
+	}
+	return cert.CheckSignatureFrom(cert) == nil
+}
+
+func (s *KindTestSuite) assertGeneratedAdminProviderKubeconfigCABundleFormsChain(providerKubeconfig []byte) {
+	s.T().Helper()
+
+	providerCfg, err := clientcmd.Load(providerKubeconfig)
+	s.Require().NoError(err, "parse generated admin provider kubeconfig")
+	s.Require().NotEmpty(providerCfg.CurrentContext, "generated kubeconfig must have current-context")
+	providerCtx := providerCfg.Contexts[providerCfg.CurrentContext]
+	s.Require().NotNil(providerCtx, "generated kubeconfig must contain current context")
+	providerCluster := providerCfg.Clusters[providerCtx.Cluster]
+	s.Require().NotNil(providerCluster, "generated kubeconfig must contain current cluster")
+	s.Require().NotEmpty(providerCluster.CertificateAuthorityData, "generated kubeconfig must contain certificate-authority-data")
+
+	providerCAs, err := parsePEMCertificates(providerCluster.CertificateAuthorityData)
+	s.Require().NoError(err, "parse generated kubeconfig CA bundle PEM")
+	s.Require().GreaterOrEqual(len(providerCAs), 1, "generated CA bundle must contain at least one cert")
+
+	// Cryptographic consistency: every non-self-signed cert must have a signing issuer in the bundle.
+	bySubject := make(map[string][]*x509.Certificate, len(providerCAs))
+	for _, c := range providerCAs {
+		if c != nil {
+			bySubject[c.Subject.String()] = append(bySubject[c.Subject.String()], c)
+		}
+	}
+	foundRoot := false
+	for _, c := range providerCAs {
+		if isSelfSigned(c) {
+			foundRoot = true
+			continue
+		}
+		issuers := bySubject[c.Issuer.String()]
+		ok := false
+		for _, iss := range issuers {
+			if iss == nil {
+				continue
+			}
+			if c.CheckSignatureFrom(iss) == nil {
+				ok = true
+				break
+			}
+		}
+		s.Require().True(ok, "generated CA bundle contains cert without matching signing issuer in bundle (subject=%q issuer=%q)", c.Subject.String(), c.Issuer.String())
+	}
+	s.Require().True(foundRoot, "generated CA bundle must contain at least one self-signed root cert")
 }
