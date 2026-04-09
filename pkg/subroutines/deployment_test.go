@@ -2,11 +2,14 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"reflect"
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -169,4 +172,101 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
 
+}
+
+func Test_getCertManagerReleaseConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		infraValues        apiextensionsv1.JSON
+		expectedName       string
+		expectedNamespace  string
+		expectError        string
+	}{
+		{
+			name:              "defaults when infra values are empty",
+			infraValues:       apiextensionsv1.JSON{},
+			expectedName:      "cert-manager",
+			expectedNamespace: "default",
+		},
+		{
+			name: "uses explicit release-name and release-namespace",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"cert-manager": {
+						"release-name": "cm-custom",
+						"release-namespace": "ops-system"
+					}
+				}`),
+			},
+			expectedName:      "cm-custom",
+			expectedNamespace: "ops-system",
+		},
+		{
+			name: "uses default namespace when only release-name is set",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"cert-manager": {
+						"release-name": "cm-custom"
+					}
+				}`),
+			},
+			expectedName:      "cm-custom",
+			expectedNamespace: "default",
+		},
+		{
+			name: "supports certManager aliases",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"name": "cm-alias",
+						"targetNamespace": "cert-manager"
+					}
+				}`),
+			},
+			expectedName:      "cm-alias",
+			expectedNamespace: "cert-manager",
+		},
+		{
+			name: "fails on invalid cert-manager type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"cert-manager": true
+				}`),
+			},
+			expectError: "spec.infraValues.cert-manager has invalid type",
+		},
+		{
+			name: "fails on invalid release-name type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"cert-manager": {
+						"release-name": true
+					}
+				}`),
+			},
+			expectError: "spec.infraValues.cert-manager.release-name has invalid type",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			actualName, actualNamespace, err := getCertManagerReleaseConfig(
+				tt.infraValues,
+			)
+
+			if tt.expectError != "" {
+				require.EqualError(t, err, tt.expectError)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedName, actualName)
+			require.Equal(t, tt.expectedNamespace, actualNamespace)
+		})
+	}
 }

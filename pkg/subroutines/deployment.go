@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,8 @@ import (
 )
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
+const defaultCertManagerReleaseName = "cert-manager"
+const defaultCertManagerReleaseNamespace = "default"
 
 type DeploymentSubroutine struct {
 	client             client.Client
@@ -117,17 +120,22 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 		return subroutines.StopWithRequeue(DefaultRequeueInterval, "platform-mesh-operator-infra-components Release is not ready"), nil
 	}
 
+	certManagerReleaseName, certManagerReleaseNamespace, err := getCertManagerReleaseConfig(mergedInfraValues)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to parse cert-manager release config")
+		return subroutines.OK(), err
+	}
+
 	// Wait for cert-manager to be ready
-	// rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
-	// if err != nil {
-	// 	log.Error().Err(err).Msg("Failed to get cert-manager Release")
-	// 	return subroutines.OK(), err
-	// }
-	// if !matchesConditionWithStatus(rel, "Ready", "True") {
-	// 	log.Info().Msg("cert-manager Release is not ready..")
-	// 	return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
-	// }
-	fmt.Println("################################################################### NOT WAITING FOR CERT-MANAGER")
+	rel, err = getHelmRelease(ctx, r.client, certManagerReleaseName, certManagerReleaseNamespace)
+	if err != nil {
+		log.Error().Err(err).Str("name", certManagerReleaseName).Str("namespace", certManagerReleaseNamespace).Msg("Failed to get cert-manager Release")
+		return subroutines.OK(), err
+	}
+	if !matchesConditionWithStatus(rel, "Ready", "True") {
+		log.Info().Str("name", certManagerReleaseName).Str("namespace", certManagerReleaseNamespace).Msg("cert-manager Release is not ready")
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("cert-manager Release %s/%s is not ready", certManagerReleaseNamespace, certManagerReleaseName)), nil
+	}
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
 	if err != nil {
@@ -372,6 +380,79 @@ func getHelmRelease(ctx context.Context, client client.Client, releaseName strin
 		return nil, nil
 	}
 	return kcpRelease, err
+}
+
+func getCertManagerReleaseConfig(infraValues apiextensionsv1.JSON) (string, string, error) {
+	releaseName := defaultCertManagerReleaseName
+	releaseNamespace := defaultCertManagerReleaseNamespace
+
+	if len(infraValues.Raw) == 0 {
+		return releaseName, releaseNamespace, nil
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(infraValues.Raw, &root); err != nil {
+		return "", "", gcerrors.Wrap(err, "failed to unmarshal spec.infraValues")
+	}
+
+	certManagerRaw, ok := root["cert-manager"]
+	if !ok {
+		certManagerRaw, ok = root["certManager"]
+	}
+	if !ok {
+		return releaseName, releaseNamespace, nil
+	}
+
+	certManagerCfg, ok := certManagerRaw.(map[string]any)
+	if !ok {
+		return "", "", fmt.Errorf("spec.infraValues.cert-manager has invalid type")
+	}
+
+	if rawName, exists := certManagerCfg["release-name"]; exists {
+		name, ok := rawName.(string)
+		if !ok {
+			return "", "", fmt.Errorf(
+				"spec.infraValues.cert-manager.release-name has invalid type",
+			)
+		}
+		if name != "" {
+			releaseName = name
+		}
+	} else if rawName, exists := certManagerCfg["name"]; exists {
+		name, ok := rawName.(string)
+		if !ok {
+			return "", "", fmt.Errorf(
+				"spec.infraValues.cert-manager.name has invalid type",
+			)
+		}
+		if name != "" {
+			releaseName = name
+		}
+	}
+
+	if rawNamespace, exists := certManagerCfg["release-namespace"]; exists {
+		namespace, ok := rawNamespace.(string)
+		if !ok {
+			return "", "", fmt.Errorf(
+				"spec.infraValues.cert-manager.release-namespace has invalid type",
+			)
+		}
+		if namespace != "" {
+			releaseNamespace = namespace
+		}
+	} else if rawNamespace, exists := certManagerCfg["targetNamespace"]; exists {
+		namespace, ok := rawNamespace.(string)
+		if !ok {
+			return "", "", fmt.Errorf(
+				"spec.infraValues.cert-manager.targetNamespace has invalid type",
+			)
+		}
+		if namespace != "" {
+			releaseNamespace = namespace
+		}
+	}
+
+	return releaseName, releaseNamespace, nil
 }
 
 func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelSelector, namespace string) (bool, *unstructured.Unstructured, error) {
