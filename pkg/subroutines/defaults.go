@@ -44,6 +44,11 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
+		RawPath:   ptr.To("/services/marketplace"),
+		Secret:    "virtual-workspace-clusteraccess-kubeconfig",
+		AdminAuth: ptr.To(true),
+	},
+	{
 		Path:      "root:platform-mesh-system",
 		Secret:    "extension-manager-operator-kubeconfig",
 		AdminAuth: ptr.To(true),
