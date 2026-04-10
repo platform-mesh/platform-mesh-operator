@@ -27,7 +27,6 @@ const (
 	e2ePlatformMeshNamespace = "platform-mesh-system"
 	e2ePlatformMeshName      = "platform-mesh"
 
-	// Infra chart Certificate secretName; may live in platform-mesh-system or kcp-system (.Values.kcp.namespace default).
 	e2eKcpClusterAdminClientCertSecretName = "kcp-cluster-admin-client-cert"
 
 	// Operator-written Secrets for extraProviderConnections in platform-mesh.yaml (provider1 vs provider2 scenario).
@@ -51,10 +50,7 @@ const (
 // scopedE2EKcpAdminCertSecretNamespace is set by waitForKcpClusterAdminClientCert in this file only.
 var scopedE2EKcpAdminCertSecretNamespace string
 
-var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{
-	e2ePlatformMeshNamespace,
-	"kcp-system",
-}
+var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{e2ePlatformMeshNamespace}
 
 // TestScoped01KubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
 // root:providers:provider1|provider2 with APIExports/slices before TestScoped02/03KubeconfigProvider1/2.
@@ -363,7 +359,6 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
 }
 
-// waitForKcpClusterAdminClientCert polls until the infra TLS secret exists (platform-mesh-system or kcp-system).
 func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	sec := &corev1.Secret{}
 	s.Eventually(func() bool {

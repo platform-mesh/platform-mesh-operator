@@ -2,9 +2,16 @@ package subroutines
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -562,4 +569,81 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMergeRootCAPEMIfMissing(t *testing.T) {
+	t.Parallel()
+	t.Run("empty inputs unchanged", func(t *testing.T) {
+		t.Parallel()
+		got, o, err := mergeRootCAPEMIfMissing([]byte("x"), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "x" || o != mergeRootCAUnchangedNoMerge {
+			t.Fatalf("got %q outcome %v", got, o)
+		}
+		got, o, err = mergeRootCAPEMIfMissing(nil, []byte("y"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != nil || o != mergeRootCAUnchangedNoMerge {
+			t.Fatalf("got %v outcome %v", got, o)
+		}
+	})
+	t.Run("invalid root PEM leaves chain", func(t *testing.T) {
+		t.Parallel()
+		chain := []byte("intermediate-only")
+		got, o, err := mergeRootCAPEMIfMissing(chain, []byte("not pem"))
+		if err == nil {
+			t.Fatal("expected parse error")
+		}
+		if string(got) != string(chain) || o != mergeRootCAUnchangedInvalidRootPEM {
+			t.Fatalf("got %q outcome %v err %v", got, o, err)
+		}
+	})
+	t.Run("append once then idempotent", func(t *testing.T) {
+		t.Parallel()
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template := x509.Certificate{
+			SerialNumber: big.NewInt(1),
+			Subject:      pkix.Name{CommonName: "root"},
+			NotBefore:    time.Now().Add(-time.Hour),
+			NotAfter:     time.Now().Add(24 * time.Hour),
+			KeyUsage:     x509.KeyUsageCertSign,
+			IsCA:         true,
+		}
+		rootDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER})
+
+		leafTemplate := template
+		leafTemplate.SerialNumber = big.NewInt(2)
+		leafTemplate.IsCA = false
+		leafTemplate.KeyUsage = x509.KeyUsageDigitalSignature
+		leafDER, err := x509.CreateCertificate(rand.Reader, &leafTemplate, &template, &key.PublicKey, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
+
+		merged, o, err := mergeRootCAPEMIfMissing(leafPEM, rootPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o != mergeRootCAAppended || len(merged) <= len(leafPEM) {
+			t.Fatal("expected root appended")
+		}
+		again, o2, err := mergeRootCAPEMIfMissing(merged, rootPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o2 != mergeRootCAUnchangedAlreadyPresent || len(again) != len(merged) {
+			t.Fatalf("expected idempotent merge, got outcome %v len %d vs %d", o2, len(again), len(merged))
+		}
+	})
 }

@@ -441,6 +441,7 @@ func writeScopedKubeconfigToSecret(
 	if caData == nil {
 		caData = []byte{}
 	}
+	caData = AppendRootShardCAPEMIfMissing(ctx, k8sClient, &operatorCfg, caData)
 
 	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret)
 	if err != nil {
