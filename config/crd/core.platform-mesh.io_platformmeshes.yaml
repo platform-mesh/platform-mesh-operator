@@ -16,38 +16,38 @@ spec:
   versions:
   - additionalPrinterColumns:
     - description: KCP status (shows reason if Unknown)
-      jsonPath: .status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].status
+      jsonPath: .status.conditions[?(@.type=='KcpsetupSubroutine')].status
       name: KCP
       type: string
     - description: KCP reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='KcpsetupSubroutine_Ready')].reason
+      jsonPath: .status.conditions[?(@.type=='KcpsetupSubroutine')].reason
       name: KCP_REASON
       priority: 1
       type: string
     - description: Provider Secret status (shows reason if Unknown)
-      jsonPath: .status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].status
+      jsonPath: .status.conditions[?(@.type=='ProvidersecretSubroutine')].status
       name: SECRET
       type: string
     - description: Provider Secret reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='ProvidersecretSubroutine_Ready')].reason
+      jsonPath: .status.conditions[?(@.type=='ProvidersecretSubroutine')].reason
       name: SECRET_REASON
       priority: 1
       type: string
     - description: Deployment status (shows reason if Unknown)
-      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine_Ready')].status
+      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine')].status
       name: DEPLOYMENT
       type: string
     - description: Deployment reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine_Ready')].reason
+      jsonPath: .status.conditions[?(@.type=='DeploymentSubroutine')].reason
       name: DEPLOYMENT_REASON
       priority: 1
       type: string
     - description: Wait status (shows reason if Unknown)
-      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].status
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine')].status
       name: WAIT
       type: string
     - description: Wait reason if status is Unknown
-      jsonPath: .status.conditions[?(@.type=='WaitSubroutine_Ready')].reason
+      jsonPath: .status.conditions[?(@.type=='WaitSubroutine')].reason
       name: WAIT_REASON
       priority: 1
       type: string

@@ -1660,35 +1660,24 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		}).
 		Twice()
 
+	// Build expected secret keys dynamically from DefaultProviderConnections
+	expectedSecretKeys := make(map[types.NamespacedName]bool)
+	for _, pc := range DefaultProviderConnections {
+		ns := "platform-mesh-system"
+		if ptr.Deref(pc.Namespace, "") != "" {
+			ns = *pc.Namespace
+		}
+		expectedSecretKeys[types.NamespacedName{Name: pc.Secret, Namespace: ns}] = true
+	}
+	expectedSecretKeys[types.NamespacedName{Name: "external-kubeconfig", Namespace: "test"}] = true
+
 	s.clientMock.EXPECT().
 		Get(mock.Anything,
 			mock.MatchedBy(func(key types.NamespacedName) bool {
-				if key.Namespace == "platform-mesh-system" {
-					switch key.Name {
-					case "account-operator-kubeconfig",
-						"rebac-authz-webhook-kubeconfig",
-						"security-operator-kubeconfig",
-						"kubernetes-graphql-gateway-kubeconfig",
-						"extension-manager-operator-kubeconfig",
-						"iam-service-kubeconfig",
-						"portal-kubeconfig",
-						"security-initializer-kubeconfig",
-						"security-terminator-kubeconfig",
-						"init-agent-kubeconfig":
-						return true
-					}
-				}
-				if key.Namespace == "test" {
-					switch key.Name {
-					case "external-kubeconfig":
-						return true
-					}
-				}
-				return false
+				return expectedSecretKeys[key]
 			}),
 			mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			// *obj.(*corev1.Secret) = *secret
 			return nil
 		})
 	s.clientMock.EXPECT().

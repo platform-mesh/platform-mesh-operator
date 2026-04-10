@@ -39,9 +39,14 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:              "root:platform-mesh-system",
-		Secret:            "kubernetes-graphql-gateway-kubeconfig",
-		AdminAuth:         ptr.To(true),
+		Path:      "root:platform-mesh-system",
+		Secret:    "kubernetes-graphql-gateway-kubeconfig",
+		AdminAuth: ptr.To(true),
+	},
+	{
+		RawPath:   ptr.To("/services/marketplace"),
+		Secret:    "virtual-workspace-clusteraccess-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
 		Path:      "root:platform-mesh-system",
@@ -67,6 +72,11 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		Path:      "root",
 		Secret:    "security-terminator-kubeconfig",
+		AdminAuth: ptr.To(true),
+	},
+	{
+		Path:      "root:platform-mesh-system",
+		Secret:    "virtual-workspaces-kubeconfig",
 		AdminAuth: ptr.To(true),
 	},
 	{
