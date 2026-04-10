@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -117,15 +118,23 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 		return subroutines.StopWithRequeue(DefaultRequeueInterval, "platform-mesh-operator-infra-components Release is not ready"), nil
 	}
 
-	// Wait for cert-manager to be ready
-	rel, err = getHelmRelease(ctx, r.client, "cert-manager", "default")
+	certManagerEnabled, certManagerReleaseName, certManagerReleaseNamespace, err := getCertManagerReleaseAttributes(mergedInfraValues)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get cert-manager Release")
+		log.Error().Err(err).Msg("Failed to parse cert-manager release config")
 		return subroutines.OK(), err
 	}
-	if !matchesConditionWithStatus(rel, "Ready", "True") {
-		log.Info().Msg("cert-manager Release is not ready..")
-		return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
+
+	if certManagerEnabled {
+		// Wait for cert-manager to be ready
+		rel, err = getHelmRelease(ctx, r.client, certManagerReleaseName, certManagerReleaseNamespace)
+		if err != nil {
+			log.Error().Err(err).Str("name", certManagerReleaseName).Str("namespace", certManagerReleaseNamespace).Msg("Failed to get cert-manager Release")
+			return subroutines.OK(), err
+		}
+		if !matchesConditionWithStatus(rel, "Ready", "True") {
+			log.Info().Str("name", certManagerReleaseName).Str("namespace", certManagerReleaseNamespace).Msg("cert-manager Release is not ready")
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("cert-manager Release %s/%s is not ready", certManagerReleaseNamespace, certManagerReleaseName)), nil
+		}
 	}
 
 	mergedValues, err := MergeValuesAndServices(inst, templateVars)
@@ -371,6 +380,78 @@ func getHelmRelease(ctx context.Context, client client.Client, releaseName strin
 		return nil, nil
 	}
 	return kcpRelease, err
+}
+
+const defaultCertManagerReleaseName = "cert-manager"
+const defaultCertManagerReleaseNamespace = "default"
+
+// getCertManagerReleaseConfig returns helm-release name and namespace for
+// cert-manager from the schemaless infra-components values, i.e. these values:
+//
+//	infraValues:
+//	  certManager:
+//	    enabled: <enabled> # Default true
+//	    name: <name> # Default "cert-manager"
+//	    targetNamespace: <namespace> # Default "default"
+//
+// Disregard all values when an error is returned.
+func getCertManagerReleaseAttributes(infraValues apiextensionsv1.JSON) (bool, string, string, error) {
+	name := defaultCertManagerReleaseName
+	nampspace := defaultCertManagerReleaseNamespace
+	enabled := true
+
+	if len(infraValues.Raw) == 0 {
+		return enabled, name, nampspace, nil
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(infraValues.Raw, &root); err != nil {
+		return false, "", "", gcerrors.Wrap(err, "failed to unmarshal spec.infraValues")
+	}
+
+	// Use defaults when nothing is set
+	certManagerRaw, ok := root["certManager"]
+	if !ok {
+		return enabled, name, nampspace, nil
+	}
+	certManagerCfg, ok := certManagerRaw.(map[string]any)
+	if !ok {
+		return false, "", "", fmt.Errorf("spec.infraValues.certManager has invalid type")
+	}
+
+	// if enabled is set, respect its value
+	if rawEnabled, exists := certManagerCfg["enabled"]; exists {
+		value, ok := rawEnabled.(bool)
+		if !ok {
+			return false, "", "", fmt.Errorf("spec.infraValues.certManager.enabled has invalid type")
+		}
+
+		enabled = value
+	}
+
+	// if name is set, respect its value
+	if rawName, exists := certManagerCfg["name"]; exists {
+		value, ok := rawName.(string)
+		if !ok {
+			return false, "", "", fmt.Errorf("spec.infraValues.certManager.name has invalid type")
+		}
+		if value != "" {
+			name = value
+		}
+	}
+
+	// If namespace is set, respect its value
+	if rawNamespace, exists := certManagerCfg["targetNamespace"]; exists {
+		value, ok := rawNamespace.(string)
+		if !ok {
+			return false, "", "", fmt.Errorf("spec.infraValues.certManager.targetNamespace has invalid type")
+		}
+		if value != "" {
+			nampspace = value
+		}
+	}
+
+	return enabled, name, nampspace, nil
 }
 
 func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelSelector, namespace string) (bool, *unstructured.Unstructured, error) {

@@ -426,7 +426,7 @@ func (s *KindTestSuite) SetupSuite() {
 	s.logger.Info().Msg("components.delivery.ocm.software CRD established")
 
 	if err = s.applyOCM(ctx); err != nil {
-		s.FailNow("Failed to apply OCM manifests")
+		s.FailNow("Failed to apply OCM manifests", err)
 	}
 
 	// add Platform Mesh resource
