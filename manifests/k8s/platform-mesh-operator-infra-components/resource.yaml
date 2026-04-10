@@ -9,7 +9,6 @@ metadata:
 spec:
   componentRef:
     name: {{ .componentName }}
-  interval: 3m0s
   ocmConfig:
   - apiVersion: delivery.ocm.software/v1alpha1
     kind: Repository
@@ -24,4 +23,3 @@ spec:
         - name: chart
       resource:
         name: chart
-  skipVerify: true
