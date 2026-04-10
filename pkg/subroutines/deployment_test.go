@@ -189,12 +189,12 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 			expectedNamespace: "default",
 		},
 		{
-			name: "uses explicit release-name and release-namespace",
+			name: "uses explicit name and targetNamespace",
 			infraValues: apiextensionsv1.JSON{
 				Raw: []byte(`{
-					"cert-manager": {
-						"release-name": "cm-custom",
-						"release-namespace": "ops-system"
+					"certManager": {
+						"name": "cm-custom",
+						"targetNamespace": "ops-system"
 					}
 				}`),
 			},
@@ -202,11 +202,11 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 			expectedNamespace: "ops-system",
 		},
 		{
-			name: "uses default namespace when only release-name is set",
+			name: "uses default namespace when only name is set",
 			infraValues: apiextensionsv1.JSON{
 				Raw: []byte(`{
-					"cert-manager": {
-						"release-name": "cm-custom"
+					"certManager": {
+						"name": "cm-custom"
 					}
 				}`),
 			},
@@ -227,24 +227,24 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 			expectedNamespace: "cert-manager",
 		},
 		{
-			name: "fails on invalid cert-manager type",
+			name: "fails on invalid certManager type",
 			infraValues: apiextensionsv1.JSON{
 				Raw: []byte(`{
-					"cert-manager": true
+					"certManager": true
 				}`),
 			},
-			expectError: "spec.infraValues.cert-manager has invalid type",
+			expectError: "spec.infraValues.certManager has invalid type",
 		},
 		{
-			name: "fails on invalid release-name type",
+			name: "fails on invalid name type",
 			infraValues: apiextensionsv1.JSON{
 				Raw: []byte(`{
-					"cert-manager": {
-						"release-name": true
+					"certManager": {
+						"name": true
 					}
 				}`),
 			},
-			expectError: "spec.infraValues.cert-manager.release-name has invalid type",
+			expectError: "spec.infraValues.certManager.name has invalid type",
 		},
 	}
 

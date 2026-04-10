@@ -26,8 +26,6 @@ import (
 )
 
 const DeploymentSubroutineName = "DeploymentSubroutine"
-const defaultCertManagerReleaseName = "cert-manager"
-const defaultCertManagerReleaseNamespace = "default"
 
 type DeploymentSubroutine struct {
 	client             client.Client
@@ -382,6 +380,16 @@ func getHelmRelease(ctx context.Context, client client.Client, releaseName strin
 	return kcpRelease, err
 }
 
+const defaultCertManagerReleaseName = "cert-manager"
+const defaultCertManagerReleaseNamespace = "default"
+
+// getCertManagerReleaseConfig returns helm-release name and namespace for
+// cert-manager from the schemaless infra-components values, i.e. these values:
+//
+//	infraValues:
+//	  certManager:
+//	    name: <name>
+//	    targetNamespace: <namespace>
 func getCertManagerReleaseConfig(infraValues apiextensionsv1.JSON) (string, string, error) {
 	releaseName := defaultCertManagerReleaseName
 	releaseNamespace := defaultCertManagerReleaseNamespace
@@ -395,34 +403,21 @@ func getCertManagerReleaseConfig(infraValues apiextensionsv1.JSON) (string, stri
 		return "", "", gcerrors.Wrap(err, "failed to unmarshal spec.infraValues")
 	}
 
-	certManagerRaw, ok := root["cert-manager"]
-	if !ok {
-		certManagerRaw, ok = root["certManager"]
-	}
+	certManagerRaw, ok := root["certManager"]
 	if !ok {
 		return releaseName, releaseNamespace, nil
 	}
 
 	certManagerCfg, ok := certManagerRaw.(map[string]any)
 	if !ok {
-		return "", "", fmt.Errorf("spec.infraValues.cert-manager has invalid type")
+		return "", "", fmt.Errorf("spec.infraValues.certManager has invalid type")
 	}
 
-	if rawName, exists := certManagerCfg["release-name"]; exists {
+	if rawName, exists := certManagerCfg["name"]; exists {
 		name, ok := rawName.(string)
 		if !ok {
 			return "", "", fmt.Errorf(
-				"spec.infraValues.cert-manager.release-name has invalid type",
-			)
-		}
-		if name != "" {
-			releaseName = name
-		}
-	} else if rawName, exists := certManagerCfg["name"]; exists {
-		name, ok := rawName.(string)
-		if !ok {
-			return "", "", fmt.Errorf(
-				"spec.infraValues.cert-manager.name has invalid type",
+				"spec.infraValues.certManager.name has invalid type",
 			)
 		}
 		if name != "" {
@@ -430,21 +425,11 @@ func getCertManagerReleaseConfig(infraValues apiextensionsv1.JSON) (string, stri
 		}
 	}
 
-	if rawNamespace, exists := certManagerCfg["release-namespace"]; exists {
+	if rawNamespace, exists := certManagerCfg["targetNamespace"]; exists {
 		namespace, ok := rawNamespace.(string)
 		if !ok {
 			return "", "", fmt.Errorf(
-				"spec.infraValues.cert-manager.release-namespace has invalid type",
-			)
-		}
-		if namespace != "" {
-			releaseNamespace = namespace
-		}
-	} else if rawNamespace, exists := certManagerCfg["targetNamespace"]; exists {
-		namespace, ok := rawNamespace.(string)
-		if !ok {
-			return "", "", fmt.Errorf(
-				"spec.infraValues.cert-manager.targetNamespace has invalid type",
+				"spec.infraValues.certManager.targetNamespace has invalid type",
 			)
 		}
 		if namespace != "" {
