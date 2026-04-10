@@ -172,19 +172,21 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 
 }
 
-func Test_getCertManagerReleaseConfig(t *testing.T) {
+func Test_getCertManagerWaitTarget(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name               string
-		infraValues        apiextensionsv1.JSON
-		expectedName       string
-		expectedNamespace  string
-		expectError        string
+		name              string
+		infraValues       apiextensionsv1.JSON
+		expectedEnabled   bool
+		expectedName      string
+		expectedNamespace string
+		expectError       string
 	}{
 		{
 			name:              "defaults when infra values are empty",
 			infraValues:       apiextensionsv1.JSON{},
+			expectedEnabled:   true,
 			expectedName:      "cert-manager",
 			expectedNamespace: "default",
 		},
@@ -198,7 +200,22 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 					}
 				}`),
 			},
+			expectedEnabled:   true,
 			expectedName:      "cm-custom",
+			expectedNamespace: "ops-system",
+		},
+		{
+			name: "enabled when enabled is omitted",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"name": "cm-omitted",
+						"targetNamespace": "ops-system"
+					}
+				}`),
+			},
+			expectedEnabled:   true,
+			expectedName:      "cm-omitted",
 			expectedNamespace: "ops-system",
 		},
 		{
@@ -210,21 +227,52 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 					}
 				}`),
 			},
+			expectedEnabled:   true,
 			expectedName:      "cm-custom",
 			expectedNamespace: "default",
 		},
 		{
-			name: "supports certManager aliases",
+			name: "enabled when enabled is true",
 			infraValues: apiextensionsv1.JSON{
 				Raw: []byte(`{
 					"certManager": {
+						"enabled": true,
 						"name": "cm-alias",
 						"targetNamespace": "cert-manager"
 					}
 				}`),
 			},
+			expectedEnabled:   true,
 			expectedName:      "cm-alias",
 			expectedNamespace: "cert-manager",
+		},
+		{
+			name: "not enabled when enabled is false",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": false
+					}
+				}`),
+			},
+			expectedEnabled:   false,
+			expectedName:      "cert-manager",
+			expectedNamespace: "default",
+		},
+		{
+			name: "not enabled when enabled false even if name has wrong type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": false,
+						"name": true
+					}
+				}`),
+			},
+			expectedEnabled:   false,
+			expectedName:      "",
+			expectedNamespace: "",
+			expectError:       "spec.infraValues.certManager.name has invalid type",
 		},
 		{
 			name: "fails on invalid certManager type",
@@ -236,7 +284,7 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 			expectError: "spec.infraValues.certManager has invalid type",
 		},
 		{
-			name: "fails on invalid name type",
+			name: "fails on invalid name type when enabled",
 			infraValues: apiextensionsv1.JSON{
 				Raw: []byte(`{
 					"certManager": {
@@ -246,6 +294,17 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 			},
 			expectError: "spec.infraValues.certManager.name has invalid type",
 		},
+		{
+			name: "fails on invalid enabled type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": "no"
+					}
+				}`),
+			},
+			expectError: "spec.infraValues.certManager.enabled has invalid type",
+		},
 	}
 
 	for _, tt := range tests {
@@ -253,7 +312,7 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			actualName, actualNamespace, err := getCertManagerReleaseConfig(
+			actualEnabled, actualName, actualNamespace, err := getCertManagerReleaseAttributes(
 				tt.infraValues,
 			)
 
@@ -263,8 +322,9 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedName, actualName)
-			require.Equal(t, tt.expectedNamespace, actualNamespace)
+			require.Equal(t, tt.expectedEnabled, actualEnabled, "Enabled not as expected")
+			require.Equal(t, tt.expectedName, actualName, "Name not as expected")
+			require.Equal(t, tt.expectedNamespace, actualNamespace, "Namespace not as expected")
 		})
 	}
 }
