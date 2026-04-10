@@ -27,5 +27,3 @@ spec:
     manager:
       concurrency:
         resource: 21
-      logging:
-        level: "4"
