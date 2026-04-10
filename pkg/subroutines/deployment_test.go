@@ -176,11 +176,11 @@ func Test_getCertManagerReleaseConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name              string
-		infraValues       apiextensionsv1.JSON
-		expectedName      string
-		expectedNamespace string
-		expectError       string
+		name               string
+		infraValues        apiextensionsv1.JSON
+		expectedName       string
+		expectedNamespace  string
+		expectError        string
 	}{
 		{
 			name:              "defaults when infra values are empty",
