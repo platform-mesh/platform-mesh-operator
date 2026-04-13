@@ -20,14 +20,6 @@ spec:
       group: tenancy.kcp.io
       identityHash: {{ .apiExportRootTenancyKcpIoIdentityHash }}
       resource: workspacetypes
-    - all: true
-      group: core.platform-mesh.io
-      identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
-      resource: identityproviderconfigurations
-    - all: true
-      group: core.platform-mesh.io
-      identityHash: {{ .apiExportSystemPlatformMeshIoIdentityHash }}
-      resource: stores
     - resource: apibindings
       group: apis.kcp.io
       all: true
