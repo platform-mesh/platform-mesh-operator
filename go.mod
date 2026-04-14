@@ -16,7 +16,7 @@ require (
 	github.com/cert-manager/cert-manager v1.20.1
 	github.com/creasty/defaults v1.8.0
 	github.com/fluxcd/helm-controller/api v1.5.3
-	github.com/fluxcd/source-controller/api v1.8.1
+	github.com/fluxcd/source-controller/api v1.8.2
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.28.3
 	github.com/mandelsoft/goutils v0.0.0-20260306190640-f824bcfda3b1
