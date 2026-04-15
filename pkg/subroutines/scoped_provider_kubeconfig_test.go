@@ -5,11 +5,16 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -615,4 +620,82 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnsureTokenSecretForSA(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("returns token from pre-populated secret", func(t *testing.T) {
+		t.Parallel()
+		existingSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-sa-token",
+				Namespace: "default",
+				Annotations: map[string]string{
+					corev1.ServiceAccountNameKey: "my-sa",
+				},
+			},
+			Type: corev1.SecretTypeServiceAccountToken,
+			Data: map[string][]byte{
+				"token":  []byte("fake-token-value"),
+				"ca.crt": []byte("fake-ca"),
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSecret).Build()
+
+		token, err := ensureTokenSecretForSA(context.Background(), cl, "default", "my-sa")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if token != "fake-token-value" {
+			t.Fatalf("got token %q, want %q", token, "fake-token-value")
+		}
+	})
+
+	t.Run("creates secret and reads token once populated", func(t *testing.T) {
+		t.Parallel()
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Simulate the token controller: populate the secret's data after a short delay
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			var s corev1.Secret
+			if err := cl.Get(ctx, client.ObjectKey{Namespace: "default", Name: "test-sa-token"}, &s); err != nil {
+				return
+			}
+			s.Data = map[string][]byte{"token": []byte("async-token")}
+			_ = cl.Update(ctx, &s)
+		}()
+
+		token, err := ensureTokenSecretForSA(ctx, cl, "default", "test-sa")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if token != "async-token" {
+			t.Fatalf("got token %q, want %q", token, "async-token")
+		}
+	})
+
+	t.Run("times out when token never populated", func(t *testing.T) {
+		t.Parallel()
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		_, err := ensureTokenSecretForSA(ctx, cl, "default", "no-token-sa")
+		if err == nil {
+			t.Fatal("expected error for unpopulated token")
+		}
+		if !strings.Contains(err.Error(), "token not populated") {
+			t.Fatalf("error %q should contain 'token not populated'", err.Error())
+		}
+	})
 }

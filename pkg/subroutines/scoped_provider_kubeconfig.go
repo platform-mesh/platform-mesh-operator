@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -29,12 +30,14 @@ import (
 
 const (
 	defaultScopedSANamespace       = "default"
-	secondsPerDay                  = 86400
-	defaultTokenExpirationSeconds  = 7 * secondsPerDay
 	scopedClusterRolePrefix        = "platform-mesh-provider-"
 	scopedSAPrefix                 = "platform-mesh-provider-"
+	scopedTokenSecretSuffix        = "-token"
 	scopedWorkspaceAccessCRBPrefix = "platform-mesh-workspace-access-"
 	kcpWorkspaceAccessRoleName     = "system:kcp:workspace:access"
+
+	tokenSecretPollInterval = 500 * time.Millisecond
+	tokenSecretPollTimeout  = 30 * time.Second
 )
 
 func resolveAPIExport(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Config, apiExportName, apiExportPath string) (*kcpapiv1alpha2.APIExport, error) {
@@ -236,29 +239,46 @@ func ensureScopedNamespaceExists(ctx context.Context, kcpClient client.Client, n
 	return nil
 }
 
-func createTokenForSA(ctx context.Context, kcpWorkspaceClient client.Client, namespace, saName string, expirationSeconds int64) (string, error) {
-	expSec := expirationSeconds
-	if expSec <= 0 {
-		expSec = defaultTokenExpirationSeconds
-	}
-	sa := &corev1.ServiceAccount{
+func ensureTokenSecretForSA(ctx context.Context, kcpWorkspaceClient client.Client, namespace, saName string) (string, error) {
+	log := logger.LoadLoggerFromContext(ctx)
+	secretName := saName + scopedTokenSecretSuffix
+	tokenSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
 			Namespace: namespace,
-			Name:      saName,
+			Annotations: map[string]string{
+				corev1.ServiceAccountNameKey: saName,
+			},
 		},
+		Type: corev1.SecretTypeServiceAccountToken,
 	}
-	tr := &authv1.TokenRequest{
-		Spec: authv1.TokenRequestSpec{
-			ExpirationSeconds: &expSec,
-		},
+	if err := kcpWorkspaceClient.Create(ctx, tokenSecret); err != nil {
+		if !kerrors.IsAlreadyExists(err) {
+			return "", fmt.Errorf("create token Secret %s/%s: %w", namespace, secretName, err)
+		}
 	}
-	if err := kcpWorkspaceClient.SubResource("token").Create(ctx, sa, tr); err != nil {
-		return "", fmt.Errorf("create token for ServiceAccount %s/%s: %w", namespace, saName, err)
+
+	var token string
+	err := wait.PollUntilContextTimeout(ctx, tokenSecretPollInterval, tokenSecretPollTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			var s corev1.Secret
+			if err := kcpWorkspaceClient.Get(ctx, client.ObjectKey{
+				Namespace: namespace, Name: secretName,
+			}, &s); err != nil {
+				log.Debug().Err(err).Str("secret", secretName).Str("namespace", namespace).
+					Msg("token secret not yet readable, retrying")
+				return false, nil //nolint:nilerr
+			}
+			if t, ok := s.Data["token"]; ok && len(t) > 0 {
+				token = string(t)
+				return true, nil
+			}
+			return false, nil
+		})
+	if err != nil {
+		return "", fmt.Errorf("token not populated in Secret %s/%s: %w", namespace, secretName, err)
 	}
-	if tr.Status.Token == "" {
-		return "", fmt.Errorf("empty token in TokenRequest status for ServiceAccount %s/%s", namespace, saName)
-	}
-	return tr.Status.Token, nil
+	return token, nil
 }
 
 // virtualWorkspaceServerURLFromSlice returns status.apiExportEndpoints[0].url as the kubeconfig cluster server (kcp’s published VirtualWorkspace URL).
@@ -488,9 +508,9 @@ func writeScopedKubeconfigToSecret(
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}
 
-	token, err := createTokenForSA(ctx, kcpWorkspaceClient, defaultScopedSANamespace, saName, defaultTokenExpirationSeconds)
+	token, err := ensureTokenSecretForSA(ctx, kcpWorkspaceClient, defaultScopedSANamespace, saName)
 	if err != nil {
-		return errors.Wrap(err, "create token for ServiceAccount")
+		return errors.Wrap(err, "ensure token Secret for ServiceAccount")
 	}
 	kubeconfig := buildScopedKubeconfig(hostURL, token, caData)
 	kubeconfigBytes, err := clientcmd.Write(*kubeconfig)
