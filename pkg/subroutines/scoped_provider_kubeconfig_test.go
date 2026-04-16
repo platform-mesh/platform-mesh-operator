@@ -455,6 +455,59 @@ func TestEndpointSlicePathRewrittenToFrontProxyHost(t *testing.T) {
 	}
 }
 
+func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
+	t.Parallel()
+
+	operatorCfg := config.NewOperatorConfig()
+	instance := &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Exposure: &corev1alpha1.ExposureConfig{
+				BaseDomain: "example.com",
+				Port:       8443,
+			},
+		},
+	}
+
+	t.Run("in-cluster: host rewritten, path+query preserved, trailing slash trimmed", func(t *testing.T) {
+		t.Parallel()
+		in := "https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io/?watch=true"
+		got, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(in, operatorCfg, instance, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/abc/core.platform-mesh.io?watch=true"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("external: base uses exposure domain+port", func(t *testing.T) {
+		t.Parallel()
+		in := "https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io"
+		got, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(in, operatorCfg, instance, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "https://kcp.api.example.com:8443/services/apiexport/abc/core.platform-mesh.io"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("external without exposure errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(
+			"https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io",
+			operatorCfg,
+			&corev1alpha1.PlatformMesh{},
+			true,
+		)
+		if err == nil || !strings.Contains(err.Error(), "requires spec.exposure") {
+			t.Fatalf("expected exposure error, got %v", err)
+		}
+	})
+}
+
 func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
 	t.Parallel()
 
