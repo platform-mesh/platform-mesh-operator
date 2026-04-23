@@ -163,8 +163,8 @@ github.com/pingcap/errors v0.11.4 h1:lFuQV/oaUMGcD2tqt+01ROSmJs75VG1ToEOkZIZ4nE4
 github.com/pingcap/errors v0.11.4/go.mod h1:Oi8TUi2kEtXXLMJk9l1cGmz20kV3TaQ0usTwv5KuLY8=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/platform-mesh/golang-commons v0.15.6 h1:zR8IoHi0OTy4Q/gMIO8+ta+caaluMwiKT6oUBVHYzNU=
-github.com/platform-mesh/golang-commons v0.15.6/go.mod h1:nZ1oQ0Rk/nrSKYxk5iiG+cO+YSSWPYv8iben3AqPrdE=
+github.com/platform-mesh/golang-commons v0.15.7 h1:qlAGuYOdWIkCwtx3n3ON91RphB5SjkTWZMMhSJu2/OU=
+github.com/platform-mesh/golang-commons v0.15.7/go.mod h1:clinGY1SOAybpxJLrYvV0SEOBiswYB0TdCm8ixEwlqw=
 github.com/platform-mesh/subroutines v0.3.4 h1:brKzv+FQJ6CsqWmS75AGTtVhpkYXNIgWYi1Oa1Tuyfs=
 github.com/platform-mesh/subroutines v0.3.4/go.mod h1:KvAovSkgvAx2BWrCeHzblPUwRcGp/gqgpvIKiTA3fnc=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
