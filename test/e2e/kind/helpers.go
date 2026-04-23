@@ -7,13 +7,25 @@ import (
 	"html/template"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
+
+func dynamicClientForKubeconfig(kubeconfigBytes []byte) (dynamic.Interface, error) {
+	cfg, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigBytes)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Timeout = 60 * time.Second
+	return dynamic.NewForConfig(cfg)
+}
 
 func ApplyManifestFromFile(
 	ctx context.Context,
