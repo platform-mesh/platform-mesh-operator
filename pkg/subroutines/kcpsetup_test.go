@@ -1105,7 +1105,6 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 			featureToggles: []corev1alpha1.FeatureToggle{
 				{Name: "feature-enable-getting-started"},
 				{Name: "feature-disable-email-verification"},
-				{Name: "feature-enable-marketplace-account"},
 			},
 			toggleName: "feature-disable-email-verification",
 			expected:   "true",
