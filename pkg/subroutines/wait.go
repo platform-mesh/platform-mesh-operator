@@ -64,45 +64,52 @@ func (r *WaitSubroutine) Process(
 	for _, resourceType := range waitConfig.ResourceTypes {
 		log.Info().Msgf("Waiting for resource type: %s", resourceType)
 
-		for _, version := range resourceType.Versions {
-			waitList := &unstructured.UnstructuredList{}
-
-			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
-			if resourceType.Name != "" {
-				res := &unstructured.Unstructured{}
-				res.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
-				err := r.client.Get(ctx, client.ObjectKey{Namespace: resourceType.Namespace, Name: resourceType.Name}, res)
-				if err != nil {
-					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
-				}
-				if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
-				}
-				continue
-			}
-
-			// use LabelSelector if no Name is specified
-			ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
-			if err != nil {
-				log.Info().Msgf("Error converting label selector: %v", err)
-				return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
-			}
-			err = r.client.List(ctx, waitList, &client.ListOptions{
-				Namespace:     resourceType.Namespace,
-				LabelSelector: ls,
+		if resourceType.Name != "" {
+			res := &unstructured.Unstructured{}
+			res.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resourceType.Group,
+				Version: resourceType.Version,
+				Kind:    resourceType.Kind,
 			})
+			err := r.client.Get(ctx, client.ObjectKey{
+				Namespace: resourceType.Namespace,
+				Name:      resourceType.Name,
+			}, res)
 			if err != nil {
-				log.Info().Msgf("Error listing resources: %v", err)
-				return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources"), nil
+				log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
 			}
+			if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
+			}
+			continue
+		}
 
-			for _, item := range waitList.Items {
-				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
-				}
+		// use LabelSelector if no Name is specified
+		waitList := &unstructured.UnstructuredList{}
+		waitList.SetGroupVersionKind(schema.GroupVersionKind{
+			Group:   resourceType.Group,
+			Version: resourceType.Version,
+			Kind:    resourceType.Kind,
+		})
+		ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
+		if err != nil {
+			log.Info().Msgf("Error converting label selector: %v", err)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
+		}
+		if err := r.client.List(ctx, waitList, &client.ListOptions{
+			Namespace:     resourceType.Namespace,
+			LabelSelector: ls,
+		}); err != nil {
+			log.Info().Msgf("Error listing resources: %v", err)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources"), nil
+		}
+
+		for _, item := range waitList.Items {
+			if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
 			}
 		}
 	}

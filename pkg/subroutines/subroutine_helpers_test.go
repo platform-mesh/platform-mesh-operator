@@ -2,14 +2,17 @@ package subroutines
 
 import (
 	"context"
+	"encoding/pem"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/platform-mesh/golang-commons/context/keys"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -26,6 +29,40 @@ type HelperTestSuite struct {
 
 func TestHelperTestSuite(t *testing.T) {
 	suite.Run(t, new(HelperTestSuite))
+}
+
+func countPEMCertificateBlocks(t *testing.T, b []byte) int {
+	t.Helper()
+	n := 0
+	rest := b
+	for len(rest) > 0 {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type == "CERTIFICATE" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestAppendPEMCertsDedupe(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile("test/kubeconfig.yaml")
+	require.NoError(t, err)
+	kc, err := clientcmd.Load(raw)
+	require.NoError(t, err)
+	pemA := kc.Clusters["base"].CertificateAuthorityData
+	require.NotEmpty(t, pemA)
+
+	wantN := countPEMCertificateBlocks(t, pemA)
+	got := appendPEMCertsDedupe(nil, pemA)
+	require.Equal(t, wantN, countPEMCertificateBlocks(t, got), "first merge should keep unique certs")
+
+	got2 := appendPEMCertsDedupe(append([]byte(nil), got...), pemA)
+	require.Equal(t, wantN, countPEMCertificateBlocks(t, got2), "appending same bundle again should not duplicate")
 }
 
 func (s *HelperTestSuite) TestGetWorkspaceName() {
