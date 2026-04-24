@@ -148,8 +148,6 @@ func (s *FeaturesTestSuite) TestProcess() {
 		toggle string
 	}{
 		{"feature-enable-getting-started", "feature-enable-getting-started"},
-		{"feature-enable-marketplace-account", "feature-enable-marketplace-account"},
-		{"feature-enable-marketplace-org", "feature-enable-marketplace-org"},
 		{"feature-accounts-in-accounts", "feature-accounts-in-accounts"},
 		{"feature-enable-account-iam-ui", "feature-enable-account-iam-ui"},
 		{"feature-enable-terminal-controller-manager", "feature-enable-terminal-controller-manager"},

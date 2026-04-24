@@ -7,6 +7,7 @@ import (
 
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -169,4 +170,161 @@ func (s *DeployTestSuite) Test_applyReleaseWithValues() {
 	err = s.testObj.ApplyReleaseWithValues(ctx, "../../manifests/k8s/platform-mesh-operator-components/release.yaml", s.clientMock, mergedValues)
 	s.Assert().NoError(err, "ApplyReleaseWithValues should not return an error")
 
+}
+
+func Test_getCertManagerWaitTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		infraValues       apiextensionsv1.JSON
+		expectedEnabled   bool
+		expectedName      string
+		expectedNamespace string
+		expectError       string
+	}{
+		{
+			name:              "defaults when infra values are empty",
+			infraValues:       apiextensionsv1.JSON{},
+			expectedEnabled:   true,
+			expectedName:      "cert-manager",
+			expectedNamespace: "default",
+		},
+		{
+			name: "uses explicit name and targetNamespace",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"name": "cm-custom",
+						"targetNamespace": "ops-system"
+					}
+				}`),
+			},
+			expectedEnabled:   true,
+			expectedName:      "cm-custom",
+			expectedNamespace: "ops-system",
+		},
+		{
+			name: "enabled when enabled is omitted",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"name": "cm-omitted",
+						"targetNamespace": "ops-system"
+					}
+				}`),
+			},
+			expectedEnabled:   true,
+			expectedName:      "cm-omitted",
+			expectedNamespace: "ops-system",
+		},
+		{
+			name: "uses default namespace when only name is set",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"name": "cm-custom"
+					}
+				}`),
+			},
+			expectedEnabled:   true,
+			expectedName:      "cm-custom",
+			expectedNamespace: "default",
+		},
+		{
+			name: "enabled when enabled is true",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": true,
+						"name": "cm-alias",
+						"targetNamespace": "cert-manager"
+					}
+				}`),
+			},
+			expectedEnabled:   true,
+			expectedName:      "cm-alias",
+			expectedNamespace: "cert-manager",
+		},
+		{
+			name: "not enabled when enabled is false",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": false
+					}
+				}`),
+			},
+			expectedEnabled:   false,
+			expectedName:      "cert-manager",
+			expectedNamespace: "default",
+		},
+		{
+			name: "not enabled when enabled false even if name has wrong type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": false,
+						"name": true
+					}
+				}`),
+			},
+			expectedEnabled:   false,
+			expectedName:      "",
+			expectedNamespace: "",
+			expectError:       "spec.infraValues.certManager.name has invalid type",
+		},
+		{
+			name: "fails on invalid certManager type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": true
+				}`),
+			},
+			expectError: "spec.infraValues.certManager has invalid type",
+		},
+		{
+			name: "fails on invalid name type when enabled",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"name": true
+					}
+				}`),
+			},
+			expectError: "spec.infraValues.certManager.name has invalid type",
+		},
+		{
+			name: "fails on invalid enabled type",
+			infraValues: apiextensionsv1.JSON{
+				Raw: []byte(`{
+					"certManager": {
+						"enabled": "no"
+					}
+				}`),
+			},
+			expectError: "spec.infraValues.certManager.enabled has invalid type",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			actualEnabled, actualName, actualNamespace, err := getCertManagerReleaseAttributes(
+				tt.infraValues,
+			)
+
+			if tt.expectError != "" {
+				require.EqualError(t, err, tt.expectError)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedEnabled, actualEnabled, "Enabled not as expected")
+			require.Equal(t, tt.expectedName, actualName, "Name not as expected")
+			require.Equal(t, tt.expectedNamespace, actualNamespace, "Namespace not as expected")
+		})
+	}
 }
