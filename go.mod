@@ -19,7 +19,7 @@ require (
 	github.com/fluxcd/source-controller/api v1.8.2
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.28.3
-	github.com/mandelsoft/goutils v0.0.0-20260306190640-f824bcfda3b1
+	github.com/mandelsoft/goutils v0.0.0-20260419151859-e28bee9b7032
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/otiai10/copy v1.14.1
