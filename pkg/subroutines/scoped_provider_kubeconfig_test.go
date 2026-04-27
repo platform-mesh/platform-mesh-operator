@@ -2,9 +2,16 @@ package subroutines
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -455,6 +462,59 @@ func TestEndpointSlicePathRewrittenToFrontProxyHost(t *testing.T) {
 	}
 }
 
+func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
+	t.Parallel()
+
+	operatorCfg := config.NewOperatorConfig()
+	instance := &corev1alpha1.PlatformMesh{
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Exposure: &corev1alpha1.ExposureConfig{
+				BaseDomain: "example.com",
+				Port:       8443,
+			},
+		},
+	}
+
+	t.Run("in-cluster: host rewritten, path+query preserved, trailing slash trimmed", func(t *testing.T) {
+		t.Parallel()
+		in := "https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io/?watch=true"
+		got, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(in, operatorCfg, instance, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/abc/core.platform-mesh.io?watch=true"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("external: base uses exposure domain+port", func(t *testing.T) {
+		t.Parallel()
+		in := "https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io"
+		got, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(in, operatorCfg, instance, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "https://kcp.api.example.com:8443/services/apiexport/abc/core.platform-mesh.io"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("external without exposure errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(
+			"https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io",
+			operatorCfg,
+			&corev1alpha1.PlatformMesh{},
+			true,
+		)
+		if err == nil || !strings.Contains(err.Error(), "requires spec.exposure") {
+			t.Fatalf("expected exposure error, got %v", err)
+		}
+	})
+}
+
 func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
 	t.Parallel()
 
@@ -562,4 +622,81 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMergeRootCAPEMIfMissing(t *testing.T) {
+	t.Parallel()
+	t.Run("empty inputs unchanged", func(t *testing.T) {
+		t.Parallel()
+		got, o, err := mergeRootCAPEMIfMissing([]byte("x"), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "x" || o != mergeRootCAUnchangedNoMerge {
+			t.Fatalf("got %q outcome %v", got, o)
+		}
+		got, o, err = mergeRootCAPEMIfMissing(nil, []byte("y"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != nil || o != mergeRootCAUnchangedNoMerge {
+			t.Fatalf("got %v outcome %v", got, o)
+		}
+	})
+	t.Run("invalid root PEM leaves chain", func(t *testing.T) {
+		t.Parallel()
+		chain := []byte("intermediate-only")
+		got, o, err := mergeRootCAPEMIfMissing(chain, []byte("not pem"))
+		if err == nil {
+			t.Fatal("expected parse error")
+		}
+		if string(got) != string(chain) || o != mergeRootCAUnchangedInvalidRootPEM {
+			t.Fatalf("got %q outcome %v err %v", got, o, err)
+		}
+	})
+	t.Run("append once then idempotent", func(t *testing.T) {
+		t.Parallel()
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template := x509.Certificate{
+			SerialNumber: big.NewInt(1),
+			Subject:      pkix.Name{CommonName: "root"},
+			NotBefore:    time.Now().Add(-time.Hour),
+			NotAfter:     time.Now().Add(24 * time.Hour),
+			KeyUsage:     x509.KeyUsageCertSign,
+			IsCA:         true,
+		}
+		rootDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER})
+
+		leafTemplate := template
+		leafTemplate.SerialNumber = big.NewInt(2)
+		leafTemplate.IsCA = false
+		leafTemplate.KeyUsage = x509.KeyUsageDigitalSignature
+		leafDER, err := x509.CreateCertificate(rand.Reader, &leafTemplate, &template, &key.PublicKey, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
+
+		merged, o, err := mergeRootCAPEMIfMissing(leafPEM, rootPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o != mergeRootCAAppended || len(merged) <= len(leafPEM) {
+			t.Fatal("expected root appended")
+		}
+		again, o2, err := mergeRootCAPEMIfMissing(merged, rootPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o2 != mergeRootCAUnchangedAlreadyPresent || len(again) != len(merged) {
+			t.Fatalf("expected idempotent merge, got outcome %v len %d vs %d", o2, len(again), len(merged))
+		}
+	})
 }

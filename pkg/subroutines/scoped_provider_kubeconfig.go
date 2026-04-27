@@ -362,6 +362,35 @@ func createScopedKubeconfigURLForAPIExportName(operatorCfg config.OperatorConfig
 	return hostURL, nil
 }
 
+// rewriteScopedVirtualWorkspaceURLToFrontProxy replaces the host from KCP's APIExportEndpointSlice status URL
+// with the same base URL used for admin provider kubeconfigs (in-cluster front-proxy Service DNS, or exposure URL when pc.External),
+// preserving path and raw query. This matches HandleProviderConnection's url.JoinPath(hostPort, address.Path) behavior.
+func rewriteScopedVirtualWorkspaceURLToFrontProxy(hostURL string, operatorCfg config.OperatorConfig, instance *corev1alpha1.PlatformMesh, pcExternal bool) (string, error) {
+	u, err := url.Parse(hostURL)
+	if err != nil {
+		return "", fmt.Errorf("parse virtual workspace URL: %w", err)
+	}
+	if u.Path == "" || u.Path == "/" {
+		return "", fmt.Errorf("virtual workspace URL %q has no path", hostURL)
+	}
+	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	if pcExternal {
+		if instance.Spec.Exposure == nil {
+			return "", fmt.Errorf("provider connection with external: true requires spec.exposure")
+		}
+		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
+	}
+	out, err := url.JoinPath(hostPort, u.Path)
+	if err != nil {
+		return "", err
+	}
+	out = strings.TrimSuffix(out, "/")
+	if u.RawQuery != "" {
+		return out + "?" + u.RawQuery, nil
+	}
+	return out, nil
+}
+
 // writeScopedKubeconfigToSecret builds a scoped kubeconfig: ServiceAccount token in pc.Path, RBAC from APIExport; server is virtual workspace when endpointSliceName is set, else workspace cluster URL when apiExportName is set.
 func writeScopedKubeconfigToSecret(
 	ctx context.Context,
@@ -402,6 +431,18 @@ func writeScopedKubeconfigToSecret(
 		if err != nil {
 			return err
 		}
+		sliceStatusURL := hostURL
+		hostURL, err = rewriteScopedVirtualWorkspaceURLToFrontProxy(hostURL, operatorCfg, instance, pc.External)
+		if err != nil {
+			return errors.Wrap(err, "rewrite scoped virtual workspace URL to front-proxy base")
+		}
+		if hostURL != sliceStatusURL {
+			log.Info().
+				Str("secret", pc.Secret).
+				Str("sliceStatusURL", sliceStatusURL).
+				Str("serverURL", hostURL).
+				Msg("Rewrote scoped virtual workspace server URL to in-cluster front-proxy base")
+		}
 		apiExportName, exportWorkspacePath, err = apiExportLocationFromEndpointSlice(&endpointSlice)
 		if err != nil {
 			return err
@@ -441,6 +482,7 @@ func writeScopedKubeconfigToSecret(
 	if caData == nil {
 		caData = []byte{}
 	}
+	caData = AppendRootShardCAPEMIfMissing(ctx, k8sClient, &operatorCfg, caData)
 
 	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret)
 	if err != nil {

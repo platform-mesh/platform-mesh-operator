@@ -2,6 +2,7 @@
 > This Repository is under development and not ready for productive use. It is in an alpha stage. That means APIs and concepts may change on short notice including breaking changes or complete removal of apis.
 
 # platform-mesh-operator
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/platform-mesh/platform-mesh-operator/badge)](https://scorecard.dev/viewer/?uri=github.com/platform-mesh/platform-mesh-operator)
 
 The platform-mesh-operator helps bootstrap new platform-mesh environment during initial setup. It does so by reconciling and `Kind: PlatformMesh` resource which looks like this
 
@@ -166,8 +167,6 @@ spec:
 | Feature Toggle Name | Description |
 |---------------------|-------------|
 | `feature-enable-getting-started` | Applies the ContentConfiguration resources required for the Getting Started UI page |
-| `feature-enable-marketplace-account` | Applies the ContentConfiguration resources for the Marketplace feature at the account level |
-| `feature-enable-marketplace-org` | Applies the ContentConfiguration resources for the Marketplace feature at the organization level |
 | `feature-accounts-in-accounts` | Applies the ContentConfiguration resources for displaying accounts within the account context |
 | `feature-enable-account-iam-ui` | Applies the ContentConfiguration resources for the IAM UI Members section at the account level |
 | `feature-disable-email-verification` | Disables email verification requirement in WorkspaceAuthenticationConfiguration |
@@ -184,7 +183,6 @@ metadata:
 spec:
   featureToggles:
   - name: "feature-enable-getting-started"
-  - name: "feature-enable-marketplace-account"
   - name: "feature-disable-email-verification"
   # ... other configuration
 ```

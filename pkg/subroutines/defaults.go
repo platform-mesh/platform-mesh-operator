@@ -131,11 +131,9 @@ var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.We
 var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 	ResourceTypes: []corev1alpha1.ResourceType{
 		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
+			GroupVersionKind: v1.GroupVersionKind{
 				Group: "helm.toolkit.fluxcd.io",
+				Version: "v2",
 				Kind:  "HelmRelease",
 			},
 			Namespace: "default",
@@ -152,11 +150,9 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 			RowConditionType: "Ready",
 		},
 		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
+			GroupVersionKind: v1.GroupVersionKind{
 				Group: "helm.toolkit.fluxcd.io",
+				Version: "v2",
 				Kind:  "HelmRelease",
 			},
 			Namespace: "default",
