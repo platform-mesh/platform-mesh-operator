@@ -7,6 +7,8 @@ spec:
   clients:
   - clientType: confidential
     clientName: welcome
+    postLogoutRedirectUris:
+    - https://{{ .baseDomainPort }}/logout*
     redirectUris:
     - https://{{ .baseDomainPort }}/callback*
     secretRef:
