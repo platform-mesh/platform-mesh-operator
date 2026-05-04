@@ -541,7 +541,7 @@ func normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes []byte) ([]byte,
 	server := cluster.Server
 
 	// provider2: in-cluster front-proxy DNS is not resolvable from host-run kubectl.
-	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:6443", "localhost:8443", 1)
+	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:8443", "localhost:8443", 1)
 
 	// provider1: virtual workspace URL from endpoint slice is flaky for create/get in host-run kubectl.
 	// For this fixed fixture, use the concrete provider1 workspace cluster URL.
