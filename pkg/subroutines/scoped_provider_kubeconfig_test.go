@@ -48,7 +48,7 @@ func TestVirtualWorkspacePathFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io"},
+						{URL: "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io"},
 					},
 				},
 			},
@@ -60,7 +60,7 @@ func TestVirtualWorkspacePathFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://shard.internal:6443/services/apiexport/abc123/core.platform-mesh.io/clusters/%2A"},
+						{URL: "https://shard.internal:8443/services/apiexport/abc123/core.platform-mesh.io/clusters/%2A"},
 					},
 				},
 			},
@@ -199,11 +199,11 @@ func TestVirtualWorkspaceServerURLFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "core.platform-mesh.io"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io"},
+						{URL: "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io"},
 					},
 				},
 			},
-			want: "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io",
+			want: "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/2n6dxtatafypkpsg/core.platform-mesh.io",
 		},
 		{
 			name: "trailing slash on URL trimmed",
@@ -427,13 +427,13 @@ func TestResolveAPIExportVirtualWorkspaceRawPath(t *testing.T) {
 func TestWorkspaceClusterScopedServerURLJoinPath(t *testing.T) {
 	t.Parallel()
 	// Same shape as writeScopedKubeconfigToSecret when apiExportName is set (no endpoint slice).
-	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:6443"
+	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:8443"
 	pcPath := "root:platform-mesh-system"
 	got, err := url.JoinPath(hostPort, "clusters", pcPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:platform-mesh-system"
+	want := "https://frontproxy-front-proxy.platform-mesh-system:8443/clusters/root:platform-mesh-system"
 	if got != want {
 		t.Fatalf("server URL: got %q want %q", got, want)
 	}
@@ -450,13 +450,13 @@ func TestEndpointSlicePathRewrittenToFrontProxyHost(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:6443"
+	hostPort := "https://frontproxy-front-proxy.platform-mesh-system:8443"
 	got, err := url.JoinPath(hostPort, address.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/2yrxttxw0pyrhs0z/kind-e2e-scoped-provider.platform-mesh.io"
+	want := "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/2yrxttxw0pyrhs0z/kind-e2e-scoped-provider.platform-mesh.io"
 	if got != want {
 		t.Fatalf("server URL: got %q want %q", got, want)
 	}
@@ -482,7 +482,7 @@ func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/abc/core.platform-mesh.io?watch=true"
+		want := "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/abc/core.platform-mesh.io?watch=true"
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
@@ -533,7 +533,7 @@ func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:providers:provider2"
+		want := "https://frontproxy-front-proxy.platform-mesh-system:8443/clusters/root:providers:provider2"
 		if got != want {
 			t.Fatalf("server URL: got %q want %q", got, want)
 		}

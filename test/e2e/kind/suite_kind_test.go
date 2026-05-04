@@ -548,7 +548,6 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.RootShardName = "root"
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"
-	appConfig.KCP.FrontProxyPort = "6443"
 	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
