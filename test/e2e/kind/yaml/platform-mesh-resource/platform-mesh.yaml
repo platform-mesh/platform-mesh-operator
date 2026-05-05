@@ -17,6 +17,7 @@ spec:
   - name: "feature-enable-getting-started"
   - name: feature-disable-email-verification
   - name: feature-accounts-in-accounts
+  - name: feature-enable-provider-manager
   kcp:
     {}
   values:

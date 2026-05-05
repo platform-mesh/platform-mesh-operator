@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/kcp-dev/multicluster-provider/apiexport"
 	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,25 +35,37 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/golang-commons/traces"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
-var operatorCmd = &cobra.Command{
-	Use:   "operator",
-	Short: "operator to setup platform-mesh",
-	Run:   RunController,
+var providersCmd = &cobra.Command{
+	Use:   "providers",
+	Short: "provider bootstrap controller watching kcp via providers.platform-mesh.io APIExport virtual workspace",
+	Run:   RunProviders,
 }
 
-func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
+func buildKcpAdminConfigForWorkspace(restCfg *rest.Config, wsPath string) (*rest.Config, error) {
+	c, err := client.New(restCfg, client.Options{})
+	if err != nil {
+		return nil, err
+	}
+	kcpUrl := providersCfg.KCP.Url
+	if kcpUrl == "" {
+		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s/clusters/%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort, wsPath)
+	}
+	return pmsubs.BuildKcpAdminConfig(c, &providersCfg.KCP, kcpUrl)
+}
+
+func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
 
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
 
-	log.Info().Msg("Starting PlatformMesh Operator")
-	defer log.Info().Msg("Shutting down PlatformMesh Operator")
+	log.Info().Msg("Starting Platform Mesh Providers Controller")
+	defer log.Info().Msg("Shutting down Platform Mesh Providers Controller")
 
 	ctx, _, shutdown := pmcontext.StartContext(log, operatorCfg, defaultCfg.ShutdownTimeout)
 	defer shutdown()
@@ -90,16 +102,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	log.Info().Msg("Starting manager")
 
 	restCfg := ctrl.GetConfigOrDie()
-	if operatorCfg.RemoteRuntime.IsEnabled() {
-		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
-		var err error
-		_, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
-		if err != nil {
-			setupLog.Error(err, "unable to create PlatformMesh client")
-			os.Exit(1)
-		}
-	}
-	setupLog.Info(fmt.Sprintf("PlatformMesh Host: %s", restCfg.Host))
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
@@ -112,7 +114,21 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	mgr, err := mcmanager.New(restCfg, nil, mcmanager.Options{
+	providersEndpointSliceCfg, err := buildKcpAdminConfigForWorkspace(restCfg, providersCfg.ProvidersAPIExportEndpointSliceWorkspace)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to create kcp admin client config")
+	}
+
+	log.Info().Msgf("Created config for %q", providersEndpointSliceCfg.Host)
+
+	providersVW, err := apiexport.New(providersEndpointSliceCfg, providersCfg.ProvidersAPIExportEndpointSliceName, apiexport.Options{
+		Scheme: scheme,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to create apiexport provider")
+	}
+
+	mgr, err := mcmanager.New(providersEndpointSliceCfg, providersVW, mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -122,7 +138,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		BaseContext:                   func() context.Context { return ctx },
 		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
 		LeaderElection:                defaultCfg.LeaderElectionEnabled,
-		LeaderElectionID:              "81924e50.platform-mesh.org",
+		LeaderElectionID:              "93035f61.platform-mesh.org",
 		LeaderElectionConfig:          leaderCfg,
 		LeaderElectionReleaseOnCancel: true,
 	})
@@ -131,69 +147,25 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	log.Info().Msg("Manager successfully created")
+	log.Info().Msg("Manager successfully started")
 
-	restCfgInfra := ctrl.GetConfigOrDie()
-	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
-		return otelhttp.NewTransport(rt)
-	})
-	clientInfra, err := client.New(restCfgInfra, client.Options{Scheme: subroutines.GetClientScheme()})
+	rec, err := providers.NewProviderReconciler(mgr, &providersCfg, defaultCfg)
 	if err != nil {
-		setupLog.Error(err, "unable to create Infra client")
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("unable to create ProviderReconciler")
 	}
-	if operatorCfg.RemoteInfra.IsEnabled() {
-		var infraErr error
-		clientInfra, _, infraErr = subroutines.GetClientAndRestConfig(operatorCfg.RemoteInfra.Kubeconfig)
-		if infraErr != nil {
-			setupLog.Error(infraErr, "unable to create Infra client")
-			os.Exit(1)
-		}
-	}
-	imageVersionStore := subroutines.NewImageVersionStore()
-
-	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
-	if err != nil {
-		setupLog.Error(err, "unable to create PlatformMesh reconciler")
-		os.Exit(1)
-	}
-	if err := pmReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
-		os.Exit(1)
-	}
-
-	resourceReconciler, err := controller.NewResourceReconciler(mgr, &operatorCfg, clientInfra, imageVersionStore)
-	if err != nil {
-		setupLog.Error(err, "unable to create Resource reconciler")
-		os.Exit(1)
-	}
-	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Resource")
-		os.Exit(1)
-	}
-
-	managedProvidersReconciler, err := providers.NewManagedProviderReconciler(mgr, &operatorCfg, defaultCfg)
-	if err != nil {
-		setupLog.Error(err, "unable to create ManagedProvider reconciler")
-		os.Exit(1)
-	}
-	if err := managedProvidersReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ManagedProvider")
-		os.Exit(1)
+	if err := rec.SetupWithManager(mgr, defaultCfg); err != nil {
+		log.Fatal().Err(err).Msg("unable to setup ProviderReconciler with manager")
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("unable to set up health check")
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("unable to set up ready check")
 	}
 
-	setupLog.Info("starting manager")
+	setupLog.Info("starting providers manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Fatal().Err(err).Msg("problem running manager")
+		log.Fatal().Err(err).Msg("problem running providers manager")
 	}
-
 }

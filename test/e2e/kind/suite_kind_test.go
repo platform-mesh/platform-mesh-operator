@@ -12,9 +12,13 @@ import (
 
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/creasty/defaults"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 	"github.com/platform-mesh/golang-commons/context/keys"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
+	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
 
@@ -39,22 +44,34 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	providerscontroller "github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 type KindTestSuite struct {
-	kubernetesManager mcmanager.Manager
 	suite.Suite
 	client client.Client
 	config *rest.Config
 	scheme *runtime.Scheme
 	logger *logger.Logger
 
+	containerRuntime string
+
 	cancel context.CancelFunc
 }
 
 var clusterName = "platform-mesh"
+
+var defaultKcpOperatorConfig = config.KCPConfig{
+	Url:                    "https://localhost:8443",
+	RootShardName:          "root",
+	Namespace:              "platform-mesh-system",
+	FrontProxyName:         "frontproxy",
+	FrontProxyPort:         "8443",
+	ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
+}
 
 // runCommand executes a shell command and returns its output.
 func runCommand(name string, args ...string) ([]byte, error) {
@@ -120,6 +137,26 @@ func (s *KindTestSuite) createLogger() error {
 
 }
 
+func (s *KindTestSuite) detectContainerRuntime() error {
+	s.logger.Info().Msg("Checking whether Docker is available...")
+	_, err := runCommand("docker", "--version")
+	if err == nil {
+		s.logger.Info().Msg("Docker found")
+		s.containerRuntime = "docker"
+		return nil
+	}
+
+	s.logger.Info().Msg("Checking whether Podman is available...")
+	_, err = runCommand("podman", "--version")
+	if err == nil {
+		s.logger.Info().Msg("Podman found")
+		s.containerRuntime = "podman"
+		return nil
+	}
+
+	return fmt.Errorf("no container runtime found in PATH: install Docker or Podman")
+}
+
 func (s *KindTestSuite) createKindCluster() error {
 	// Check if Kind cluster already exists if not create it
 	s.logger.Info().Msg("Checking if Kind cluster exists...")
@@ -133,11 +170,11 @@ func (s *KindTestSuite) createKindCluster() error {
 		s.logger.Info().Msg("Kind cluster already exists, skipping creation")
 	} else {
 		s.logger.Info().Msg("Creating Kind cluster...")
-		if out, err := runCommand("docker", "system", "prune", "-f"); err != nil {
+		if out, err := runCommand(s.containerRuntime, "system", "prune", "-f"); err != nil {
 			return errors.Join(err, errors.New(string(out)))
 		}
 
-		if out, err := runCommand("docker", "ps", "-a"); err != nil {
+		if out, err := runCommand(s.containerRuntime, "ps", "-a"); err != nil {
 			return errors.Join(err, errors.New(string(out)))
 		}
 
@@ -163,11 +200,16 @@ func (s *KindTestSuite) createKindCluster() error {
 	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(corev1.AddToScheme(s.scheme))
+	utilruntime.Must(rbacv1.AddToScheme(s.scheme))
 	utilruntime.Must(appsv1.AddToScheme(s.scheme))
 	utilruntime.Must(certmanager.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(s.scheme))
+	utilruntime.Must(providersv1alpha1.AddToScheme(s.scheme))
+	utilruntime.Must(kcpapisv1alpha1.AddToScheme(s.scheme))
+	utilruntime.Must(kcpapisv1alpha2.AddToScheme(s.scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(s.scheme))
 
 	gvk := fluxcdv2.GroupVersion.WithKind("HelmRelease")
 	s.logger.Info().Msgf("Registering GVK: %s", gvk.String())
@@ -389,6 +431,10 @@ func (s *KindTestSuite) SetupSuite() {
 		s.logger.Error().Err(err).Msg("Failed to create logger")
 		s.T().FailNow()
 	}
+	if err = s.detectContainerRuntime(); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to detect container runtime")
+		s.T().FailNow()
+	}
 	if err = s.createKindCluster(); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create Kind cluster")
 		s.T().FailNow()
@@ -463,9 +509,8 @@ func (s *KindTestSuite) SetupSuite() {
 	}
 
 	// Run the PlatformMesh operator
-	s.logger.Info().Msg("starting operator...")
-	s.runOperator(ctx)
-
+	s.logger.Info().Msg("starting PlatformMesh operator...")
+	s.runPlatformMeshOperator(ctx)
 }
 
 func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {
@@ -534,17 +579,21 @@ func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
 		return err
 	}
 
-	// Add more CRD installations here if needed
+	if err := ApplyManifestFromFile(ctx, "../../../config/crd/providers.platform-mesh.io_managedproviders.yaml", s.client, make(map[string]string)); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to apply ManagedProvider CRD manifest")
+		return err
+	}
+
 	return nil
 }
 
-func (s *KindTestSuite) runOperator(ctx context.Context) {
+func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 
 	appConfig := config.NewOperatorConfig()
 
 	err := defaults.Set(&appConfig)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to set default operator config")
+		s.logger.Error().Err(err).Msg("Failed to set default PlatformMesh operator config")
 		return
 	}
 
@@ -553,13 +602,13 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.Subroutines.KcpSetup.Enabled = true
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true
+	appConfig.Subroutines.ManagedProvider.Workspace.Enabled = true
+	appConfig.Subroutines.ManagedProvider.ProviderResource.Enabled = true
+	appConfig.Subroutines.ManagedProvider.WaitProvider.Enabled = true
+	appConfig.Subroutines.ManagedProvider.KubeconfigCopy.Enabled = true
+	appConfig.Subroutines.ManagedProvider.Deploy.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
-	appConfig.KCP.Url = "https://localhost:8443"
-	appConfig.KCP.RootShardName = "root"
-	appConfig.KCP.Namespace = "platform-mesh-system"
-	appConfig.KCP.FrontProxyName = "frontproxy"
-	appConfig.KCP.FrontProxyPort = "8443"
-	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
+	appConfig.KCP = defaultKcpOperatorConfig
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
 	commonConfig.IsLocal = true
@@ -579,37 +628,42 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 		return
 	}
 
-	s.kubernetesManager = mgr
-
 	imageVersionStore := subroutines.NewImageVersionStore()
-
-	pmReconciler, err := controller.NewPlatformMeshReconciler(s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetLocalManager().GetClient(), imageVersionStore)
+	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &appConfig, commonConfig, "../../../", mgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create PlatformMesh reconciler")
 		return
 	}
-	if err := pmReconciler.SetupWithManager(s.kubernetesManager, commonConfig); err != nil {
+	if err := pmReconciler.SetupWithManager(mgr, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
-	resourceReconciler, err := controller.NewResourceReconciler(s.kubernetesManager, &appConfig, mgr.GetLocalManager().GetClient(), imageVersionStore)
+	resourceReconciler, err := controller.NewResourceReconciler(mgr, &appConfig, mgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("unable to create Resource reconciler")
 		return
 	}
-	if err := resourceReconciler.SetupWithManager(s.kubernetesManager, commonConfig); err != nil {
+	if err := resourceReconciler.SetupWithManager(mgr, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return
 	}
 
-	go s.startController()
-	s.logger.Info().Msg("PlatformMesh operator started")
-}
+	managedProviderReconciler, err := providerscontroller.NewManagedProviderReconciler(mgr, &appConfig, commonConfig)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("unable to create ManagedProvider reconciler")
+		return
+	}
+	if err := managedProviderReconciler.SetupWithManager(mgr, commonConfig); err != nil {
+		s.logger.Error().Err(err).Msg("unable to setup ManagedProvider controller")
+		return
+	}
 
-func (suite *KindTestSuite) startController() {
-	var controllerContext context.Context
-	controllerContext, suite.cancel = context.WithCancel(context.Background())
-	err := suite.kubernetesManager.Start(controllerContext)
-	suite.Nil(err)
+	go func() {
+		var controllerContext context.Context
+		controllerContext, s.cancel = context.WithCancel(context.Background())
+		err := mgr.Start(controllerContext)
+		s.Nil(err)
+	}()
+	s.logger.Info().Msg("PlatformMesh operator started")
 }

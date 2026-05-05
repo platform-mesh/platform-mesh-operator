@@ -127,7 +127,7 @@ func (r *WaitSubroutine) Process(
 }
 
 func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
-	kubeCfg, err := buildKubeconfigFromConfig(r.clientRuntime, r.cfg, getExternalKcpHost(inst, r.cfg))
+	kubeCfg, err := buildKubeconfigFromConfig(r.clientRuntime, &r.cfg.KCP, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
 		return nil
