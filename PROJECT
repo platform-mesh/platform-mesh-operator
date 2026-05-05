@@ -5,6 +5,7 @@
 domain: platform-mesh.io
 layout:
 - go.kubebuilder.io/v4
+multigroup: true
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
@@ -19,5 +20,22 @@ resources:
   group: core
   kind: PlatformMesh
   path: github.com/platform-mesh/platform-mesh-operator/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: platform-mesh.io
+  group: providers
+  kind: ManagedProvider
+  path: github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+  controller: true
+  domain: platform-mesh.io
+  group: providers
+  kind: Provider
+  path: github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1
   version: v1alpha1
 version: "3"
