@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/golang-commons/traces"
 
@@ -100,7 +101,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
-	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
+	mgr, err := mcmanager.New(restCfg, nil, mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -139,14 +140,22 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 	imageVersionStore := subroutines.NewImageVersionStore()
 
-	pmReconciler := controller.NewPlatformMeshReconciler(log, mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
-	if err := pmReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "PlatformMesh")); err != nil {
+	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
+	if err != nil {
+		setupLog.Error(err, "unable to create PlatformMesh reconciler")
+		os.Exit(1)
+	}
+	if err := pmReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler := controller.NewResourceReconciler(log, mgr, &operatorCfg, clientInfra, imageVersionStore)
-	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg, log.ChildLogger("type", "Resource")); err != nil {
+	resourceReconciler, err := controller.NewResourceReconciler(mgr, &operatorCfg, clientInfra, imageVersionStore)
+	if err != nil {
+		setupLog.Error(err, "unable to create Resource reconciler")
+		os.Exit(1)
+	}
+	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}

@@ -7,12 +7,6 @@ metadata:
   labels:
     core.platform-mesh.io/operator-created: "true"
 spec:
-{{- if .kubeConfigEnabled }}
-  kubeConfig:
-    secretRef:
-      name: {{ .kubeConfigSecretName }}
-      key: {{ .kubeConfigSecretKey }}
-{{- end }}
   chartRef:
     kind: OCIRepository
     name: {{ .etcdDruid.name }}
@@ -20,7 +14,15 @@ spec:
   interval: {{ .etcdDruid.interval }}
   releaseName: {{ .etcdDruid.name }}
   targetNamespace: {{ .etcdDruid.targetNamespace }}
+  install:
+    createNamespace: true
   timeout: 15m
   values:
-{{ toYaml .etcdDruid.values | nindent 4 }}
+    {{- toYaml .etcdDruid.values | nindent 4 }}
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
 {{- end }}

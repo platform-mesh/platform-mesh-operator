@@ -43,25 +43,6 @@ data:
               collector:
                 host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
               enabled: false
-        etcd-druid:
-          syncWave: 1
-          enabled: true
-          gitRepo: false
-          ocm:
-            repo:
-              name: gardener-releases
-          ocmResourceName: etcd-druid
-          ocmResourceType: helmChart
-          imageResources:
-          - annotations:
-              artifact: image
-              for: etcd-druid
-              repo: oci
-            ocmRepoName: gardener-releases
-            resourceName: etcd-druid
-          path: charts
-          targetNamespace: etcd-druid-system
-          values: {}
         extension-manager-operator:
           imageResources:
           - annotations:
@@ -106,93 +87,23 @@ data:
               artifact: image
               for: iam-service
           syncWave: 4
-          enabled: false
-          values:
-            istio:
-              hosts:
-              - '*.{{ .baseDomain }}'
-        infra:
-          # -- Allow the configuration of additional ocm resources
-          imageResources:
-          - name: kcp-image
-            annotations:
-              path: kcp.image.tag
-              for: infra
-              repo: oci
-              artifact: image
-            resource: image
-            referencePath:
-              - name: kcp
-          ignoreDifferences:
-          - group: operator.kcp.io
-            kind: FrontProxy
-            name: frontproxy
-            jsonPointers:
-            - /status
-            - /metadata/finalizers
-            - /spec/serviceTemplate/spec/ports
-          syncWave: 3
-          dependsOn:
-          - name: kcp-operator
-            namespace: platform-mesh-system
           enabled: true
           values:
+            extraArgs:
+            - --no-json
             cors:
               enabled: true
-            gatewayApi:
-              enabled: true
-              passThrough:
-                gateway:
-                  # -- Toggle to enable/disable the passthrough gateway
-                  enabled: true
-                  hostname: localhost
-                  port: 8443
-                  name: https-passthrough
-                  protocol: TLS
             hostAliases:
               enabled: true
-            istio:
-              enabled: false
-            kcp:
-              image:
-                tag: v0.29.0
-              rootShard:
-                extraArgs:
-                - --feature-gates=WorkspaceAuthentication=true
-              webhook:
-                enabled: true
-              external:
-                hostname: localhost
-            keycloak:
-              istio:
-                virtualservice:
-                  hosts:
-                  - portal.localhost
-            traefik:
-              accessControlAllowOriginList:
-              - http://localhost:4200
-              - http://localhost:4300
-              - http://*.localhost:4200
-              - http://*.localhost:4300
-              - http://sub.localhost:4300
-              - https://portal.dev.local:8443
-              - https://*.portal.dev.local:8443
         kcp-operator:
           syncWave: 1
+          external: true
           enabled: true
           helmRepo: true
-          imageResource:
-            enabled: true
-            labels:
-              component: infra
-              infra: "true"
-            name: kcp-image
           targetNamespace: kcp-operator
-          values:
-            image:
-              tag: v0.5.1
         keycloak:
           syncWave: 2
+          external: true
           enabled: true
           values:
             auth:
@@ -287,6 +198,10 @@ data:
               service:
                 type: ClusterIP
         openfga:
+          enabled: true
+          external: true
+          syncWave: 2
+          helmRepo: true
           # -- Allow the configuration of additional ocm resources
           imageResources:
           - name: openfga-image
@@ -302,9 +217,7 @@ data:
               artifact: image
               for: openfga
               path: postgresql.image.tag
-          syncWave: 2
-          enabled: true
-          helmRepo: true
+              unsuspend: "true"
           values:
             autoscaling:
               enabled: false
@@ -513,6 +426,14 @@ data:
             spec:
               clusterIP: 10.96.188.4
             type: NodePort
+      etcdDruid:
+        enabled: true
+        interval: 1m
+        name: etcd-druid
+        ocmResourceName: etcd-druid
+        ocmImageResourceName: image
+        targetNamespace: etcd-druid-system
+        values: {}
       traefikCRDs:
         chart:
           name: traefik-crds

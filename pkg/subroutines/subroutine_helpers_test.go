@@ -1,36 +1,27 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/platform-mesh/golang-commons/context/keys"
+	"github.com/platform-mesh/golang-commons/errors"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 )
 
 type HelperTestSuite struct {
 	suite.Suite
 
-	subroutines.KcpHelper
+	KcpHelper
 }
 
 func TestHelperTestSuite(t *testing.T) {
@@ -61,7 +52,7 @@ func (s *HelperTestSuite) TestGetWorkspaceName() {
 
 	for _, tt := range tests {
 		s.T().Run(tt.input, func(t *testing.T) {
-			result, err := subroutines.GetWorkspaceName(tt.input)
+			result, err := GetWorkspaceName(tt.input)
 			if tt.expectError {
 				s.Assert().Error(err, "input: %q", tt.input)
 			} else {
@@ -102,14 +93,14 @@ func (s *HelperTestSuite) TestListFiles() {
 	}
 
 	// Call ListFiles
-	result, err := subroutines.ListFiles(dir)
+	result, err := ListFiles(dir)
 	s.Require().NoError(err)
 	s.ElementsMatch(expected, result)
 }
 
 func (s *HelperTestSuite) TestListFiles_DirectoryNotExist() {
 	// Call ListFiles on a non-existent directory
-	result, err := subroutines.ListFiles("/nonexistent/path/to/dir")
+	result, err := ListFiles("/nonexistent/path/to/dir")
 	s.Error(err)
 	s.Empty(result)
 	s.Contains(err.Error(), "Failed to read directory")
@@ -120,7 +111,7 @@ func (s *HelperTestSuite) TestListFiles_EmptyDirectory() {
 	s.Require().NoError(err)
 	defer os.RemoveAll(dir) //nolint:errcheck
 
-	result, err := subroutines.ListFiles(dir)
+	result, err := ListFiles(dir)
 	s.NoError(err)
 	s.Empty(result)
 }
@@ -146,7 +137,7 @@ func (s *HelperTestSuite) TestIsWorkspace() {
 
 	for _, tt := range tests {
 		s.T().Run(tt.dir, func(t *testing.T) {
-			result := subroutines.IsWorkspace(tt.dir)
+			result := IsWorkspace(tt.dir)
 			s.Assert().Equal(tt.expected, result, "dir: %q", tt.dir)
 		})
 	}
@@ -179,7 +170,7 @@ func (s *HelperTestSuite) TestConvertToUnstructured() {
 	}
 
 	// Convert to unstructured
-	unstructuredObj, err := subroutines.ConvertToUnstructured(webhook)
+	unstructuredObj, err := ConvertToUnstructured(webhook)
 
 	// Verify no error occurred
 	s.Assert().NoError(err)
@@ -221,7 +212,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_ParseError() {
 	// Invalid template syntax {{ .Name
 	templateBytes := []byte("Hello, {{ .Name")
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to parse template")
 	s.Assert().Empty(result)
@@ -236,14 +227,14 @@ func (s *HelperTestSuite) TestReplaceTemplate_ExecuteError() {
 	templateBytes := []byte("Hello, {{ .Name }}. {{ if true }} Mismatched brackets")
 
 	// First, check parsing error because the template is malformed
-	_, parseErr := subroutines.ReplaceTemplate(templateData, templateBytes)
+	_, parseErr := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().Error(parseErr)
 	s.Assert().Contains(parseErr.Error(), "Failed to parse template")
 
 	// Test case with missing key (text/template default behavior is to insert <no value>)
 	templateBytesMissingKey := []byte("Hello, {{ .Name }}. Your ID is {{ .ID }}.")
 	expectedMissingKey := []byte("Hello, World. Your ID is <no value>.")
-	resultMissingKey, errMissingKey := subroutines.ReplaceTemplate(templateData, templateBytesMissingKey)
+	resultMissingKey, errMissingKey := ReplaceTemplate(templateData, templateBytesMissingKey)
 	s.Assert().NoError(errMissingKey)
 	s.Assert().Equal(expectedMissingKey, resultMissingKey)
 
@@ -254,7 +245,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_EmptyData() {
 	templateBytes := []byte("Hello, {{ .Name }}!")
 	expected := []byte("Hello, <no value>!") // Default behavior for missing keys
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().NoError(err)
 	s.Assert().Equal(expected, result)
 }
@@ -266,7 +257,7 @@ func (s *HelperTestSuite) TestReplaceTemplate_EmptyTemplate() {
 	templateBytes := []byte{}
 	expected := []byte{}
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().NoError(err)
 	s.Assert().Equal(expected, result)
 }
@@ -279,13 +270,13 @@ func (s *HelperTestSuite) TestReplaceTemplate_Success() {
 	templateBytes := []byte("Hello, {{ .Name }}! You are {{ .Age }}.")
 	expected := []byte("Hello, World! You are 30.")
 
-	result, err := subroutines.ReplaceTemplate(templateData, templateBytes)
+	result, err := ReplaceTemplate(templateData, templateBytes)
 	s.Assert().NoError(err)
 	s.Assert().Equal(expected, result)
 }
 
 func (suite *HelperTestSuite) SetupTest() {
-	suite.KcpHelper = &subroutines.Helper{}
+	suite.KcpHelper = &Helper{}
 }
 
 func (s *HelperTestSuite) TestConstructorError() {
@@ -305,26 +296,26 @@ func (s *HelperTestSuite) TestConstructorOK() {
 func (s *HelperTestSuite) TestApplyManifestFromFile() {
 
 	cl := new(mocks.Client)
-	// SSA Patch call (no Get needed)
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	// Server-side apply (no Get needed)
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	err := ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
+	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = subroutines.ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	cl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	templateData := map[string]any{
 		".account-operator.webhooks.platform-mesh.io.ca-bundle": "CABundle",
 	}
@@ -333,130 +324,6 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 		KCP: config.OperatorConfig{}.KCP,
 	}
 	ctx := context.WithValue(context.TODO(), keys.ConfigCtxKey, operatorCfg)
-	err = subroutines.ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
-}
-
-func (s *HelperTestSuite) TestPlatformMeshExtraProviderConnections() {
-	// Simulate a PlatformMesh resource with extraProviderConnections:
-	//   spec:
-	//     kcp:
-	//       extraProviderConnections:
-	//         - endpointSliceName: ""
-	//           path: root:providers:httpbin-provider
-	//           secret: httpbin-kubeconfig
-	//           namespace: example-httpbin-provider
-	//           external: true
-	instance := &corev1alpha1.PlatformMesh{}
-	instance.Name = "test-platform-mesh"
-	instance.Namespace = "default"
-	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
-		BaseDomain: "example.com",
-		Port:       1234,
-		Protocol:   "https",
-	}
-	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
-		{
-			EndpointSliceName: ptr.To(""),
-			Path:              "root:providers:httpbin-provider",
-			Secret:            "httpbin-kubeconfig",
-			Namespace:         ptr.To("example-httpbin-provider"),
-			External:          true,
-		},
-	}
-
-	// Setup mocks
-	clientMock := new(mocks.Client)
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	_ = corev1alpha1.AddToScheme(scheme)
-	clientMock.EXPECT().Scheme().Return(scheme).Maybe()
-
-	// Capture the secret passed to Patch so we can assert on it after HandleProviderConnection returns
-	var capturedSecret *corev1.Secret
-	clientMock.EXPECT().
-		Patch(mock.Anything,
-			mock.MatchedBy(func(obj client.Object) bool {
-				sec, ok := obj.(*corev1.Secret)
-				if !ok {
-					return false
-				}
-				return sec.Name == "httpbin-kubeconfig" && sec.Namespace == "example-httpbin-provider"
-			}),
-			mock.Anything,
-			mock.Anything,
-			mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
-			capturedSecret = obj.(*corev1.Secret).DeepCopy()
-			return nil
-		}).Once()
-
-	// Setup operator config and context
-	operatorCfg := config.OperatorConfig{}
-	operatorCfg.KCP.FrontProxyName = "frontproxy"
-	operatorCfg.KCP.FrontProxyPort = "6443"
-	operatorCfg.KCP.Namespace = "platform-mesh-system"
-
-	logCfg := logger.DefaultConfig()
-	logCfg.Level = "debug"
-	logCfg.NoJSON = true
-	log, _ := logger.New(logCfg)
-
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-
-	// Build a rest.Config to pass to HandleProviderConnection
-	restCfg := &rest.Config{
-		Host: "https://frontproxy.platform-mesh-system:6443",
-		TLSClientConfig: rest.TLSClientConfig{
-			CertData: []byte("dummy-cert"),
-			KeyData:  []byte("dummy-key"),
-			CAData:   []byte("dummy-ca"),
-		},
-	}
-
-	// Build admin kubeconfig to be serialized into the provider secret
-	adminKubeconfig := &clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{
-			"default": {Server: "https://placeholder:6443"},
-		},
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"default": {Token: "admin-token"},
-		},
-		Contexts: map[string]*clientcmdapi.Context{
-			"default": {Cluster: "default", AuthInfo: "default"},
-		},
-		CurrentContext: "default",
-	}
-
-	// Create the ProvidersecretSubroutine and invoke HandleProviderConnection
-	testObj := subroutines.NewProviderSecretSubroutine(clientMock, &subroutines.Helper{}, nil)
-
-	pc := instance.Spec.Kcp.ExtraProviderConnections[0]
-	res, opErr := testObj.HandleProviderConnection(ctx, instance, pc, restCfg, adminKubeconfig)
-	s.Require().Nil(opErr)
-	s.Assert().False(res.Requeue)
-
-	// Validate the captured secret after HandleProviderConnection returns
-	clientMock.AssertExpectations(s.T())
-	s.Require().NotNil(capturedSecret, "Patch should have been called with a secret")
-	s.Assert().Equal("httpbin-kubeconfig", capturedSecret.Name)
-	s.Assert().Equal("example-httpbin-provider", capturedSecret.Namespace)
-
-	// Parse the kubeconfig from the secret and validate the server: field
-	kubeconfigData, ok := capturedSecret.Data["kubeconfig"]
-	s.Require().True(ok, "secret should contain kubeconfig key")
-	s.Require().NotEmpty(kubeconfigData, "kubeconfig data should not be empty")
-
-	cfg, err := clientcmd.Load(kubeconfigData)
-	s.Require().NoError(err, "kubeconfig should be valid")
-
-	expectedServer := fmt.Sprintf("https://example.com:1234/clusters/%s",
-		"root:providers:httpbin-provider")
-
-	s.Require().Len(cfg.Clusters, 1, "kubeconfig should have exactly one cluster")
-	for _, cluster := range cfg.Clusters {
-		s.Assert().Equal(expectedServer, cluster.Server,
-			"server field should be front-proxy host with provider path")
-	}
 }

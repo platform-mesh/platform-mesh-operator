@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-logr/logr"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -32,61 +31,82 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
+	ctrlmanager "sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/conversion"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
-// fakeManager is a minimal ctrl.Manager implementation for unit tests.
+// fakeCtrlManager implements sigs.k8s.io/controller-runtime/pkg/manager.Manager for unit tests.
 // Only GetClient and GetScheme are functional; all other methods panic if called.
-type fakeManager struct {
+type fakeCtrlManager struct {
 	client client.Client
 	scheme *runtime.Scheme
 }
 
-func newFakeManager(c client.Client, s *runtime.Scheme) *fakeManager {
-	return &fakeManager{client: c, scheme: s}
-}
-
-func (f *fakeManager) GetClient() client.Client                          { return f.client }
-func (f *fakeManager) GetScheme() *runtime.Scheme                        { return f.scheme }
-func (f *fakeManager) GetConfig() *rest.Config                           { panic("not implemented") }
-func (f *fakeManager) GetCache() cache.Cache                             { panic("not implemented") }
-func (f *fakeManager) GetFieldIndexer() client.FieldIndexer              { panic("not implemented") }
-func (f *fakeManager) GetEventRecorderFor(_ string) record.EventRecorder { panic("not implemented") }
-func (f *fakeManager) GetRESTMapper() meta.RESTMapper                    { panic("not implemented") }
-func (f *fakeManager) GetAPIReader() client.Reader                       { panic("not implemented") }
-func (f *fakeManager) GetHTTPClient() *http.Client                       { panic("not implemented") }
-func (f *fakeManager) Add(_ manager.Runnable) error                      { panic("not implemented") }
-func (f *fakeManager) Elected() <-chan struct{}                          { panic("not implemented") }
-func (f *fakeManager) AddMetricsServerExtraHandler(_ string, _ http.Handler) error {
+func (f *fakeCtrlManager) GetClient() client.Client                                { return f.client }
+func (f *fakeCtrlManager) GetScheme() *runtime.Scheme                              { return f.scheme }
+func (f *fakeCtrlManager) GetConfig() *rest.Config                                 { panic("not implemented") }
+func (f *fakeCtrlManager) GetCache() cache.Cache                                   { panic("not implemented") }
+func (f *fakeCtrlManager) GetFieldIndexer() client.FieldIndexer                    { panic("not implemented") }
+func (f *fakeCtrlManager) GetEventRecorderFor(_ string) record.EventRecorder       { panic("not implemented") }
+func (f *fakeCtrlManager) GetEventRecorder(_ string) events.EventRecorder          { panic("not implemented") }
+func (f *fakeCtrlManager) GetRESTMapper() meta.RESTMapper                          { panic("not implemented") }
+func (f *fakeCtrlManager) GetAPIReader() client.Reader                             { panic("not implemented") }
+func (f *fakeCtrlManager) GetHTTPClient() *http.Client                             { panic("not implemented") }
+func (f *fakeCtrlManager) Add(_ ctrlmanager.Runnable) error                        { return nil }
+func (f *fakeCtrlManager) Elected() <-chan struct{}                                 { panic("not implemented") }
+func (f *fakeCtrlManager) AddMetricsServerExtraHandler(_ string, _ http.Handler) error {
 	panic("not implemented")
 }
-func (f *fakeManager) AddHealthzCheck(_ string, _ healthz.Checker) error { panic("not implemented") }
-func (f *fakeManager) AddReadyzCheck(_ string, _ healthz.Checker) error  { panic("not implemented") }
-func (f *fakeManager) Start(_ context.Context) error                     { panic("not implemented") }
-func (f *fakeManager) GetWebhookServer() webhook.Server                  { panic("not implemented") }
-func (f *fakeManager) GetLogger() logr.Logger                            { panic("not implemented") }
-func (f *fakeManager) GetControllerOptions() ctrlconfig.Controller       { panic("not implemented") }
+func (f *fakeCtrlManager) AddHealthzCheck(_ string, _ healthz.Checker) error      { return nil }
+func (f *fakeCtrlManager) AddReadyzCheck(_ string, _ healthz.Checker) error       { return nil }
+func (f *fakeCtrlManager) Start(_ context.Context) error                           { panic("not implemented") }
+func (f *fakeCtrlManager) GetWebhookServer() webhook.Server                        { panic("not implemented") }
+func (f *fakeCtrlManager) GetLogger() logr.Logger                                  { return logr.Discard() }
+func (f *fakeCtrlManager) GetControllerOptions() ctrlconfig.Controller             { return ctrlconfig.Controller{} }
+func (f *fakeCtrlManager) GetConverterRegistry() conversion.Registry               { panic("not implemented") }
 
-// newTestLogger creates a logger suitable for unit tests.
-func newTestLogger() *logger.Logger {
-	cfg := logger.DefaultConfig()
-	log, _ := logger.New(cfg)
-	return log
+// fakeManager wraps fakeCtrlManager and implements mcmanager.Manager for unit tests.
+type fakeManager struct {
+	*fakeCtrlManager
 }
 
-// ---- mapConfigMapToPlatformMesh tests ----
+func newFakeManager(c client.Client, s *runtime.Scheme) *fakeManager {
+	return &fakeManager{fakeCtrlManager: &fakeCtrlManager{client: c, scheme: s}}
+}
+
+func (f *fakeManager) GetLocalManager() ctrlmanager.Manager                      { return f.fakeCtrlManager }
+func (f *fakeManager) GetProvider() multicluster.Provider                        { return nil }
+func (f *fakeManager) GetCluster(_ context.Context, _ string) (cluster.Cluster, error) {
+	panic("not implemented")
+}
+func (f *fakeManager) ClusterFromContext(_ context.Context) (cluster.Cluster, error) {
+	panic("not implemented")
+}
+func (f *fakeManager) GetManager(_ context.Context, _ string) (ctrlmanager.Manager, error) {
+	return f.fakeCtrlManager, nil
+}
+func (f *fakeManager) Engage(_ context.Context, _ string, _ cluster.Cluster) error {
+	return nil
+}
+
+// Satisfy mcmanager.Manager's Add method (takes mcmanager.Runnable, not ctrlmanager.Runnable)
+func (f *fakeManager) Add(_ mcmanager.Runnable) error { return nil }
 
 type MapConfigMapTestSuite struct {
 	suite.Suite
@@ -310,11 +330,11 @@ func (s *NewResourceReconcilerTestSuite) SetupSuite() {
 func (s *NewResourceReconcilerTestSuite) Test_nilClientInfra_usesManagerClient() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{}
 
 	// Must not panic and must return a non-nil reconciler.
-	r := NewResourceReconciler(log, mgr, cfg, nil, nil)
+	r, err := NewResourceReconciler(mgr, cfg, nil, nil)
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }
@@ -323,10 +343,10 @@ func (s *NewResourceReconcilerTestSuite) Test_withClientInfra_usesProvidedClient
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	infraClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{}
 
-	r := NewResourceReconciler(log, mgr, cfg, infraClient, nil)
+	r, err := NewResourceReconciler(mgr, cfg, infraClient, nil)
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }
@@ -351,7 +371,6 @@ func (s *NewPlatformMeshReconcilerTestSuite) SetupSuite() {
 func (s *NewPlatformMeshReconcilerTestSuite) Test_allSubroutinesDisabled_returnsValidReconciler() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{
 		Subroutines: config.SubroutinesConfig{
 			Deployment:     config.DeploymentSubroutineConfig{Enabled: false},
@@ -363,7 +382,8 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_allSubroutinesDisabled_returns
 	}
 	commonCfg := &pmconfig.CommonServiceConfig{}
 
-	r := NewPlatformMeshReconciler(log, mgr, cfg, commonCfg, "/tmp", fakeClient, subroutines.NewImageVersionStore())
+	r, err := NewPlatformMeshReconciler(mgr, cfg, commonCfg, "/tmp", fakeClient, subroutines.NewImageVersionStore())
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 	s.Equal(fakeClient, r.client)
@@ -372,7 +392,6 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_allSubroutinesDisabled_returns
 func (s *NewPlatformMeshReconcilerTestSuite) Test_deploymentSubroutineEnabled_returnsValidReconciler() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{
 		Subroutines: config.SubroutinesConfig{
 			Deployment: config.DeploymentSubroutineConfig{Enabled: true},
@@ -380,7 +399,8 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_deploymentSubroutineEnabled_re
 	}
 	commonCfg := &pmconfig.CommonServiceConfig{}
 
-	r := NewPlatformMeshReconciler(log, mgr, cfg, commonCfg, "/tmp", fakeClient, subroutines.NewImageVersionStore())
+	r, err := NewPlatformMeshReconciler(mgr, cfg, commonCfg, "/tmp", fakeClient, subroutines.NewImageVersionStore())
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }
@@ -388,7 +408,6 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_deploymentSubroutineEnabled_re
 func (s *NewPlatformMeshReconcilerTestSuite) Test_kcpSetupSubroutineEnabled_returnsValidReconciler() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{
 		Subroutines: config.SubroutinesConfig{
 			KcpSetup: config.KcpSetupSubroutineConfig{Enabled: true},
@@ -396,7 +415,8 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_kcpSetupSubroutineEnabled_retu
 	}
 	commonCfg := &pmconfig.CommonServiceConfig{}
 
-	r := NewPlatformMeshReconciler(log, mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	r, err := NewPlatformMeshReconciler(mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }
@@ -404,7 +424,6 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_kcpSetupSubroutineEnabled_retu
 func (s *NewPlatformMeshReconcilerTestSuite) Test_waitSubroutineEnabled_returnsValidReconciler() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{
 		Subroutines: config.SubroutinesConfig{
 			Wait: config.WaitSubroutineConfig{Enabled: true},
@@ -412,7 +431,8 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_waitSubroutineEnabled_returnsV
 	}
 	commonCfg := &pmconfig.CommonServiceConfig{}
 
-	r := NewPlatformMeshReconciler(log, mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	r, err := NewPlatformMeshReconciler(mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }
@@ -420,7 +440,6 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_waitSubroutineEnabled_returnsV
 func (s *NewPlatformMeshReconcilerTestSuite) Test_providerSecretSubroutineEnabled_returnsValidReconciler() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{
 		Subroutines: config.SubroutinesConfig{
 			ProviderSecret: config.ProviderSecretSubroutineConfig{Enabled: true},
@@ -428,7 +447,8 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_providerSecretSubroutineEnable
 	}
 	commonCfg := &pmconfig.CommonServiceConfig{}
 
-	r := NewPlatformMeshReconciler(log, mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	r, err := NewPlatformMeshReconciler(mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }
@@ -436,7 +456,6 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_providerSecretSubroutineEnable
 func (s *NewPlatformMeshReconcilerTestSuite) Test_featureTogglesSubroutineEnabled_returnsValidReconciler() {
 	fakeClient := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	mgr := newFakeManager(fakeClient, s.scheme)
-	log := newTestLogger()
 	cfg := &config.OperatorConfig{
 		Subroutines: config.SubroutinesConfig{
 			FeatureToggles: config.FeatureTogglesSubroutineConfig{Enabled: true},
@@ -444,7 +463,8 @@ func (s *NewPlatformMeshReconcilerTestSuite) Test_featureTogglesSubroutineEnable
 	}
 	commonCfg := &pmconfig.CommonServiceConfig{}
 
-	r := NewPlatformMeshReconciler(log, mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	r, err := NewPlatformMeshReconciler(mgr, cfg, commonCfg, "/tmp", fakeClient, nil)
+	s.Require().NoError(err)
 	s.NotNil(r)
 	s.NotNil(r.lifecycle)
 }

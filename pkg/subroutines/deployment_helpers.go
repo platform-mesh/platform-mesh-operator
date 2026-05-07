@@ -51,7 +51,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 	templateType string,
 	skipFile func(fileName string) bool,
 	postProcessObj func(ctx context.Context, obj *unstructured.Unstructured) error,
-) errors.OperatorError {
+) error {
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -89,7 +89,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 
 	if err != nil {
 		log.Error().Err(err).Str("type", templateType).Msg("Failed to render and apply templates")
-		return errors.NewOperatorError(err, false, true)
+		return err
 	}
 
 	return nil
@@ -190,7 +190,7 @@ func templateFuncMap() template.FuncMap {
 			}
 			result := strings.Join(lines[startIdx:endIdx], "\n")
 			if result != "" {
-				result += "\n"
+				result = "\n" + result + "\n"
 			}
 			return result
 		},

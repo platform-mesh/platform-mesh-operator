@@ -319,15 +319,49 @@ func loadAdminKubeconfig(ctx context.Context, cl client.Client) (*clientcmdapi.C
 		return nil, fmt.Errorf("secret %s/%s has no Data", operatorCfg.KCP.Namespace, secretName)
 	}
 
-	kubeconfigData, ok := secret.Data["kubeconfig"]
-	if !ok || len(kubeconfigData) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing or empty key \"kubeconfig\"", operatorCfg.KCP.Namespace, secretName)
+	// Try kubeconfig key first (Opaque secret with pre-built kubeconfig)
+	if kubeconfigData, ok := secret.Data["kubeconfig"]; ok && len(kubeconfigData) > 0 {
+		cfg, err := clientcmd.Load(kubeconfigData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+		}
+		return cfg, nil
 	}
 
-	cfg, err := clientcmd.Load(kubeconfigData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+	// Fall back to cert-based approach (kubernetes.io/tls secret with ca.crt, tls.crt, tls.key)
+	caData, ok := secret.Data["ca.crt"]
+	if !ok || len(caData) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing both \"kubeconfig\" and \"ca.crt\" keys", operatorCfg.KCP.Namespace, secretName)
 	}
+	tlsCrt, ok := secret.Data["tls.crt"]
+	if !ok || len(tlsCrt) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.crt\"", operatorCfg.KCP.Namespace, secretName)
+	}
+	tlsKey, ok := secret.Data["tls.key"]
+	if !ok || len(tlsKey) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.key\"", operatorCfg.KCP.Namespace, secretName)
+	}
+
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters = map[string]*clientcmdapi.Cluster{
+		"kcp": {
+			Server:                   "https://kcp",
+			CertificateAuthorityData: caData,
+		},
+	}
+	cfg.Contexts = map[string]*clientcmdapi.Context{
+		"admin": {
+			Cluster:  "kcp",
+			AuthInfo: "admin",
+		},
+	}
+	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
+		"admin": {
+			ClientCertificateData: tlsCrt,
+			ClientKeyData:         tlsKey,
+		},
+	}
+	cfg.CurrentContext = "admin"
 	return cfg, nil
 }
 
@@ -344,21 +378,53 @@ func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.Operato
 		return nil, fmt.Errorf("secret %s/%s has no Data", operatorCfg.KCP.Namespace, secretName)
 	}
 
-	kubeconfigData, ok := secret.Data["kubeconfig"]
-	if !ok || len(kubeconfigData) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing or empty key \"kubeconfig\"", operatorCfg.KCP.Namespace, secretName)
+	// Try kubeconfig key first (Opaque secret with pre-built kubeconfig)
+	if kubeconfigData, ok := secret.Data["kubeconfig"]; ok && len(kubeconfigData) > 0 {
+		cfg, err := clientcmd.Load(kubeconfigData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+		}
+		// Override the server URL in all clusters with the provided kcpUrl
+		for _, cluster := range cfg.Clusters {
+			cluster.Server = kcpUrl
+		}
+		return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 	}
 
-	cfg, err := clientcmd.Load(kubeconfigData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+	// Fall back to cert-based approach (kubernetes.io/tls secret with ca.crt, tls.crt, tls.key)
+	caData, ok := secret.Data["ca.crt"]
+	if !ok || len(caData) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing both \"kubeconfig\" and \"ca.crt\" keys", operatorCfg.KCP.Namespace, secretName)
+	}
+	tlsCrt, ok := secret.Data["tls.crt"]
+	if !ok || len(tlsCrt) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.crt\"", operatorCfg.KCP.Namespace, secretName)
+	}
+	tlsKey, ok := secret.Data["tls.key"]
+	if !ok || len(tlsKey) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.key\"", operatorCfg.KCP.Namespace, secretName)
 	}
 
-	// Override the server URL in all clusters with the provided kcpUrl
-	for _, cluster := range cfg.Clusters {
-		cluster.Server = kcpUrl
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters = map[string]*clientcmdapi.Cluster{
+		"kcp": {
+			Server:                   kcpUrl,
+			CertificateAuthorityData: caData,
+		},
 	}
-
+	cfg.Contexts = map[string]*clientcmdapi.Context{
+		"admin": {
+			Cluster:  "kcp",
+			AuthInfo: "admin",
+		},
+	}
+	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
+		"admin": {
+			ClientCertificateData: tlsCrt,
+			ClientKeyData:         tlsKey,
+		},
+	}
+	cfg.CurrentContext = "admin"
 	return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
 }
 
@@ -446,8 +512,14 @@ func ApplyManifestFromFile(
 		templateData["apiExportSystemPlatformMeshIoIdentityHash"] = apiExport.Status.IdentityHash
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
+	err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
+		client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
+		if obj.GetKind() == "IdentityProviderConfiguration" && obj.GetAPIVersion() == "core.platform-mesh.io/v1alpha1" {
+			log.Warn().Err(err).Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
+				Msg("Failed to apply IdentityProviderConfiguration (webhook may not be ready yet), will retry on next reconciliation")
+			return nil
+		}
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 	log.Info().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied manifest file")

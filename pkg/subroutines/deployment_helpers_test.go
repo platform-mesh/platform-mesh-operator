@@ -288,31 +288,31 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_nindent() {
 			name:     "single line",
 			spaces:   2,
 			input:    "hello",
-			expected: "  hello\n",
+			expected: "\n  hello\n",
 		},
 		{
 			name:     "multiple lines",
 			spaces:   4,
 			input:    "line1\nline2\nline3",
-			expected: "    line1\n    line2\n    line3\n",
+			expected: "\n    line1\n    line2\n    line3\n",
 		},
 		{
 			name:     "lines with trailing newline",
 			spaces:   2,
 			input:    "line1\nline2\n",
-			expected: "  line1\n  line2\n",
+			expected: "\n  line1\n  line2\n",
 		},
 		{
 			name:     "lines with empty lines at start",
 			spaces:   2,
 			input:    "\n\nline1",
-			expected: "  line1\n",
+			expected: "\n  line1\n",
 		},
 		{
 			name:     "zero spaces",
 			spaces:   0,
 			input:    "hello",
-			expected: "hello\n",
+			expected: "\nhello\n",
 		},
 	}
 

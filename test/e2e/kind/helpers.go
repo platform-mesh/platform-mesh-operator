@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"context"
-	stderrors "errors"
 	"fmt"
 	"html/template"
 	"os"
@@ -16,30 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// applyUnstructureds applies a slice of unstructured objects to the cluster.
-// It skips nil objects, applies each object using SSA, and accumulates errors.
-func applyUnstructureds(
-	ctx context.Context,
-	k8sClient client.Client,
-	objs []unstructured.Unstructured,
-	path string,
-	log *logger.Logger,
-) error {
-	var errRet error
-	for _, obj := range objs {
-		if obj.Object == nil {
-			continue
-		}
-		if err := k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner("platform-mesh-operator")); err != nil {
-			errRet = stderrors.Join(errRet, fmt.Errorf("failed to apply manifest file: %s (%s/%s): %w", path, obj.GetKind(), obj.GetName(), err))
-		}
-	}
-	return errRet
-}
-
-// ApplyTemplateFromFile applies a template file to the cluster.
-// Before applying the template, it replaces the template variables with the values in the templateData map.
-func ApplyTemplateFromFile(
+func ApplyManifestFromFile(
 	ctx context.Context,
 	path string, k8sClient client.Client, templateData map[string]string,
 ) error {
@@ -50,22 +26,18 @@ func ApplyTemplateFromFile(
 		return err
 	}
 
-	return applyUnstructureds(ctx, k8sClient, objs, path, log)
-}
-
-// ApplyFile applies a manifest file to the cluster without any template variable replacement.
-func ApplyFile(
-	ctx context.Context,
-	path string, k8sClient client.Client,
-) error {
-	log := logger.LoadLoggerFromContext(ctx)
-
-	objs, err := unstructuredsFromFileNoTemplate(path, log)
-	if err != nil {
-		return err
+	var errRet error = nil
+	for _, obj := range objs {
+		if obj.Object == nil {
+			continue
+		}
+		err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
+			client.FieldOwner("platform-mesh-operator"))
+		if err != nil {
+			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+		}
 	}
-
-	return applyUnstructureds(ctx, k8sClient, objs, path, log)
+	return errRet
 }
 
 func unstructuredsFromFile(path string, templateData map[string]string, log *logger.Logger) ([]unstructured.Unstructured, error) {
@@ -89,29 +61,7 @@ func unstructuredsFromFile(path string, templateData map[string]string, log *log
 			return []unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
 		}
 
-		obj := unstructured.Unstructured{Object: objMap}
-
-		log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
-		unstructuredObjs = append(unstructuredObjs, obj)
-	}
-	return unstructuredObjs, nil
-}
-
-func unstructuredsFromFileNoTemplate(path string, log *logger.Logger) ([]unstructured.Unstructured, error) {
-	manifestBytes, err := os.ReadFile(path)
-	if err != nil {
-		return []unstructured.Unstructured{}, errors.Wrap(err, "Failed to read file, pwd: %s", path)
-	}
-	log.Debug().Str("file", path).Str("manifest", string(manifestBytes)).Msg("Reading manifest file")
-
-	// split the result into multiple YAML objects
-	objects := strings.Split(string(manifestBytes), "---\n")
-	var unstructuredObjs []unstructured.Unstructured
-	for _, obj := range objects {
-		var objMap map[string]interface{}
-		if err := yaml.Unmarshal([]byte(obj), &objMap); err != nil {
-			return []unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from file %s. Output:\n%s", path, string(manifestBytes))
-		}
+		log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
 
 		obj := unstructured.Unstructured{Object: objMap}
 

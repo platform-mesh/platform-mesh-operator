@@ -1,0 +1,9 @@
+# Applied with kcp client scoped to root (Kind e2e — scoped kubeconfig extraProviderConnections).
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: Workspace
+metadata:
+  name: providers
+spec:
+  type:
+    name: providers
+    path: root

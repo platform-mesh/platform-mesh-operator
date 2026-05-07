@@ -1,0 +1,45 @@
+---
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIResourceSchema
+metadata:
+  name: {{.SchemaName}}
+spec:
+  group: {{.E2eGroup}}
+  names:
+    kind: Widget
+    listKind: WidgetList
+    plural: widgets
+    singular: widget
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      schema:
+        description: E2E Widget (fixture for scoped kubeconfig tests)
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Widget
+            properties:
+              note:
+                type: string
+            required:
+              - note
+            type: object
+        required:
+          - spec
+        type: object
+      served: true
+      storage: true
+---
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIExport
+metadata:
+  name: {{.ExportName}}
+spec:
+  latestResourceSchemas:
+    - {{.SchemaName}}

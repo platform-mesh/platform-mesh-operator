@@ -106,6 +106,10 @@ spec:
                   extraProviderConnections:
                     items:
                       properties:
+                        adminAuth:
+                          type: boolean
+                        apiExportName:
+                          type: string
                         endpointSliceName:
                           type: string
                         external:
@@ -156,6 +160,10 @@ spec:
                   providerConnections:
                     items:
                       properties:
+                        adminAuth:
+                          type: boolean
+                        apiExportName:
+                          type: string
                         endpointSliceName:
                           type: string
                         external:

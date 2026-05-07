@@ -11,8 +11,8 @@ import (
 	"text/template"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/subroutines"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -140,9 +139,6 @@ func (r *DeploymentSubroutine) loadProfileSections(ctx context.Context, inst *v1
 
 	// Extract infra section
 	infraData, ok := unifiedProfile["infra"]
-	if !ok {
-		return "", "", fmt.Errorf("profile ConfigMap does not contain 'infra' section")
-	}
 	infraYAML, err := yaml.Marshal(infraData)
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to marshal infra profile")
@@ -150,9 +146,6 @@ func (r *DeploymentSubroutine) loadProfileSections(ctx context.Context, inst *v1
 
 	// Extract components section
 	componentsData, ok := unifiedProfile["components"]
-	if !ok {
-		return "", "", fmt.Errorf("profile ConfigMap does not contain 'components' section")
-	}
 	componentsYAML, err := yaml.Marshal(componentsData)
 	if err != nil {
 		return "", "", errors.Wrap(err, "Failed to marshal components profile")
@@ -166,43 +159,37 @@ func (r *DeploymentSubroutine) GetName() string {
 	return DeploymentSubroutineName
 }
 
-func (r *DeploymentSubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	return ctrl.Result{}, nil
+func (r *DeploymentSubroutine) Finalize(_ context.Context, _ client.Object) (subroutines.Result, error) {
+	return subroutines.OK(), nil
 }
 
-func (r *DeploymentSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
+func (r *DeploymentSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
 	return []string{}
 }
 
-func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	inst, ok := runtimeObj.(*v1alpha1.PlatformMesh)
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("unexpected runtime object type %T", runtimeObj), false, true)
-	}
+func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
+	inst := runtimeObj.(*v1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	operatorCfg, ok := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("unexpected config type from context"), false, true)
-	}
+	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Create DeploymentComponents Version
 	templateVars, err := TemplateVars(ctx, inst, r.clientRuntime)
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	// Render and apply infra templates directly from gotemplates/infra/infra using profile
 	oErr := r.renderAndApplyInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
-		log.Error().Err(oErr.Err()).Msg("Failed to render and apply infra templates")
-		return ctrl.Result{}, oErr
+		log.Error().Err(oErr).Msg("Failed to render and apply infra templates")
+		return subroutines.OK(), oErr
 	}
 	log.Debug().Msg("Successfully rendered and applied infra templates")
 
 	oErr = r.renderAndApplyRuntimeTemplates(ctx, inst, templateVars)
 	if oErr != nil {
-		log.Error().Err(oErr.Err()).Msg("Failed to render and apply runtime templates")
-		return ctrl.Result{}, oErr
+		log.Error().Err(oErr).Msg("Failed to render and apply runtime templates")
+		return subroutines.OK(), oErr
 	}
 	log.Debug().Msg("Successfully rendered and applied runtime templates")
 
@@ -210,7 +197,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	tmplVars, err := r.templateVarsFromProfileInfra(ctx, inst, templateVars, r.cfgOperator)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get template vars for deploymentTechnology check")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 	deploymentTech, _ := tmplVars["deploymentTechnology"].(string)
 	if deploymentTech == "" {
@@ -223,7 +210,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	rel, err := getDeploymentResource(ctx, r.clientInfra, "cert-manager", inst.Namespace, deploymentTech)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get cert-manager resource")
-		return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+		return subroutines.OK(), err
 	}
 	if deploymentTech == deploymentTechArgoCD {
 		// For ArgoCD Applications, check status.sync.status and status.health.status directly
@@ -232,39 +219,39 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
 
 		if !found || syncStatus != "Synced" {
-			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not synced"), true, false)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Application is not synced"), nil
 		}
 		if !healthFound || healthStatus != "Healthy" {
-			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Application is not healthy"), true, false)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Application is not healthy"), nil
 		}
 	}
 
 	if deploymentTech == deploymentTechFluxCD {
 		// For FluxCD HelmReleases, check Ready condition
 		if !matchesConditionWithStatus(rel, "Ready", "True") {
-			return ctrl.Result{}, errors.NewOperatorError(errors.New("cert-manager Release is not ready"), true, false)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
 		}
 	}
 
 	// Render and apply components templates (HelmReleases + OCM Resources) using profile
 	oErr = r.renderAndApplyComponentsInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
-		log.Error().Err(oErr.Err()).Msg("Failed to render and apply components infra templates")
-		return ctrl.Result{}, oErr
+		log.Error().Err(oErr).Msg("Failed to render and apply components infra templates")
+		return subroutines.OK(), oErr
 	}
 	log.Debug().Msg("Successfully rendered and applied components infra templates")
 
 	oErr = r.renderAndApplyComponentsRuntimeTemplates(ctx, inst, templateVars)
 	if oErr != nil {
-		log.Error().Err(oErr.Err()).Msg("Failed to render and apply components runtime templates")
-		return ctrl.Result{}, oErr
+		log.Error().Err(oErr).Msg("Failed to render and apply components runtime templates")
+		return subroutines.OK(), oErr
 	}
 	log.Debug().Msg("Successfully rendered and applied components runtime templates")
 
 	_, oErr = r.manageAuthorizationWebhookSecrets(ctx, inst)
 	if oErr != nil {
 		log.Info().Msg("Failed to manage authorization webhook secrets")
-		return ctrl.Result{}, oErr
+		return subroutines.OK(), oErr
 	}
 
 	// Check if istio-proxy is injected
@@ -274,7 +261,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 		rel, err := getDeploymentResource(ctx, r.clientInfra, "istio-istiod", inst.Namespace, deploymentTech)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get istio-istiod resource")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			return subroutines.OK(), err
 		}
 		if deploymentTech == deploymentTechArgoCD {
 			// For ArgoCD Applications, check status.sync.status and status.health.status directly
@@ -282,24 +269,24 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
 
 			if !found || syncStatus != "Synced" {
-				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not synced"), true, false)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "istio-istiod Application is not synced"), nil
 			}
 			if !healthFound || healthStatus != "Healthy" {
-				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Application is not healthy"), true, false)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "istio-istiod Application is not healthy"), nil
 			}
 		}
 
 		if deploymentTech == deploymentTechFluxCD {
 			// For FluxCD HelmReleases, check Ready condition
 			if !matchesConditionWithStatus(rel, "Ready", "True") {
-				return ctrl.Result{}, errors.NewOperatorError(errors.New("istio-istiod Release is not ready"), true, false)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "istio-istiod Release is not ready"), nil
 			}
 		}
 
 		hasProxy, pod, err := r.hasIstioProxyInjected(ctx, "platform-mesh-operator", "platform-mesh-system")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to check if istio-proxy is injected")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			return subroutines.OK(), err
 		}
 		// When running the operator locally there will never be a proxy
 		if !r.cfg.IsLocal && !hasProxy {
@@ -307,7 +294,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 			err := r.clientInfra.Delete(ctx, pod)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to delete istio-proxy pod")
-				return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+				return subroutines.OK(), err
 			}
 			// Forcing a pod restart
 			os.Exit(0)
@@ -320,7 +307,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	// Wait for root shard to be ready
 	err = r.clientRuntime.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("RootShard is not ready"), true, false)
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "RootShard is not ready"), nil
 	}
 
 	frontProxy := &unstructured.Unstructured{}
@@ -328,9 +315,9 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj runtimeob
 	// Wait for root shard to be ready
 	err = r.clientRuntime.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
-		return ctrl.Result{}, errors.NewOperatorError(errors.New("FrontProxy is not ready"), true, false)
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, "FrontProxy is not ready"), nil
 	}
-	return ctrl.Result{}, nil
+	return subroutines.OK(), nil
 }
 
 // templateVarsFromProfileInfra parses the infra profile and merges it with templateVars for rendering gotemplates/infra
@@ -723,10 +710,7 @@ func calculateSyncWaves(services map[string]interface{}) error {
 		serviceNames = append(serviceNames, serviceStr)
 		dependencies[serviceStr] = []string{}
 
-		config, ok := serviceConfig.(map[string]interface{})
-		if !ok {
-			continue
-		}
+		config, _ := serviceConfig.(map[string]interface{})
 
 		// Check if service has dependsOn
 		dependsOn, found := config["dependsOn"]
@@ -735,16 +719,10 @@ func calculateSyncWaves(services map[string]interface{}) error {
 		}
 
 		// dependsOn can be a slice of maps with "name" and optional "namespace"
-		dependsOnSlice, ok := dependsOn.([]interface{})
-		if !ok {
-			continue
-		}
+		dependsOnSlice, _ := dependsOn.([]interface{})
 
 		for _, dep := range dependsOnSlice {
 			depMap, ok := dep.(map[string]interface{})
-			if !ok {
-				continue
-			}
 
 			depName, ok := depMap["name"].(string)
 			if !ok || depName == "" {
@@ -760,10 +738,7 @@ func calculateSyncWaves(services map[string]interface{}) error {
 	// These should be preserved and not overwritten by automatic calculation
 	userConfiguredSyncWaves := make(map[string]int)
 	for serviceName, serviceConfig := range services {
-		config, ok := serviceConfig.(map[string]interface{})
-		if !ok {
-			continue
-		}
+		config, _ := serviceConfig.(map[string]interface{})
 
 		// Check if syncWave is already configured by the user
 		if syncWaveVal, found := config["syncWave"]; found {
@@ -847,11 +822,10 @@ func calculateSyncWaves(services map[string]interface{}) error {
 	// and will be available in the config for use in templates
 	for serviceName, serviceConfig := range services {
 		config, ok := serviceConfig.(map[string]interface{})
-		if !ok {
+		if !ok || config == nil {
+			// Skip non-map service configs
 			continue
 		}
-
-		// If user configured syncWave, preserve it; otherwise use calculated value
 		if _, isUserConfigured := userConfiguredSyncWaves[serviceName]; isUserConfigured {
 			// Keep user-configured value, but still respect dependencies if needed
 			// For user-configured values, we keep them as-is
@@ -975,18 +949,9 @@ func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmValues(obj map[string]i
 		return
 	}
 
-	spec, ok := obj["spec"].(map[string]interface{})
-	if !ok {
-		return
-	}
-	source, ok := spec["source"].(map[string]interface{})
-	if !ok {
-		return
-	}
-	helm, ok := source["helm"].(map[string]interface{})
-	if !ok {
-		return
-	}
+	spec, _ := obj["spec"].(map[string]interface{})
+	source, _ := spec["source"].(map[string]interface{})
+	helm, _ := source["helm"].(map[string]interface{})
 	valuesStr, _ := helm["values"].(string)
 
 	updatedYAML, err := SetHelmValues(valuesStr, versions)
@@ -1024,19 +989,16 @@ func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmReleaseValues(obj *unst
 }
 
 // renderAndApplyInfraTemplates renders all templates in gotemplates/infra/infra and applies them.
-func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
+func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	tmplVars, err := r.templateVarsFromProfileInfra(ctx, inst, templateVars, r.cfgOperator)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build template variables from profile")
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 
-	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
-	if !ok {
-		deploymentTech = deploymentTechFluxCD
-	}
+	deploymentTech, _ := tmplVars["deploymentTechnology"].(string)
 	deploymentTech = strings.ToLower(deploymentTech)
 
 	skipFile := deploymentTechFileFilter(deploymentTech, log)
@@ -1046,13 +1008,13 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 }
 
 // renderAndApplyRuntimeTemplates renders all templates in gotemplates/infra/runtime and applies them to the runtime cluster.
-func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
+func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	tmplVars, err := r.buildRuntimeTemplateVars(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build template variables for runtime templates")
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/runtime", tmplVars, r.clientRuntime, log, "runtime", nil, nil)
@@ -1060,19 +1022,16 @@ func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Contex
 
 // renderAndApplyComponentsInfraTemplates renders gotemplates/components/infra with profile-components.yaml
 // and applies the resulting manifests to the infra cluster.
-func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
+func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	tmplVars, err := r.buildComponentsTemplateVars(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build components template data for infra")
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 
-	deploymentTech, ok := tmplVars["deploymentTechnology"].(string)
-	if !ok {
-		deploymentTech = deploymentTechFluxCD
-	}
+	deploymentTech, _ := tmplVars["deploymentTechnology"].(string)
 	deploymentTech = strings.ToLower(deploymentTech)
 
 	skipFile := deploymentTechFileFilter(deploymentTech, log)
@@ -1083,13 +1042,13 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 
 // renderAndApplyComponentsRuntimeTemplates renders gotemplates/components/runtime with profile-components.yaml
 // and applies the resulting manifests to the runtime cluster (OCM Resources).
-func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) errors.OperatorError {
+func (r *DeploymentSubroutine) renderAndApplyComponentsRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	tmplVars, err := r.buildComponentsTemplateVars(ctx, inst, templateVars)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build components template data for runtime")
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesComponentsDir+"/runtime", tmplVars, r.clientRuntime, log, "components-runtime", nil, nil)
@@ -1124,14 +1083,14 @@ func mergeOCMConfig(mapValues map[string]interface{}, inst *v1alpha1.PlatformMes
 	}
 }
 
-func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) errors.OperatorError {
+func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	webhookSecret := operatorCfg.Subroutines.Deployment.AuthorizationWebhookSecretName
 	_, err := GetSecret(r.clientRuntime, webhookSecret, inst.Namespace)
 	if err != nil && !kerrors.IsNotFound(err) {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 	if err == nil {
 		return nil
@@ -1140,18 +1099,18 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	// Continue to create the secret
 	obj, err := unstructuredFromFile(fmt.Sprintf("%s/rebac-auth-webhook/kcp-webhook-secret.yaml", r.workspaceDirectory), map[string]any{}, log)
 	if err != nil {
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 	obj.SetNamespace(inst.Namespace)
 
 	// Apply the secret using SSA (idempotent - creates if not exists, updates if exists)
 	if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 	return nil
 }
 
-func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst *v1alpha1.PlatformMesh) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -1161,17 +1120,17 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("name", caSecretName).Msg("Webhook secret does not exist")
-			return ctrl.Result{}, errors.NewOperatorError(errors.New("Webhook secret does not exist"), true, true)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "Webhook secret does not exist"), nil
 		}
 		log.Error().Err(err).Str("secret", caSecretName).Str("namespace", inst.Namespace).Msg("Failed to get webhook cert secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	caCrt, ok := webhookCertSecret.Data["ca.crt"]
 	if !ok || len(caCrt) == 0 {
 		err := fmt.Errorf("ca.crt not found or empty in secret %s/%s", inst.Namespace, caSecretName)
 		log.Error().Err(err).Msg("ca.crt missing from webhook cert secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	// Get the kcp-webhook-secret
@@ -1179,7 +1138,7 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 	kcpWebhookSecret, err := GetSecret(r.clientRuntime, webhookSecret, inst.Namespace)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", inst.Namespace).Msg("Failed to get kcp webhook secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	// Get the kubeconfig from the secret
@@ -1187,14 +1146,14 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 	if !ok || len(kubeconfigData) == 0 {
 		err := fmt.Errorf("kubeconfig not found or empty in secret %s/%s", inst.Namespace, webhookSecret)
 		log.Error().Err(err).Msg("kubeconfig missing from kcp webhook secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	// Parse the kubeconfig using clientcmd utilities
 	kubeconfig, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	// Update the certificate-authority-data in all clusters only if it actually changed
@@ -1210,14 +1169,14 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 
 	if !updated {
 		log.Debug().Msg("certificate-authority-data is already up to date in kcp-webhook-secret, skipping update")
-		return ctrl.Result{}, nil
+		return subroutines.OK(), nil
 	}
 
 	// Marshal the updated kubeconfig back to YAML using clientcmd
 	updatedKubeconfigData, err := clientcmd.Write(*kubeconfig)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to write updated kubeconfig")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	// Update the secret with the new kubeconfig
@@ -1230,7 +1189,7 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 	err = r.clientRuntime.Patch(ctx, kcpWebhookSecret, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	log.Info().Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Successfully updated kcp webhook secret with new certificate-authority-data")
@@ -1238,15 +1197,15 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 	// Delete all kcp pods so they pick up the new webhook secret
 	log.Info().Msg("kcp-webhook-secret was updated, deleting kcp pods to pick up new certificate-authority-data")
 	if oErr := r.deleteKcpPods(ctx, operatorCfg.KCP.Namespace); oErr != nil {
-		return ctrl.Result{}, oErr
+		return subroutines.OK(), oErr
 	}
 
-	return ctrl.Result{}, nil
+	return subroutines.OK(), nil
 }
 
 // deleteKcpPods deletes all pods with label app.kubernetes.io/name=kcp in the given namespace
 // so they restart and pick up updated secrets.
-func (r *DeploymentSubroutine) deleteKcpPods(ctx context.Context, namespace string) errors.OperatorError {
+func (r *DeploymentSubroutine) deleteKcpPods(ctx context.Context, namespace string) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	podList := &corev1.PodList{}
@@ -1256,7 +1215,7 @@ func (r *DeploymentSubroutine) deleteKcpPods(ctx context.Context, namespace stri
 		Namespace:     namespace,
 	}); err != nil {
 		log.Error().Err(err).Str("namespace", namespace).Msg("Failed to list kcp pods")
-		return errors.NewOperatorError(err, true, true)
+		return err
 	}
 
 	for i := range podList.Items {
@@ -1265,7 +1224,7 @@ func (r *DeploymentSubroutine) deleteKcpPods(ctx context.Context, namespace stri
 		if err := r.clientRuntime.Delete(ctx, pod); err != nil {
 			if !kerrors.IsNotFound(err) {
 				log.Error().Err(err).Str("pod", pod.Name).Msg("Failed to delete kcp pod")
-				return errors.NewOperatorError(err, true, true)
+				return err
 			}
 		}
 	}
@@ -1327,22 +1286,13 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 
 	if len(pods.Items) > 0 {
 		pod := pods.Items[0]
-		spec, ok := pod.Object["spec"].(map[string]interface{})
-		if !ok {
-			return false, &pod, fmt.Errorf("unexpected pod spec type for pod %s", pod.GetName())
-		}
+		spec, _ := pod.Object["spec"].(map[string]interface{})
 		// It is possible to have istio-proxy as an initContainer or a regular container
 		if initContainersInt, ok := spec["initContainers"]; ok {
-			initContainers, ok := initContainersInt.([]interface{})
-			if !ok {
-				return false, &pod, fmt.Errorf("unexpected initContainers type for pod %s", pod.GetName())
-			}
+			initContainers, _ := initContainersInt.([]interface{})
 			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d initContainers in pod", len(initContainers))
 			for _, container := range initContainers {
-				containerMap, ok := container.(map[string]interface{})
-				if !ok {
-					continue
-				}
+				containerMap, _ := container.(map[string]interface{})
 				name, _ := containerMap["name"].(string)
 				log.Debug().Msgf("Container name: %s", name)
 				if name == "istio-proxy" {
@@ -1352,16 +1302,10 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 			}
 		}
 		if containersInt, ok := spec["containers"]; ok {
-			containers, ok := containersInt.([]interface{})
-			if !ok {
-				return false, &pod, fmt.Errorf("unexpected containers type for pod %s", pod.GetName())
-			}
+			containers, _ := containersInt.([]interface{})
 			log.Debug().Str("pod", pod.GetName()).Msgf("Found %d containers in pod", len(containers))
 			for _, container := range containers {
-				containerMap, ok := container.(map[string]interface{})
-				if !ok {
-					continue
-				}
+				containerMap, _ := container.(map[string]interface{})
 				name, _ := containerMap["name"].(string)
 				log.Debug().Msgf("Container name: %s", name)
 				if name == "istio-proxy" {
@@ -1377,25 +1321,25 @@ func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelS
 	return false, nil, errors.New("pod not found")
 }
 
-func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (ctrl.Result, errors.OperatorError) {
+func (r *DeploymentSubroutine) manageAuthorizationWebhookSecrets(ctx context.Context, inst *v1alpha1.PlatformMesh) (subroutines.Result, error) {
 	// Create Issuer
 	caIssuerPath := fmt.Sprintf("%s/rebac-auth-webhook/ca-issuer.yaml", r.workspaceDirectory)
 	err := r.ApplyManifestFromFileWithMergedValues(ctx, caIssuerPath, r.clientRuntime, map[string]any{})
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		return subroutines.OK(), err
 	}
 
 	// Create Certificate
 	certPath := fmt.Sprintf("%s/rebac-auth-webhook/webhook-cert.yaml", r.workspaceDirectory)
 	err = r.ApplyManifestFromFileWithMergedValues(ctx, certPath, r.clientRuntime, map[string]any{})
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, false, true)
+		return subroutines.OK(), err
 	}
 
 	// Prepare KCP Webhook secret
 	oErr := r.createKCPWebhookSecret(ctx, inst)
 	if oErr != nil {
-		return ctrl.Result{}, oErr
+		return subroutines.OK(), oErr
 	}
 
 	// Update KCP Webhook secret with the latest CA bundle

@@ -6,44 +6,56 @@
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
-  namespace: {{ $.releaseNamespace }}
   {{- if .name }}
   name: "{{ .name }}"
   {{- else }}
   name: "{{ $service }}-image"
   {{- end }}
+  namespace: {{ $.releaseNamespace }}
   {{- with .labels }}
   labels:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   {{- with .annotations }}
   annotations:
-{{ toYaml . | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  skipVerify: {{ $values.ocm.skipVerify }}
   componentRef:
     name: {{ $values.ocm.component.name }}
   resource:
     byReference:
       resource:
-        name: {{ .resourceName | default "image" }}
+        name: {{ .resource | default "image" }}
       referencePath:
-{{- if .referencePath }}
-{{ toYaml .referencePath | nindent 8 }}
-{{- else if $config.referencePath }}
-{{ toYaml $config.referencePath | nindent 8 }}
-{{- else }}
-{{- with $values.ocm.referencePath }}
-{{ toYaml . | nindent 8 }}
-{{- end }}
+        {{- if .absoluteReferencePath }}
+        {{- toYaml .absoluteReferencePath | nindent 8 }}
+        {{- else if .referencePath }}
+        {{- with $values.ocm.referencePath }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- toYaml .referencePath | nindent 8 }}
+        {{- else if $config.referencePath }}
+        {{- with $values.ocm.referencePath }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- toYaml $config.referencePath | nindent 8 }}
+        {{- else }}
+        {{- with $values.ocm.referencePath }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         - name: {{ $service }}
-{{- end }}
+        {{- end }}
+        {{- if not .absoluteReferencePath }}
+        {{- if not $config.external }}
+        - name: image
+        {{- end }}
+        {{- end }}
   interval: 1m
   ocmConfig:
     - kind: Repository
       apiVersion: delivery.ocm.software/v1alpha1
-      name: {{ .ocmRepoName | default $values.ocm.repo.name }}
+      name: {{ $values.ocm.repo.name }}
       namespace: {{ $.releaseNamespace }}
 ---
 {{- end }}

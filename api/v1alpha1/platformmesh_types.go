@@ -142,11 +142,17 @@ type SecretReference struct {
 
 type ProviderConnection struct {
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
-	Path              string  `json:"path,omitempty"`
-	RawPath           *string `json:"rawPath,omitempty"`
-	Secret            string  `json:"secret"`
-	External          bool    `json:"external,omitempty"`
-	Namespace         *string `json:"namespace,omitempty"`
+	// APIExportName is the APIExport object name in ProviderConnection.Path used to build RBAC for scoped kubeconfig when endpointSliceName is not set.
+	// +optional
+	APIExportName *string `json:"apiExportName,omitempty"`
+	Path          string  `json:"path,omitempty"`
+	RawPath       *string `json:"rawPath,omitempty"`
+	Secret        string  `json:"secret"`
+	External      bool    `json:"external,omitempty"`
+	Namespace     *string `json:"namespace,omitempty"`
+	// AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig.
+	// +optional
+	AdminAuth *bool `json:"adminAuth,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh

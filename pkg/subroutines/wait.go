@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	"github.com/platform-mesh/subroutines"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
@@ -23,12 +22,14 @@ func NewWaitSubroutine(
 	clientRuntime client.Client,
 	cfg *config.OperatorConfig,
 	helper KcpHelper,
+	kcpUrl string,
 ) *WaitSubroutine {
 	return &WaitSubroutine{
 		client:        client,
 		clientRuntime: clientRuntime,
 		cfg:           cfg,
 		kcpHelper:     helper,
+		kcpUrl:        kcpUrl,
 	}
 }
 
@@ -37,6 +38,7 @@ type WaitSubroutine struct {
 	clientRuntime client.Client // runtime cluster — KCP secret access
 	cfg           *config.OperatorConfig
 	kcpHelper     KcpHelper
+	kcpUrl        string
 }
 
 const (
@@ -44,14 +46,14 @@ const (
 )
 
 func (r *WaitSubroutine) Finalize(
-	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
-) (ctrl.Result, errors.OperatorError) {
-	return ctrl.Result{}, nil
+	_ context.Context, _ client.Object,
+) (subroutines.Result, error) {
+	return subroutines.OK(), nil
 }
 
 func (r *WaitSubroutine) Process(
-	ctx context.Context, runtimeObj runtimeobject.RuntimeObject,
-) (ctrl.Result, errors.OperatorError) {
+	ctx context.Context, runtimeObj client.Object,
+) (subroutines.Result, error) {
 	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -80,11 +82,11 @@ func (r *WaitSubroutine) Process(
 				err := r.client.Get(ctx, client.ObjectKey{Namespace: resourceType.Namespace, Name: resourceType.Name}, res)
 				if err != nil {
 					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
-					return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+					return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
 				}
 				if !checkResourceStatus(res, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
-					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind()), true, false)
+					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
 				}
 				continue
 			}
@@ -93,7 +95,7 @@ func (r *WaitSubroutine) Process(
 			ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
 			if err != nil {
 				log.Info().Msgf("Error converting label selector: %v", err)
-				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector error"), nil
 			}
 			err = r.client.List(ctx, waitList, &client.ListOptions{
 				Namespace:     resourceType.Namespace,
@@ -101,13 +103,13 @@ func (r *WaitSubroutine) Process(
 			})
 			if err != nil {
 				log.Info().Msgf("Error listing resources: %v", err)
-				return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources error"), nil
 			}
 
 			for _, item := range waitList.Items {
 				if !checkResourceStatus(&item, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
 					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
-					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind()), true, false)
+					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
 				}
 			}
 		}
@@ -116,21 +118,23 @@ func (r *WaitSubroutine) Process(
 	// Check if WorkspaceAuthenticationConfiguration audience is still a placeholder
 	// If so, trigger a reconcile to ensure all logic is finished
 	if err := r.checkWorkspaceAuthConfigAudience(ctx, log, instance); err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, false)
+		return subroutines.StopWithRequeue(DefaultRequeueInterval, err.Error()), nil
 	}
 
-	return ctrl.Result{}, nil
+	return subroutines.OK(), nil
 }
 
 func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
-	kubeCfg, err := buildKubeconfig(ctx, r.clientRuntime, getExternalKcpHost(inst, r.cfg))
+	kubeCfg, err := buildKubeconfigFromConfig(r.clientRuntime, r.cfg, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
-		return fmt.Errorf("failed to build kubeconfig: %w", err)
+		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
+		return nil
 	}
 
 	orgsClient, err := r.kcpHelper.NewKcpClient(kubeCfg, "root")
 	if err != nil {
-		return fmt.Errorf("failed to create KCP client for root workspace: %w", err)
+		log.Debug().Err(err).Msg("Failed to create KCP client for root workspace, skipping")
+		return nil
 	}
 
 	wac := &unstructured.Unstructured{}
@@ -141,27 +145,25 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 	})
 
 	if err = orgsClient.Get(ctx, types.NamespacedName{Name: "orgs-authentication"}, wac); err != nil {
-		return fmt.Errorf("failed to get WorkspaceAuthenticationConfiguration: %w", err)
+		log.Debug().Err(err).Msg("Failed to get WorkspaceAuthenticationConfiguration, skipping")
+		return nil
 	}
 
 	jwtConfigs, found, err := unstructured.NestedSlice(wac.Object, "spec", "jwt")
-	if err != nil {
-		return fmt.Errorf("failed to read spec.jwt from WorkspaceAuthenticationConfiguration: %w", err)
-	}
-	if !found || len(jwtConfigs) == 0 {
-		return fmt.Errorf("WorkspaceAuthenticationConfiguration has no spec.jwt entries")
+	if err != nil || !found || len(jwtConfigs) == 0 {
+		return nil
 	}
 	jwt, ok := jwtConfigs[0].(map[string]any)
 	if !ok {
-		return fmt.Errorf("WorkspaceAuthenticationConfiguration spec.jwt[0] has unexpected type")
+		return nil
 	}
 	issuer, ok := jwt["issuer"].(map[string]any)
 	if !ok {
-		return fmt.Errorf("WorkspaceAuthenticationConfiguration spec.jwt[0].issuer has unexpected type")
+		return nil
 	}
 	audiences, ok, _ := unstructured.NestedStringSlice(issuer, "audiences")
 	if !ok {
-		return fmt.Errorf("WorkspaceAuthenticationConfiguration spec.jwt[0].issuer.audiences not found")
+		return nil
 	}
 
 	if len(audiences) == 0 {
@@ -178,7 +180,7 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 	return nil
 }
 
-func (r *WaitSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string { // coverage-ignore
+func (r *WaitSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
 	return []string{}
 }
 

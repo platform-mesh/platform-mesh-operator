@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -64,9 +65,10 @@ func (s *KindTestSuite) TestExtraWorkspaces() {
 	}
 	pm.Spec.Kcp.ExtraProviderConnections = append(pm.Spec.Kcp.ExtraProviderConnections,
 		corev1alpha1.ProviderConnection{
-			Path:     "root:orgs:extra1",
-			Secret:   "extra1-kubeconfig",
-			External: true,
+			Path:      "root:orgs:extra1",
+			Secret:    "extra1-kubeconfig",
+			External:  true,
+			AdminAuth: ptr.To(true),
 		},
 	)
 	s.logger.Info().Str("platformmesh", fmt.Sprintf("%+v", pm)).Msg("Updating Platform Mesh resource to add extra workspace and provider connection")

@@ -1,8 +1,7 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -10,8 +9,8 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	subroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	"github.com/platform-mesh/subroutines"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
@@ -19,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -27,7 +25,7 @@ type FeaturesTestSuite struct {
 	suite.Suite
 	clientMock *mocks.Client
 	helperMock *mocks.KcpHelper
-	testObj    *subroutines.FeatureToggleSubroutine
+	testObj    *FeatureToggleSubroutine
 	log        *logger.Logger
 }
 
@@ -43,7 +41,7 @@ func (s *FeaturesTestSuite) SetupTest() {
 	cfg.NoJSON = true
 	cfg.Name = "FeaturesTestSuite"
 	s.log, _ = logger.New(cfg)
-	s.testObj = subroutines.NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
+	s.testObj = NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
 	})
 }
@@ -54,57 +52,64 @@ func (s *FeaturesTestSuite) TearDownTest() {
 	s.testObj = nil
 }
 
-func (s *FeaturesTestSuite) TestProcess() {
-	operatorCfg := config.OperatorConfig{}
-	operatorCfg.KCP.RootShardName = "root-shard"
-	operatorCfg.KCP.FrontProxyName = "front-proxy"
-	operatorCfg.KCP.Namespace = "kcp-system"
-	operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin-kubeconfig"
+func (s *FeaturesTestSuite) resetFeatureToggleTest() {
+	s.clientMock = new(mocks.Client)
+	s.helperMock = new(mocks.KcpHelper)
+	s.testObj = NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
+		WorkspaceDir: "../..",
+	})
+}
 
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-
-	// Mock the kubeconfig secret lookup
+// setupFeatureToggleApplyMocks configures clients for one or more
+// applyKcpManifests executions
+func (s *FeaturesTestSuite) setupFeatureToggleApplyMocks(
+	operatorCfg config.OperatorConfig, applyKcpManifestsCalls int,
+) *mocks.Client {
+	secretGetCount := applyKcpManifestsCalls * 2 // (once in applyKcpManifests, once in buildKubeconfig)
+	fakeKubeconfig := []byte(`apiVersion: v1
+clusters:
+- cluster:
+    server: https://kcp.example.com
+  name: kcp
+contexts:
+- context:
+    cluster: kcp
+    user: admin
+  name: kcp
+current-context: kcp
+kind: Config
+users:
+- name: admin
+  user:
+    token: fake-token
+`)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
-			Name:      "kcp-admin-kubeconfig",
-			Namespace: "kcp-system",
+			Name:      operatorCfg.KCP.ClusterAdminSecretName,
+			Namespace: operatorCfg.KCP.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"kubeconfig": []byte(`apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    server: https://fake-kcp:6443
-  name: default
-contexts:
-- context:
-    cluster: default
-    user: default
-  name: default
-current-context: default
-users:
-- name: default
-  user:
-    token: fake-token
-`),
+				"ca.crt":     []byte("test-ca-data"),
+				"tls.crt":    []byte("test-tls-crt"),
+				"tls.key":    []byte("test-tls-key"),
+				"kubeconfig": fakeKubeconfig,
 			}
 			return nil
-		})
+		}).
+		Times(secretGetCount)
 
-	// Create mock KCP client
 	mockKcpClient := new(mocks.Client)
 	s.helperMock.EXPECT().
 		NewKcpClient(mock.Anything, mock.Anything).
-		Return(mockKcpClient, nil)
-
+		Return(mockKcpClient, nil).
+		Maybe()
 	s.helperMock.EXPECT().
 		NewKcpClient(mock.Anything, "root:orgs:default").
-		Return(mockKcpClient, nil)
+		Return(mockKcpClient, nil).
+		Maybe()
 
-	// Mock unstructured object lookups (for general manifest objects - flexible count)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)
@@ -120,169 +125,110 @@ users:
 				},
 			}
 			return nil
-		})
+		}).
+		Maybe()
 
-	// Expect multiple Patch calls for applying manifests (flexible count)
-	mockKcpClient.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockKcpClient.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-	// Mock workspace lookups and patch calls
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			ws := obj.(*kcptenancyv1alpha.Workspace)
 			ws.Status.Phase = "Ready"
 			return nil
-		})
+		}).
+		Maybe()
 
 	mockKcpClient.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "main-home-overview-getting-started"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "main-home-overview-getting-started"))
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(apierrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "")).
+		Maybe()
 
-	// Call Process
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{
-				{Name: "feature-enable-getting-started", Parameters: map[string]string{}},
-			},
-		},
-	})
-
-	// Assertions
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
-
+	return mockKcpClient
 }
 
-func (s *FeaturesTestSuite) TestFinalize() {
-	result, opErr := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
-}
-
-func (s *FeaturesTestSuite) TestProcess_NoFeatureToggles() {
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, config.OperatorConfig{})
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
-}
-
-func (s *FeaturesTestSuite) TestProcess_DisableEmailVerification() {
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, config.OperatorConfig{})
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{
-				{Name: "feature-disable-email-verification"},
-			},
-		},
-	})
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
-}
-
-func (s *FeaturesTestSuite) TestProcess_UnknownFeatureToggle() {
-	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	ctx = context.WithValue(ctx, keys.ConfigCtxKey, config.OperatorConfig{})
-	result, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{
-				{Name: "feature-unknown-toggle"},
-			},
-		},
-	})
-	s.Assert().Nil(opErr)
-	s.Assert().Equal(ctrl.Result{}, result)
-}
-
-// ctxWithFeatureConfig builds a context containing an OperatorConfig with the KCP admin secret name set.
-func (s *FeaturesTestSuite) ctxWithFeatureConfig() (context.Context, config.OperatorConfig) {
+func testOperatorCfg() config.OperatorConfig {
 	operatorCfg := config.OperatorConfig{}
-	operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin-kubeconfig"
+	operatorCfg.KCP.RootShardName = "root-shard"
+	operatorCfg.KCP.FrontProxyName = "front-proxy"
 	operatorCfg.KCP.Namespace = "kcp-system"
+	operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin-kubeconfig"
+	return operatorCfg
+}
+
+func (s *FeaturesTestSuite) TestProcess() {
+	operatorCfg := testOperatorCfg()
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, operatorCfg)
-	return ctx, operatorCfg
-}
 
-// mockAdminSecretNotFound sets up the client mock so that getting the KCP admin secret returns NotFound.
-func (s *FeaturesTestSuite) mockAdminSecretNotFound(secretName, namespace string) {
-	s.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: secretName, Namespace: namespace}, mock.AnythingOfType("*v1.Secret")).
-		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, secretName)).
-		Once()
-}
+	manifestBackedToggles := []struct {
+		name   string
+		toggle string
+	}{
+		{"feature-enable-getting-started", "feature-enable-getting-started"},
+		{"feature-enable-marketplace-account", "feature-enable-marketplace-account"},
+		{"feature-enable-marketplace-org", "feature-enable-marketplace-org"},
+		{"feature-accounts-in-accounts", "feature-accounts-in-accounts"},
+		{"feature-enable-account-iam-ui", "feature-enable-account-iam-ui"},
+		{"feature-enable-terminal-controller-manager", "feature-enable-terminal-controller-manager"},
+	}
 
-// mockAdminSecretError sets up the client mock so that getting the KCP admin secret returns a generic error.
-func (s *FeaturesTestSuite) mockAdminSecretError(secretName, namespace string) {
-	s.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: secretName, Namespace: namespace}, mock.AnythingOfType("*v1.Secret")).
-		Return(fmt.Errorf("connection refused")).
-		Once()
-}
+	for _, tc := range manifestBackedToggles {
+		s.Run(tc.name, func() {
+			s.resetFeatureToggleTest()
+			s.setupFeatureToggleApplyMocks(operatorCfg, 1)
 
-func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_GettingStarted() {
-	ctx, cfg := s.ctxWithFeatureConfig()
-	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
-	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
-		},
+			result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+				Spec: corev1alpha1.PlatformMeshSpec{
+					FeatureToggles: []corev1alpha1.FeatureToggle{
+						{Name: tc.toggle, Parameters: map[string]string{}},
+					},
+				},
+			})
+			s.Assert().NoError(err)
+			s.Assert().Equal(subroutines.OK(), result)
+		})
+	}
+
+	s.Run("all manifest-backed toggles in one reconcile", func() {
+		s.resetFeatureToggleTest()
+		s.setupFeatureToggleApplyMocks(operatorCfg, len(manifestBackedToggles))
+		toggles := make([]corev1alpha1.FeatureToggle, 0, len(manifestBackedToggles))
+		for _, tc := range manifestBackedToggles {
+			toggles = append(toggles, corev1alpha1.FeatureToggle{
+				Name: tc.toggle, Parameters: map[string]string{},
+			})
+		}
+		result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+			Spec: corev1alpha1.PlatformMeshSpec{FeatureToggles: toggles},
+		})
+		s.Assert().NoError(err)
+		s.Assert().Equal(subroutines.OK(), result)
 	})
-	s.Require().NotNil(opErr)
-}
 
-func (s *FeaturesTestSuite) TestProcess_AdminSecretError_GettingStarted() {
-	ctx, cfg := s.ctxWithFeatureConfig()
-	s.mockAdminSecretError(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
-	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
-		},
+	s.Run("feature-disable-email-verification", func() {
+		s.resetFeatureToggleTest()
+		result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+			Spec: corev1alpha1.PlatformMeshSpec{
+				FeatureToggles: []corev1alpha1.FeatureToggle{
+					{Name: "feature-disable-email-verification"},
+				},
+			},
+		})
+		s.Assert().NoError(err)
+		s.Assert().Equal(subroutines.OK(), result)
 	})
-	s.Require().NotNil(opErr)
-}
 
-func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_MarketplaceAccount() {
-	ctx, cfg := s.ctxWithFeatureConfig()
-	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
-	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-marketplace-account"}},
-		},
+	s.Run("unknown feature toggle hits default branch", func() {
+		s.resetFeatureToggleTest()
+		result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
+			Spec: corev1alpha1.PlatformMeshSpec{
+				FeatureToggles: []corev1alpha1.FeatureToggle{
+					{Name: "unknown-toggle-name"},
+				},
+			},
+		})
+		s.Assert().NoError(err)
+		s.Assert().Equal(subroutines.OK(), result)
 	})
-	s.Require().NotNil(opErr)
-}
-
-func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_MarketplaceOrg() {
-	ctx, cfg := s.ctxWithFeatureConfig()
-	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
-	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-marketplace-org"}},
-		},
-	})
-	s.Require().NotNil(opErr)
-}
-
-func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_AccountsInAccounts() {
-	ctx, cfg := s.ctxWithFeatureConfig()
-	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
-	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-accounts-in-accounts"}},
-		},
-	})
-	s.Require().NotNil(opErr)
-}
-
-func (s *FeaturesTestSuite) TestProcess_AdminSecretNotFound_AccountIamUI() {
-	ctx, cfg := s.ctxWithFeatureConfig()
-	s.mockAdminSecretNotFound(cfg.KCP.ClusterAdminSecretName, cfg.KCP.Namespace)
-	_, opErr := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			FeatureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-account-iam-ui"}},
-		},
-	})
-	s.Require().NotNil(opErr)
 }

@@ -1,0 +1,9 @@
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIBinding
+metadata:
+  name: {{.BindingName}}
+spec:
+  reference:
+    export:
+      path: {{.ExportWorkspacePath}}
+      name: {{.ExportName}}

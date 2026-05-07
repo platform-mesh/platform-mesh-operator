@@ -1,0 +1,52 @@
+# APIExport kind-e2e-scoped-provider.platform-mesh.io (+ schema + endpoint slice) in root:providers:provider2.
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIResourceSchema
+metadata:
+  name: v1alpha1.e2eproviderconfigs.kind-e2e-scoped-provider.platform-mesh.io
+spec:
+  group: kind-e2e-scoped-provider.platform-mesh.io
+  names:
+    kind: E2EProviderConfig
+    listKind: E2EProviderConfigList
+    plural: e2eproviderconfigs
+    singular: e2eproviderconfig
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      schema:
+        description: Kind e2e scoped-kubeconfig fixture in root:providers:provider2
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of E2EProviderConfig
+            properties:
+              note:
+                type: string
+            type: object
+        required:
+          - spec
+        type: object
+      served: true
+      storage: true
+---
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIExport
+metadata:
+  name: kind-e2e-scoped-provider.platform-mesh.io
+spec:
+  latestResourceSchemas:
+    - v1alpha1.e2eproviderconfigs.kind-e2e-scoped-provider.platform-mesh.io
+---
+apiVersion: apis.kcp.io/v1alpha1
+kind: APIExportEndpointSlice
+metadata:
+  name: kind-e2e-scoped-provider.platform-mesh.io
+spec:
+  export:
+    path: root:providers:provider2
+    name: kind-e2e-scoped-provider.platform-mesh.io
