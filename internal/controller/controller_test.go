@@ -90,18 +90,18 @@ func newFakeManager(c client.Client, s *runtime.Scheme) *fakeManager {
 	return &fakeManager{fakeCtrlManager: &fakeCtrlManager{client: c, scheme: s}}
 }
 
-func (f *fakeManager) GetLocalManager() ctrlmanager.Manager                      { return f.fakeCtrlManager }
-func (f *fakeManager) GetProvider() multicluster.Provider                        { return nil }
-func (f *fakeManager) GetCluster(_ context.Context, _ string) (cluster.Cluster, error) {
+func (f *fakeManager) GetLocalManager() ctrlmanager.Manager { return f.fakeCtrlManager }
+func (f *fakeManager) GetProvider() multicluster.Provider   { return nil }
+func (f *fakeManager) GetCluster(_ context.Context, _ multicluster.ClusterName) (cluster.Cluster, error) {
 	panic("not implemented")
 }
 func (f *fakeManager) ClusterFromContext(_ context.Context) (cluster.Cluster, error) {
 	panic("not implemented")
 }
-func (f *fakeManager) GetManager(_ context.Context, _ string) (ctrlmanager.Manager, error) {
+func (f *fakeManager) GetManager(_ context.Context, _ multicluster.ClusterName) (ctrlmanager.Manager, error) {
 	return f.fakeCtrlManager, nil
 }
-func (f *fakeManager) Engage(_ context.Context, _ string, _ cluster.Cluster) error {
+func (f *fakeManager) Engage(_ context.Context, _ multicluster.ClusterName, _ cluster.Cluster) error {
 	return nil
 }
 

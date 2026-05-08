@@ -302,7 +302,7 @@ func (r *KcpsetupSubroutine) getCaBundle(
 	caData, ok := caSecret.Data[webhookConfig.SecretData]
 	if !ok {
 		log.Error().Msg("Failed to get caData from secret")
-		return nil, gcerrors.New("Failed to get caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
+		return nil, gcerrors.New("failed to get caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
 	}
 
 	decodedCaData := caData

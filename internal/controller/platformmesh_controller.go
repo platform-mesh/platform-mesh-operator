@@ -45,7 +45,6 @@ import (
 
 var (
 	pmReconcilerName = "PlatformMeshReconciler"
-	operatorName     = "platform-mesh-operator"
 )
 
 // PlatformMeshReconciler reconciles a PlatformMesh object
@@ -120,7 +119,6 @@ func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context,
 	return requests
 }
 
-
 func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client, imageVersionStore *pmsubs.ImageVersionStore) (*PlatformMeshReconciler, error) {
 	kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	if cfg.KCP.Url != "" {
@@ -142,7 +140,7 @@ func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig
 		subs = append(subs, pmsubs.NewProviderSecretSubroutine(localCl, &pmsubs.Helper{}, pmsubs.DefaultHelmGetter{}, kcpUrl))
 	}
 	if cfg.Subroutines.FeatureToggles.Enabled {
-		subs = append(subs, pmsubs.NewFeatureToggleSubroutine(localCl, &pmsubs.Helper{}, cfg))
+		subs = append(subs, pmsubs.NewFeatureToggleSubroutine(localCl, &pmsubs.Helper{}, cfg, kcpUrl))
 	}
 	if cfg.Subroutines.Wait.Enabled {
 		subs = append(subs, pmsubs.NewWaitSubroutine(clientInfra, localCl, cfg, &pmsubs.Helper{}, kcpUrl))

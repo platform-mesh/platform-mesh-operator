@@ -21,6 +21,7 @@ var AccountOperatorValidatingWebhookName = "organization-validator.webhooks.core
 var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
+
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		Path:      "root:platform-mesh-system",
@@ -43,7 +44,11 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		// EndpointSliceName: ptr.To("core.platform-mesh.io"),
+		RawPath:   ptr.To("/services/marketplace"),
+		Secret:    "virtual-workspace-clusteraccess-kubeconfig",
+		AdminAuth: ptr.To(true),
+	},
+	{
 		Path:      "root:platform-mesh-system",
 		Secret:    "extension-manager-operator-kubeconfig",
 		AdminAuth: ptr.To(true),
@@ -54,8 +59,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		RawPath:   ptr.To("/services/contentconfigurations"),
-		Secret:    "portal-kubeconfig",
+		Path:    "root:orgs",
+		RawPath: ptr.To("/services/contentconfigurations"),
+		Secret:  "portal-kubeconfig",
 		AdminAuth: ptr.To(true),
 	},
 	{
@@ -70,11 +76,16 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	},
 	{
 		Path:      "root:platform-mesh-system",
+		Secret:    "virtual-workspaces-kubeconfig",
+		AdminAuth: ptr.To(true),
+	},
+	{
+		Path:      "root:platform-mesh-system",
 		Secret:    "init-agent-kubeconfig",
 		AdminAuth: ptr.To(true),
 	},
 }
-var DefaultInitializerConnection = []corev1alpha1.InitializerConnection{}
+
 var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	SecretRef: corev1alpha1.SecretReference{
 		Name:      AccountOperatorWebhookSecretName,
@@ -120,10 +131,12 @@ var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.We
 var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 	ResourceTypes: []corev1alpha1.ResourceType{
 		{
-			Versions:  []string{"v2"},
-			Group:     "helm.toolkit.fluxcd.io",
-			Kind:      "HelmRelease",
-			Namespace: "platform-mesh-system",
+			GroupVersionKind: v1.GroupVersionKind{
+				Group:   "helm.toolkit.fluxcd.io",
+				Version: "v2",
+				Kind:    "HelmRelease",
+			},
+			Namespace: "default",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
 					{
@@ -133,8 +146,27 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 					},
 				},
 			},
-			ConditionStatus: v1.ConditionTrue,
-			ConditionType:   "Ready",
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
+		},
+		{
+			GroupVersionKind: v1.GroupVersionKind{
+				Group:   "helm.toolkit.fluxcd.io",
+				Version: "v2",
+				Kind:    "HelmRelease",
+			},
+			Namespace: "default",
+			LabelSelector: v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{
+						Key:      "helm.toolkit.fluxcd.io/name",
+						Operator: v1.LabelSelectorOpIn,
+						Values:   []string{"platform-mesh-operator-infra-components"},
+					},
+				},
+			},
+			ConditionStatus:  v1.ConditionTrue,
+			RowConditionType: "Ready",
 		},
 	},
 }

@@ -311,11 +311,15 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-						Versions: []string{"v1"},
-						Group: "kustomize.toolkit.fluxcd.io", Kind: "Kustomization",
-						Namespace:       "flux-system",
-						LabelSelector:   metav1.LabelSelector{MatchLabels: map[string]string{"app": "platform-mesh"}},
-						ConditionStatus: metav1.ConditionTrue, ConditionType: "Ready",
+					GroupVersionKind: metav1.GroupVersionKind{
+							Group:   "kustomize.toolkit.fluxcd.io",
+							Version: "v1",
+							Kind:    "Kustomization",
+						},
+						Namespace:        "flux-system",
+						LabelSelector:    metav1.LabelSelector{MatchLabels: map[string]string{"app": "platform-mesh"}},
+						ConditionStatus:  metav1.ConditionTrue,
+						RowConditionType: "Ready",
 					},
 				},
 			},
@@ -373,12 +377,15 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-						Versions: []string{"v2"},
-						Group: "helm.toolkit.fluxcd.io", Kind: "HelmRelease",
+					GroupVersionKind: metav1.GroupVersionKind{
+							Group:   "helm.toolkit.fluxcd.io",
+							Version: "v2",
+							Kind:    "HelmRelease",
+						},
 						Namespace:        "default",
 						Name:             "platform-mesh-operator-components",
 						ConditionStatus:  metav1.ConditionTrue,
-						ConditionType: "Ready",
+						RowConditionType: "Ready",
 					},
 				},
 			},

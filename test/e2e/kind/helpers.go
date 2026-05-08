@@ -7,13 +7,25 @@ import (
 	"html/template"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
+
+func dynamicClientForKubeconfig(kubeconfigBytes []byte) (dynamic.Interface, error) {
+	cfg, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigBytes)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Timeout = 60 * time.Second
+	return dynamic.NewForConfig(cfg)
+}
 
 func ApplyManifestFromFile(
 	ctx context.Context,
@@ -72,6 +84,13 @@ func unstructuredsFromFile(path string, templateData map[string]string, log *log
 }
 
 func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
+	// If no template data is provided, return the raw bytes unchanged.
+	// This avoids the template engine interpreting {{ }} expressions that are meant to be
+	// preserved as-is in the output (e.g. Go template expressions inside ConfigMap values
+	// that the operator renders at runtime).
+	if len(templateData) == 0 {
+		return templateBytes, nil
+	}
 	tmpl, err := template.New("manifest").Parse(string(templateBytes))
 	if err != nil {
 		return []byte{}, errors.Wrap(err, "Failed to parse template")

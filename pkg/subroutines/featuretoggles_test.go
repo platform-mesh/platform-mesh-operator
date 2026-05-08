@@ -43,7 +43,7 @@ func (s *FeaturesTestSuite) SetupTest() {
 	s.log, _ = logger.New(cfg)
 	s.testObj = NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
-	})
+	}, "https://kcp.example.com")
 }
 
 func (s *FeaturesTestSuite) TearDownTest() {
@@ -57,7 +57,7 @@ func (s *FeaturesTestSuite) resetFeatureToggleTest() {
 	s.helperMock = new(mocks.KcpHelper)
 	s.testObj = NewFeatureToggleSubroutine(s.clientMock, s.helperMock, &config.OperatorConfig{
 		WorkspaceDir: "../..",
-	})
+	}, "https://kcp.example.com")
 }
 
 // setupFeatureToggleApplyMocks configures clients for one or more
@@ -166,8 +166,6 @@ func (s *FeaturesTestSuite) TestProcess() {
 		toggle string
 	}{
 		{"feature-enable-getting-started", "feature-enable-getting-started"},
-		{"feature-enable-marketplace-account", "feature-enable-marketplace-account"},
-		{"feature-enable-marketplace-org", "feature-enable-marketplace-org"},
 		{"feature-accounts-in-accounts", "feature-accounts-in-accounts"},
 		{"feature-enable-account-iam-ui", "feature-enable-account-iam-ui"},
 		{"feature-enable-terminal-controller-manager", "feature-enable-terminal-controller-manager"},

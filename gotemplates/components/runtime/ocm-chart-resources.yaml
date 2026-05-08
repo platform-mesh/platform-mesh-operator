@@ -22,7 +22,6 @@ metadata:
     {{- toYaml $config.chartResources.annotations | nindent 4 }}
   {{- end }}
 spec:
-  skipVerify: {{ $values.ocm.skipVerify }}
   componentRef:
     {{- if (($config.ocm).component).name }}
     name: {{ $config.ocm.component.name }}
@@ -52,7 +51,6 @@ spec:
         - name: chart
         {{- end }}
         {{- end }}
-  interval: {{ $values.ocm.interval }}
   ocmConfig:
     - kind: Repository
       apiVersion: delivery.ocm.software/v1alpha1

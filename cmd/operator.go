@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -101,6 +102,15 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
+
+	var leaderCfg *rest.Config
+	if defaultCfg.LeaderElectionEnabled {
+		leaderCfg, err = rest.InClusterConfig()
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get in-cluster config")
+		}
+	}
+
 	mgr, err := mcmanager.New(restCfg, nil, mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -112,6 +122,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
 		LeaderElection:                defaultCfg.LeaderElectionEnabled,
 		LeaderElectionID:              "81924e50.platform-mesh.org",
+		LeaderElectionConfig:          leaderCfg,
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {

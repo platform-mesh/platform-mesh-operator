@@ -61,6 +61,29 @@ data:
               collector:
                 host: observability-opentelemetry-collector.observability.svc.cluster.local:4317
               enabled: false
+        infra:
+          enabled: true
+          imageResources:
+          - name: kcp-image
+            annotations:
+              path: kcp.image.tag
+              for: infra
+              repo: oci
+              artifact: image
+            resource: image
+            referencePath:
+              - name: kcp
+          values:
+            cors:
+              enabled: true
+            gatewayApi:
+              enabled: true
+            hostAliases:
+              enabled: true
+            kcp:
+              frontProxy:
+                clusterIP: "10.96.0.100"
+                port: 8443
         marketplace-ui:
           enabled: false
           # -- Allow the configuration of additional ocm resources

@@ -1,24 +1,24 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
-  name: ocm-controller
+  name: ocm-k8s-toolkit
   namespace: default
 spec:
   interval: 5m
-  url: oci://ghcr.io/open-component-model/helm/ocm-controller
+  url: oci://ghcr.io/open-component-model/kubernetes/controller/chart
   ref:
-    semver: v0.26.0
-
+    tag: "0.3.0"
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: ocm-controller
+  name: ocm-k8s-toolkit
   namespace: default
 spec:
+  releaseName: ocm-k8s-toolkit
   interval: 1m
+  timeout: 15m
+  targetNamespace: ocm-system
   chartRef:
     kind: OCIRepository
-    name: ocm-controller
-  releaseName: ocm-controller
-  targetNamespace: ocm-system
+    name: ocm-k8s-toolkit

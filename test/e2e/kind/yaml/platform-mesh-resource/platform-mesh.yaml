@@ -6,6 +6,7 @@ metadata:
 spec:
   exposure:
     port: 8443
+    baseDomain: "portal.localhost"
   ocm:
     repo:
       name: platform-mesh
@@ -13,10 +14,18 @@ spec:
       name: platform-mesh
     referencePath: []
   featureToggles:
-   - name: "feature-enable-getting-started"
+  - name: "feature-enable-getting-started"
+  - name: feature-disable-email-verification
+  - name: feature-accounts-in-accounts
   kcp:
     {}
   values:
+    account-operator:
+      values:
+        hostAliases:
+          enabled: true
+        log:
+          noJson: true
     keycloak:
       enabled: true
       suspend: true
@@ -76,30 +85,40 @@ spec:
         cors:
           enabled: true
         hostAliases:
-          enabled: true    
+          enabled: true
     kcp-operator:
       enabled: true
       external: true
     security-operator:
       values:
-        caSecret: domain-certificate-ca
-        fga:
+        log:
+          noJson: true
+        system:
           extraArgs:
           - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
           - --idp-smtp-port=1025
           - --idp-from-address=keycloak@portal.localhost
           - --set-default-password
           - --idp-registration-allowed
-        hostAliases:
-          enabled: true
+        fga:
+          extraArgs:
+            - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
+            - --idp-smtp-port=1025
+            - --idp-from-address=keycloak@portal.localhost
+            - --set-default-password
+            - --idp-registration-allowed
+            - --domain-ca-lookup
+            - --development-allow-unverified-emails
+            - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
         initializer:
           extraArgs:
           - --domain-ca-lookup
           - --idp-registration-allowed
           - --development-allow-unverified-emails
           - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
-        log:
-          noJson: true
+        caSecret: domain-certificate-ca
+        hostAliases:
+          enabled: true
     portal:
       enabled: true
       values:
@@ -128,6 +147,20 @@ spec:
             readOnly: true
         hostAliases:
           enabled: true
+    openfga:
+      suspend: true
+      enabled: true
+      values:
+        datastore:
+          uri: "postgres://postgres:password@openfga-postgres.platform-mesh-system.svc.cluster.local:5432/postgres?sslmode=disable"
+        postgresql:
+          auth:
+            postgresPassword: password
+            database: postgres
+          image:
+            repository: upstream-images/postgresql
+    terminal-controller-manager:
+      enabled: false
     virtual-workspaces:
       values:
         virtualWorkspaceSecretName: virtual-workspaces-cert
@@ -153,9 +186,15 @@ spec:
                   name: marketplace
                   url: https://frontproxy-front-proxy.platform-mesh-system:8443/services/marketplace
             enabled: true
+    rebac-authz-webhook:
+      values:
+        hostAliases:
+          enabled: true
     iam-service:
       enabled: false
       values:
+        extraArgs:
+        - --no-json
         cors:
           enabled: true
         hostAliases:
@@ -179,3 +218,13 @@ spec:
           enabled: true
         istio:
           enabled: false
+    init-agent:
+      values:
+        hostAliases:
+          enabled: true
+    extension-manager-operator:
+      values:
+        hostAliases:
+          enabled: true
+    kcp:
+      external: true

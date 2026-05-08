@@ -11,7 +11,6 @@ metadata:
 spec:
   componentRef:
     name: {{ .ocm.component.name }}
-  interval: {{ .ocm.interval }}
   ocmConfig:
     - apiVersion: delivery.ocm.software/v1alpha1
       kind: Repository
@@ -26,5 +25,4 @@ spec:
         - name: {{ .certManager.name }}
       resource:
         name: controller-image
-  skipVerify: {{ .ocm.skipVerify }}
 {{- end }}

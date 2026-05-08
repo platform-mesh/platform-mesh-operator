@@ -370,7 +370,7 @@ func (s *KcpsetupTestSuite) Test_GetCaBundle() {
 	caData, err = s.testObj.GetCaBundle(ctx, webhookConfig)
 	s.Assert().Error(err)
 	s.Assert().Nil(caData)
-	s.Assert().Contains(err.Error(), "Failed to get caData from secret")
+	s.Assert().Contains(err.Error(), "failed to get caData from secret")
 	s.clientMock.AssertExpectations(s.T())
 }
 
@@ -1078,7 +1078,6 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 			featureToggles: []corev1alpha1.FeatureToggle{
 				{Name: "feature-enable-getting-started"},
 				{Name: "feature-disable-email-verification"},
-				{Name: "feature-enable-marketplace-account"},
 			},
 			toggleName: "feature-disable-email-verification",
 			expected:   "true",

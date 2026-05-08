@@ -6,6 +6,7 @@ metadata:
 spec:
   latestResourceSchemas:
   - v260217-2c67392.identityproviderconfigurations.core.platform-mesh.io
+  - v260313-c8b198d.apiexportpolicies.core.platform-mesh.io
   permissionClaims:
     - all: true
       group: tenancy.kcp.io

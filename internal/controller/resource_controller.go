@@ -45,16 +45,16 @@ var (
 	resourceReconcilerName = "ResourceReconciler"
 )
 
-// ResourceReconciler reconciles a Resource object
-type ResourceReconciler struct {
-	lifecycle   *lifecycle.Lifecycle
-	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
-}
-
 var gvk = schema.GroupVersionKind{
 	Group:   "delivery.ocm.software",
 	Version: "v1alpha1",
 	Kind:    "Resource",
+}
+
+// ResourceReconciler reconciles a Resource object
+type ResourceReconciler struct {
+	lifecycle   *lifecycle.Lifecycle
+	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
 }
 
 func (r *ResourceReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {

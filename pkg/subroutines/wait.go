@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,49 +67,52 @@ func (r *WaitSubroutine) Process(
 	for _, resourceType := range waitConfig.ResourceTypes {
 		log.Info().Msgf("Waiting for resource type: %s", resourceType)
 
-		for _, version := range resourceType.Versions {
-			waitList := &unstructured.UnstructuredList{}
-
-			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
-
-			// Determine which status checking method to use
-			useStatusFieldPath := len(resourceType.StatusFieldPath) > 0
-
-			if resourceType.Name != "" {
-				res := &unstructured.Unstructured{}
-				res.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
-				err := r.client.Get(ctx, client.ObjectKey{Namespace: resourceType.Namespace, Name: resourceType.Name}, res)
-				if err != nil {
-					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
-				}
-				if !checkResourceStatus(res, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
-				}
-				continue
-			}
-
-			// use LabelSelector if no Name is specified
-			ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
-			if err != nil {
-				log.Info().Msgf("Error converting label selector: %v", err)
-				return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector error"), nil
-			}
-			err = r.client.List(ctx, waitList, &client.ListOptions{
-				Namespace:     resourceType.Namespace,
-				LabelSelector: ls,
+		if resourceType.Name != "" {
+			res := &unstructured.Unstructured{}
+			res.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resourceType.Group,
+				Version: resourceType.Version,
+				Kind:    resourceType.Kind,
 			})
+			err := r.client.Get(ctx, client.ObjectKey{
+				Namespace: resourceType.Namespace,
+				Name:      resourceType.Name,
+			}, res)
 			if err != nil {
-				log.Info().Msgf("Error listing resources: %v", err)
-				return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources error"), nil
+				log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
 			}
+			if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
+			}
+			continue
+		}
 
-			for _, item := range waitList.Items {
-				if !checkResourceStatus(&item, useStatusFieldPath, resourceType.StatusFieldPath, resourceType.StatusValue, resourceType.ConditionType, string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
-				}
+		// use LabelSelector if no Name is specified
+		waitList := &unstructured.UnstructuredList{}
+		waitList.SetGroupVersionKind(schema.GroupVersionKind{
+			Group:   resourceType.Group,
+			Version: resourceType.Version,
+			Kind:    resourceType.Kind,
+		})
+		ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
+		if err != nil {
+			log.Info().Msgf("Error converting label selector: %v", err)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
+		}
+		if err := r.client.List(ctx, waitList, &client.ListOptions{
+			Namespace:     resourceType.Namespace,
+			LabelSelector: ls,
+		}); err != nil {
+			log.Info().Msgf("Error listing resources: %v", err)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources"), nil
+		}
+
+		for _, item := range waitList.Items {
+			if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
 			}
 		}
 	}
@@ -168,7 +170,7 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 
 	if len(audiences) == 0 {
 		log.Info().Msg("WorkspaceAuthenticationConfiguration audiences is not yet set, triggering reconcile")
-		return errors.New("WorkspaceAuthenticationConfiguration audience is not yet set")
+		return fmt.Errorf("WorkspaceAuthenticationConfiguration audience is not yet set")
 	}
 
 	if len(audiences) == 1 {
@@ -186,14 +188,4 @@ func (r *WaitSubroutine) Finalizers(_ client.Object) []string { // coverage-igno
 
 func (r *WaitSubroutine) GetName() string {
 	return WaitSubroutineName
-}
-
-// checkResourceStatus checks if a resource matches the expected status.
-// If useStatusFieldPath is true, it checks the value at statusFieldPath equals statusValue.
-// Otherwise, it checks the conditions array for a matching conditionType and conditionStatus.
-func checkResourceStatus(res *unstructured.Unstructured, useStatusFieldPath bool, statusFieldPath []string, statusValue string, conditionType string, conditionStatus string) bool {
-	if useStatusFieldPath {
-		return matchesStatusFieldValue(res, statusFieldPath, statusValue)
-	}
-	return matchesConditionWithStatus(res, conditionType, conditionStatus)
 }
