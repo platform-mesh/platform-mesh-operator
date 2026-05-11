@@ -1637,7 +1637,14 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	// Setup test instance
 	instance := s.getBaseInstance()
-	instance.Spec.Kcp.ProviderConnections = nil
+	// Exercise admin kubeconfig wiring only: defaults may use scoped kubeconfig for some secrets.
+	adminDefaults := make([]corev1alpha1.ProviderConnection, len(DefaultProviderConnections))
+	for i, pc := range DefaultProviderConnections {
+		pc := pc
+		pc.AdminAuth = ptr.To(true)
+		adminDefaults[i] = pc
+	}
+	instance.Spec.Kcp.ProviderConnections = adminDefaults
 	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
 		{
 			AdminAuth:         ptr.To(true),

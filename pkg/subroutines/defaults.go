@@ -29,9 +29,10 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:      "root:platform-mesh-system",
-		Secret:    "rebac-authz-webhook-kubeconfig",
-		AdminAuth: ptr.To(true),
+		Path:          "root:platform-mesh-system",
+		Secret:        "rebac-authz-webhook-kubeconfig",
+		APIExportName: ptr.To("core.platform-mesh.io"),
+		AdminAuth:     ptr.To(false),
 	},
 	{
 		Path:      "root:platform-mesh-system",
@@ -49,14 +50,16 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:      "root:platform-mesh-system",
-		Secret:    "extension-manager-operator-kubeconfig",
-		AdminAuth: ptr.To(true),
+		Path:          "root:platform-mesh-system",
+		Secret:        "extension-manager-operator-kubeconfig",
+		APIExportName: ptr.To("core.platform-mesh.io"),
+		AdminAuth:     ptr.To(false),
 	},
 	{
-		Path:      "root:platform-mesh-system",
-		Secret:    "iam-service-kubeconfig",
-		AdminAuth: ptr.To(true),
+		Path:          "root:platform-mesh-system",
+		Secret:        "iam-service-kubeconfig",
+		APIExportName: ptr.To("core.platform-mesh.io"),
+		AdminAuth:     ptr.To(false),
 	},
 	{
 		Path:      "root:orgs",
@@ -132,9 +135,9 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 	ResourceTypes: []corev1alpha1.ResourceType{
 		{
 			GroupVersionKind: v1.GroupVersionKind{
-				Group: "helm.toolkit.fluxcd.io",
+				Group:   "helm.toolkit.fluxcd.io",
 				Version: "v2",
-				Kind:  "HelmRelease",
+				Kind:    "HelmRelease",
 			},
 			Namespace: "default",
 			LabelSelector: v1.LabelSelector{
@@ -151,9 +154,9 @@ var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 		},
 		{
 			GroupVersionKind: v1.GroupVersionKind{
-				Group: "helm.toolkit.fluxcd.io",
+				Group:   "helm.toolkit.fluxcd.io",
 				Version: "v2",
-				Kind:  "HelmRelease",
+				Kind:    "HelmRelease",
 			},
 			Namespace: "default",
 			LabelSelector: v1.LabelSelector{
