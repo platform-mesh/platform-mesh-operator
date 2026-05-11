@@ -207,21 +207,24 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutineslib.OK(), fmt.Errorf("version not available at path %v", versionPath)
 	}
 
-	patchObj := &unstructured.Unstructured{}
-	patchObj.SetGroupVersionKind(helmReleaseGvk)
-	patchObj.SetName(name)
-	patchObj.SetNamespace(namespace)
+	// GET the existing HelmRelease so we can do a merge patch instead of SSA.
+	// SSA with ForceOwnership would require the full valid spec (chart/chartRef, interval) in the patch,
+	// but we only want to update a nested values field without replacing the whole object.
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(helmReleaseGvk)
+	if err := r.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existing); err != nil {
+		return subroutineslib.OK(), fmt.Errorf("HelmRelease %s/%s not found: %w", namespace, name, err)
+	}
 
-	if err := unstructured.SetNestedField(patchObj.Object, version, updatePath...); err != nil {
+	if err := unstructured.SetNestedField(existing.Object, version, updatePath...); err != nil {
 		return subroutineslib.OK(), err
 	}
 
 	if getMetadataValue(inst, "unsuspend") == "true" {
-		_ = unstructured.SetNestedField(patchObj.Object, false, "spec", "suspend")
+		_ = unstructured.SetNestedField(existing.Object, false, "spec", "suspend")
 	}
 
-	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
-	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Update(ctx, existing); err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return subroutineslib.OK(), err
 	}
@@ -239,11 +242,12 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	}
 	log.Debug().Str("repoURL", repoURL).Str("targetRevision", targetRevision).Str("type", chartType).Msg("Resolved ArgoCD source")
 
+	appName := trimPMSuffixes(inst.GetName())
 	existingApp := &unstructured.Unstructured{}
 	existingApp.SetGroupVersionKind(argocdApplicationGvk)
-	if err := r.client.Get(ctx, client.ObjectKey{Name: inst.GetName(), Namespace: inst.GetNamespace()}, existingApp); err != nil {
+	if err := r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: inst.GetNamespace()}, existingApp); err != nil {
 		log.Info().Err(err).Msg("Application not found, waiting for DeploymentSubroutine to create it")
-		return subroutineslib.OK(), fmt.Errorf("application %s/%s not found", inst.GetNamespace(), inst.GetName())
+		return subroutineslib.OK(), fmt.Errorf("application %s/%s not found", inst.GetNamespace(), appName)
 	}
 
 	currentRevision, _, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
@@ -254,7 +258,7 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 
 	patchObj := &unstructured.Unstructured{}
 	patchObj.SetGroupVersionKind(argocdApplicationGvk)
-	patchObj.SetName(inst.GetName())
+	patchObj.SetName(appName)
 	patchObj.SetNamespace(inst.GetNamespace())
 	if err := unstructured.SetNestedField(patchObj.Object, targetRevision, "spec", "source", "targetRevision"); err != nil {
 		return subroutineslib.OK(), err
@@ -270,7 +274,7 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	}
 
 	log.Info().
-		Str("application", inst.GetName()).
+		Str("application", appName).
 		Str("repoURL", repoURL).
 		Str("targetRevision", targetRevision).
 		Str("previousRevision", currentRevision).
@@ -473,21 +477,26 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 		return subroutineslib.OK(), fmt.Errorf("version not available")
 	}
 
-	patchObj := &unstructured.Unstructured{}
-	patchObj.SetGroupVersionKind(helmReleaseGvk)
-	patchObj.SetName(trimPMSuffixes(inst.GetName()))
-	patchObj.SetNamespace(inst.GetNamespace())
+	name := trimPMSuffixes(inst.GetName())
+	namespace := inst.GetNamespace()
 
-	if err := unstructured.SetNestedField(patchObj.Object, version, "spec", "chart", "spec", "version"); err != nil {
+	// GET the existing HelmRelease so we can do a merge update instead of SSA,
+	// which would require a full valid spec (chart.spec.chart, chart.spec.sourceRef, etc.).
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(helmReleaseGvk)
+	if err := r.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existing); err != nil {
+		return subroutineslib.OK(), fmt.Errorf("HelmRelease %s/%s not found: %w", namespace, name, err)
+	}
+
+	if err := unstructured.SetNestedField(existing.Object, version, "spec", "chart", "spec", "version"); err != nil {
 		return subroutineslib.OK(), err
 	}
 
 	if getMetadataValue(inst, "unsuspend") == "true" {
-		_ = unstructured.SetNestedField(patchObj.Object, false, "spec", "suspend")
+		_ = unstructured.SetNestedField(existing.Object, false, "spec", "suspend")
 	}
 
-	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
-	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Update(ctx, existing); err != nil {
 		log.Error().Err(err).Msg("Failed to update HelmRelease")
 		return subroutineslib.OK(), err
 	}

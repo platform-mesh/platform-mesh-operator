@@ -193,6 +193,18 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	log.Debug().Msg("Successfully rendered and applied runtime templates")
 
+	// Render and apply components runtime templates (OCM Resources) early so that
+	// ResourceSubroutine can create OCIRepositories on the infra cluster. Those
+	// OCIRepositories are required by the infra HelmReleases (cert-manager, etcd-druid,
+	// etc.) which are applied by renderAndApplyInfraTemplates above. Without the
+	// OCIRepositories the cert-manager HelmRelease will never become Ready.
+	oErr = r.renderAndApplyComponentsRuntimeTemplates(ctx, inst, templateVars)
+	if oErr != nil {
+		log.Error().Err(oErr).Msg("Failed to render and apply components runtime templates")
+		return subroutines.OK(), oErr
+	}
+	log.Debug().Msg("Successfully rendered and applied components runtime templates")
+
 	// Get deploymentTechnology from template vars or config (needed for checking resource readiness)
 	tmplVars, err := r.templateVarsFromProfileInfra(ctx, inst, templateVars, r.cfgOperator)
 	if err != nil {
@@ -205,8 +217,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
-	// Wait for cert-manager to be ready
-
+	// Wait for cert-manager to be ready before proceeding with component HelmReleases
 	rel, err := getDeploymentResource(ctx, r.clientInfra, "cert-manager", inst.Namespace, deploymentTech)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get cert-manager resource")
@@ -233,20 +244,13 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 		}
 	}
 
-	// Render and apply components templates (HelmReleases + OCM Resources) using profile
+	// Render and apply components infra templates (HelmReleases for services) after cert-manager is ready
 	oErr = r.renderAndApplyComponentsInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
 		log.Error().Err(oErr).Msg("Failed to render and apply components infra templates")
 		return subroutines.OK(), oErr
 	}
 	log.Debug().Msg("Successfully rendered and applied components infra templates")
-
-	oErr = r.renderAndApplyComponentsRuntimeTemplates(ctx, inst, templateVars)
-	if oErr != nil {
-		log.Error().Err(oErr).Msg("Failed to render and apply components runtime templates")
-		return subroutines.OK(), oErr
-	}
-	log.Debug().Msg("Successfully rendered and applied components runtime templates")
 
 	_, oErr = r.manageAuthorizationWebhookSecrets(ctx, inst)
 	if oErr != nil {
@@ -952,6 +956,10 @@ func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmValues(obj map[string]i
 	spec, _ := obj["spec"].(map[string]interface{})
 	source, _ := spec["source"].(map[string]interface{})
 	helm, _ := source["helm"].(map[string]interface{})
+	if helm == nil {
+		helm = map[string]interface{}{}
+		source["helm"] = helm
+	}
 	valuesStr, _ := helm["values"].(string)
 
 	updatedYAML, err := SetHelmValues(valuesStr, versions)
@@ -1007,7 +1015,14 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/infra", tmplVars, r.clientInfra, log, "infra", skipFile, postProcess)
 }
 
-// renderAndApplyRuntimeTemplates renders all templates in gotemplates/infra/runtime and applies them to the runtime cluster.
+// renderAndApplyRuntimeTemplates renders all templates in gotemplates/infra/runtime and applies them.
+// The directory contains two types of objects:
+//   - OCM Resource objects (delivery.ocm.software/v1alpha1) → applied to the runtime cluster, where
+//     the OCM controller processes them and updates their status (version, imageReference, etc.)
+//   - FluxCD HelmRelease objects (helm.toolkit.fluxcd.io) → applied to the infra cluster, where
+//     FluxCD runs and deploys workloads to the runtime cluster via kubeConfig
+//
+// In single-cluster deployments clientInfra == clientRuntime so the routing is transparent.
 func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Context, inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -1017,7 +1032,20 @@ func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Contex
 		return err
 	}
 
-	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/runtime", tmplVars, r.clientRuntime, log, "runtime", nil, nil)
+	// Route each rendered object to the correct cluster client based on its GVK.
+	// OCM Resources → runtime cluster (OCM controller lives there).
+	// Everything else (FluxCD HelmReleases, etc.) → infra cluster.
+	routingPostProcess := func(ctx context.Context, obj *unstructured.Unstructured) error {
+		targetClient := r.clientInfra
+		if obj.GetAPIVersion() == "delivery.ocm.software/v1alpha1" && obj.GetKind() == "Resource" {
+			targetClient = r.clientRuntime
+		}
+		return targetClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+	}
+
+	// Use clientInfra as default (it will be overridden per-object by routingPostProcess).
+	// We pass a no-op postProcessObj and handle the actual Apply inside routingPostProcess.
+	return r.renderAndApplyTemplatesWithRouter(ctx, r.gotemplatesInfraDir+"/runtime", tmplVars, log, "runtime", nil, routingPostProcess)
 }
 
 // renderAndApplyComponentsInfraTemplates renders gotemplates/components/infra with profile-components.yaml

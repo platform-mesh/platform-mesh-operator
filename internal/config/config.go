@@ -75,7 +75,7 @@ func NewOperatorConfig() OperatorConfig {
 			Namespace:              "platform-mesh-system",
 			RootShardName:          "root",
 			FrontProxyName:         "frontproxy",
-			FrontProxyPort:         "8443",
+			FrontProxyPort:         "6443",
 			ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
 		},
 		Subroutines: SubroutinesConfig{

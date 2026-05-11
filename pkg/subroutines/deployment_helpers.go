@@ -3,6 +3,7 @@ package subroutines
 import (
 	"bytes"
 	"context"
+	stderrors "errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,6 +24,10 @@ var argoApplicationGVK = schema.GroupVersionKind{
 	Version: "v1alpha1",
 	Kind:    "Application",
 }
+
+// errSkipObject is a sentinel returned by postProcessObj to signal that the object
+// should be silently skipped (not applied to the cluster) without aborting the loop.
+var errSkipObject = stderrors.New("skip object")
 
 const (
 	// Field manager names for Server-Side Apply
@@ -74,12 +79,61 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 		for _, obj := range objs {
 			if postProcessObj != nil {
 				if err := postProcessObj(ctx, obj); err != nil {
+					if stderrors.Is(err, errSkipObject) {
+						continue
+					}
 					return errors.Wrap(err, "Failed to post-process rendered object from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 				}
 			}
 
 			// Apply the rendered manifest
 			if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
+				return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Error().Err(err).Str("type", templateType).Msg("Failed to render and apply templates")
+		return err
+	}
+
+	return nil
+}
+
+// renderAndApplyTemplatesWithRouter is like renderAndApplyTemplates but instead of applying to a
+// single client it delegates the Apply to applyFunc, which can route each object to a different client.
+func (r *DeploymentSubroutine) renderAndApplyTemplatesWithRouter(
+	ctx context.Context,
+	dir string,
+	tmplVars map[string]interface{},
+	log *logger.Logger,
+	templateType string,
+	skipFile func(fileName string) bool,
+	applyFunc func(ctx context.Context, obj *unstructured.Unstructured) error,
+) error {
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml") {
+			return nil
+		}
+
+		if skipFile != nil && skipFile(d.Name()) {
+			return nil
+		}
+
+		objs, err := r.renderTemplateFile(path, tmplVars, log)
+		if err != nil {
+			return errors.Wrap(err, "Failed to render template: %s", path)
+		}
+
+		for _, obj := range objs {
+			if err := applyFunc(ctx, obj); err != nil {
 				return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 		}
@@ -243,21 +297,31 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 		}
 	}
 
-	// Only preserve if:
-	// 1. Existing value is set and not a placeholder
-	// 2. New object has the field (so we don't remove required fields)
-	// 3. Existing value is different from new value (to avoid unnecessary removals)
-	if found && existingRepoURL != "" && existingRepoURL != argoPlaceholderRepoURL && newRepoURL != "" && existingRepoURL != newRepoURL {
-		if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-			if source, ok := spec["source"].(map[string]interface{}); ok {
+	// Remove placeholder values from the patch — they must never be applied to the cluster.
+	// ResourceSubroutine is responsible for setting the real values.
+	// Also preserve any real value that ResourceSubroutine has already written.
+	if spec, ok := objMap["spec"].(map[string]interface{}); ok {
+		if source, ok := spec["source"].(map[string]interface{}); ok {
+			if newRepoURL == argoPlaceholderRepoURL {
+				// Never apply the placeholder — always strip it so ResourceSubroutine owns the field.
+				delete(source, "repoURL")
+				if found && existingRepoURL != "" && existingRepoURL != argoPlaceholderRepoURL {
+					log.Debug().Str("app", name).Msg("Preserving existing repoURL from ResourceSubroutine")
+				}
+			} else if found && existingRepoURL != "" && existingRepoURL != argoPlaceholderRepoURL && existingRepoURL != newRepoURL {
+				// Preserve a real value already set by ResourceSubroutine even when the template
+				// provides a different (non-placeholder) value.
 				delete(source, "repoURL")
 				log.Debug().Str("app", name).Msg("Preserving existing repoURL from ResourceSubroutine")
 			}
-		}
-	}
-	if foundRev && existingTargetRevision != "" && existingTargetRevision != argoPlaceholderRepoURL && newTargetRevision != "" && existingTargetRevision != newTargetRevision {
-		if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-			if source, ok := spec["source"].(map[string]interface{}); ok {
+
+			if newTargetRevision == argoPlaceholderRepoURL {
+				// Never apply the placeholder for targetRevision either.
+				delete(source, "targetRevision")
+				if foundRev && existingTargetRevision != "" && existingTargetRevision != argoPlaceholderRepoURL {
+					log.Debug().Str("app", name).Msg("Preserving existing targetRevision from ResourceSubroutine")
+				}
+			} else if foundRev && existingTargetRevision != "" && existingTargetRevision != argoPlaceholderRepoURL && existingTargetRevision != newTargetRevision {
 				delete(source, "targetRevision")
 				log.Debug().Str("app", name).Msg("Preserving existing targetRevision from ResourceSubroutine")
 			}
@@ -287,6 +351,14 @@ func deploymentTechFileFilter(deploymentTech string, log *logger.Logger) func(fi
 func (r *DeploymentSubroutine) argoHelmReleasePostProcess(ctx context.Context, log *logger.Logger) func(ctx context.Context, obj *unstructured.Unstructured) error {
 	return func(ctx context.Context, obj *unstructured.Unstructured) error {
 		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
+			// If the Application doesn't exist yet and the template provides a placeholder repoURL,
+			// skip creating it — ArgoCD rejects Applications with invalid repoURLs.
+			// ResourceSubroutine will update the repoURL once the OCM Resource is ready,
+			// and DeploymentSubroutine will create the Application on the next reconcile.
+			if r.argoAppHasPlaceholderAndNotExists(ctx, obj, log) {
+				log.Debug().Str("app", obj.GetName()).Msg("Skipping Application creation: repoURL is still a placeholder, waiting for ResourceSubroutine")
+				return errSkipObject
+			}
 			r.preserveExistingArgoSourceFields(ctx, obj.Object, obj.GetName(), obj.GetNamespace(), log)
 			r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
 		}
@@ -295,4 +367,21 @@ func (r *DeploymentSubroutine) argoHelmReleasePostProcess(ctx context.Context, l
 		}
 		return nil
 	}
+}
+
+// argoAppHasPlaceholderAndNotExists returns true when an Application template uses the
+// placeholder repoURL AND the Application does not yet exist on the cluster.
+func (r *DeploymentSubroutine) argoAppHasPlaceholderAndNotExists(ctx context.Context, obj *unstructured.Unstructured, log *logger.Logger) bool {
+	repoURL, _, _ := unstructured.NestedString(obj.Object, "spec", "source", "repoURL")
+	if repoURL != argoPlaceholderRepoURL {
+		return false
+	}
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(argoApplicationGVK)
+	if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existing); err != nil {
+		// Application doesn't exist — skip until ResourceSubroutine creates real values
+		return true
+	}
+	// Application exists (from a previous reconcile) — let preserveExistingArgoSourceFields handle it
+	return false
 }
