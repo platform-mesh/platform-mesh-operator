@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/filter"
@@ -146,7 +147,10 @@ func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig
 		subs = append(subs, pmsubs.NewWaitSubroutine(clientInfra, localCl, cfg, &pmsubs.Helper{}, kcpUrl))
 	}
 
-	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig(
+		ratelimiter.WithRequeueDelay(30*time.Second),
+		ratelimiter.WithStaticWindow(20*time.Minute),
+	))
 	if err != nil {
 		return nil, fmt.Errorf("creating rate limiter: %w", err)
 	}
