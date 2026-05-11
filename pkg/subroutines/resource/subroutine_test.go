@@ -5,9 +5,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -830,4 +832,285 @@ func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
 	result, err := s.subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateArgoCDApplication_HelmRepo() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "keycloak-chart",
+				"namespace": "platform-mesh-system",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "25.2.3",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.bitnami.com/bitnami",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
+				cm := obj.(*corev1.ConfigMap)
+				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
+				return nil
+			}
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			_ = unstructured.SetNestedField(unstr.Object, "https://old-repo.com", "spec", "source", "repoURL")
+			_ = unstructured.SetNestedField(unstr.Object, "1.0.0", "spec", "source", "targetRevision")
+			return nil
+		},
+	)
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		unstr := obj.(*unstructured.Unstructured)
+		repoURL, _, _ := unstructured.NestedString(unstr.Object, "spec", "source", "repoURL")
+		rev, _, _ := unstructured.NestedString(unstr.Object, "spec", "source", "targetRevision")
+		return repoURL == "https://charts.bitnami.com/bitnami" && rev == "25.2.3" && unstr.GetName() == "keycloak"
+	}), mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	result, err := sub.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateArgoCDApplication_AlreadyUpToDate() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "keycloak-chart",
+				"namespace": "platform-mesh-system",
+				"annotations": map[string]interface{}{"artifact": "chart", "repo": "helm"},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "25.2.3",
+					"access": map[string]interface{}{"type": "helmChart", "helmRepository": "https://charts.bitnami.com/bitnami"},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
+				cm := obj.(*corev1.ConfigMap)
+				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
+				return nil
+			}
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			_ = unstructured.SetNestedField(unstr.Object, "https://charts.bitnami.com/bitnami", "spec", "source", "repoURL")
+			_ = unstructured.SetNestedField(unstr.Object, "25.2.3", "spec", "source", "targetRevision")
+			return nil
+		},
+	)
+
+	result, err := sub.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateArgoCDApplicationHelmValues() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "kcp-image",
+				"namespace": "platform-mesh-system",
+				"annotations": map[string]interface{}{"artifact": "image", "repo": "oci", "path": "kcp.image.tag"},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{"version": "v0.30.0"},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	store := subroutines.NewImageVersionStore()
+	sub := NewResourceSubroutine(clientMock, nil, store)
+
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
+				cm := obj.(*corev1.ConfigMap)
+				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
+				return nil
+			}
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			_ = unstructured.SetNestedField(unstr.Object, "kcp:\n  image:\n    tag: v0.29.0\n", "spec", "source", "helm", "values")
+			return nil
+		},
+	)
+	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	result, err := sub.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+
+	versions := store.Get("platform-mesh-system", "kcp")
+	s.Require().Len(versions, 1)
+	s.Equal("kcp.image.tag", versions[0].Path)
+	s.Equal("v0.30.0", versions[0].Version)
+}
+
+func (s *ResourceTestSuite) Test_resolveArgoCDSource_OCI() {
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+					"access": map[string]interface{}{"imageReference": "oci://registry.example.com/charts/mychart:1.2.3@sha256:abc"},
+				},
+			},
+		},
+	}
+	repoURL, rev, chartType, err := s.subroutine.resolveArgoCDSource(inst)
+	s.Nil(err)
+	s.Equal("registry.example.com/charts", repoURL)
+	s.Equal("1.2.3", rev)
+	s.Equal("oci", chartType)
+}
+
+func (s *ResourceTestSuite) Test_resolveArgoCDSource_NoSource() {
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{"status": map[string]interface{}{"resource": map[string]interface{}{"access": map[string]interface{}{}}}},
+	}
+	_, _, _, err := s.subroutine.resolveArgoCDSource(inst)
+	s.NotNil(err)
+	s.Contains(err.Error(), "no helmRepository, repoUrl, or imageReference found")
+}
+
+func (s *ResourceTestSuite) Test_resolveArgoCDSource_HelmNoVersion() {
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{"status": map[string]interface{}{"resource": map[string]interface{}{"access": map[string]interface{}{"helmRepository": "https://charts.example.com"}}}},
+	}
+	_, _, _, err := s.subroutine.resolveArgoCDSource(inst)
+	s.NotNil(err)
+	s.Contains(err.Error(), "version not found for helm chart")
+}
+
+func (s *ResourceTestSuite) Test_resolveArgoCDSource_GitNoRef() {
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{"status": map[string]interface{}{"resource": map[string]interface{}{"access": map[string]interface{}{"repoUrl": "https://github.com/org/repo"}}}},
+	}
+	_, _, _, err := s.subroutine.resolveArgoCDSource(inst)
+	s.NotNil(err)
+	s.Contains(err.Error(), "no ref, version, or commit found")
+}
+
+func Test_extractOCIRepoURL(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"oci://registry.example.com/charts/mychart:1.0.0@sha256:abc", "registry.example.com/charts", false},
+		{"registry.example.com/org/charts/app:v2.0", "registry.example.com/org/charts", false},
+		{"noslash", "", true},
+	}
+	for _, tt := range tests {
+		got, err := extractOCIRepoURL(tt.input)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("extractOCIRepoURL(%q) expected error", tt.input)
+			}
+		} else {
+			if err != nil {
+				t.Fatalf("extractOCIRepoURL(%q) error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Errorf("extractOCIRepoURL(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		}
+	}
+}
+
+func Test_firstNonEmpty(t *testing.T) {
+	if got := firstNonEmpty("", "", "c"); got != "c" {
+		t.Errorf("got %q want %q", got, "c")
+	}
+	if got := firstNonEmpty("a", "b"); got != "a" {
+		t.Errorf("got %q want %q", got, "a")
+	}
+	if got := firstNonEmpty("", ""); got != "" {
+		t.Errorf("got %q want %q", got, "")
+	}
+}
+
+func Test_getValueFromYAML(t *testing.T) {
+	yamlStr := "kcp:\n  image:\n    tag: v0.30.0\n"
+	if got := getValueFromYAML(yamlStr, []string{"kcp", "image", "tag"}); got != "v0.30.0" {
+		t.Errorf("got %q want %q", got, "v0.30.0")
+	}
+	if got := getValueFromYAML(yamlStr, []string{"missing"}); got != "" {
+		t.Errorf("got %q want empty", got)
+	}
+	if got := getValueFromYAML("", []string{"a"}); got != "" {
+		t.Errorf("got %q want empty", got)
+	}
+}
+
+func Test_getNestedString(t *testing.T) {
+	m := map[string]interface{}{"a": map[string]interface{}{"b": "hello"}}
+	got, ok := getNestedString(m, "a", "b")
+	if !ok || got != "hello" {
+		t.Errorf("got %q, ok=%v", got, ok)
+	}
+	_, ok = getNestedString(m, "x", "y")
+	if ok {
+		t.Error("expected ok=false")
+	}
+	_, ok = getNestedString(m)
+	if ok {
+		t.Error("expected ok=false for empty path")
+	}
+	m2 := map[string]interface{}{"a": 42}
+	_, ok = getNestedString(m2, "a")
+	if ok {
+		t.Error("expected ok=false for non-string")
+	}
+}
+
+func (s *ResourceTestSuite) Test_SetRuntimeClient() {
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(s.clientMock, nil, nil)
+	sub.SetRuntimeClient(clientMock)
+	s.Equal(clientMock, sub.clientRuntime)
 }
