@@ -87,7 +87,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 			}
 
 			// Apply the rendered manifest
-			if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
+			if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 				return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 		}

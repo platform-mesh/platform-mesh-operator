@@ -12,8 +12,8 @@ import (
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/subroutines"
 	"github.com/platform-mesh/golang-commons/logger"
+	"github.com/platform-mesh/subroutines"
 	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -138,14 +138,14 @@ func (r *DeploymentSubroutine) loadProfileSections(ctx context.Context, inst *v1
 	}
 
 	// Extract infra section
-	infraData, ok := unifiedProfile["infra"]
+	infraData := unifiedProfile["infra"]
 	infraYAML, err := yaml.Marshal(infraData)
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to marshal infra profile")
 	}
 
 	// Extract components section
-	componentsData, ok := unifiedProfile["components"]
+	componentsData := unifiedProfile["components"]
 	componentsYAML, err := yaml.Marshal(componentsData)
 	if err != nil {
 		return "", "", errors.Wrap(err, "Failed to marshal components profile")
@@ -727,6 +727,9 @@ func calculateSyncWaves(services map[string]interface{}) error {
 
 		for _, dep := range dependsOnSlice {
 			depMap, ok := dep.(map[string]interface{})
+			if !ok {
+				continue
+			}
 
 			depName, ok := depMap["name"].(string)
 			if !ok || depName == "" {
@@ -1040,7 +1043,7 @@ func (r *DeploymentSubroutine) renderAndApplyRuntimeTemplates(ctx context.Contex
 		if obj.GetAPIVersion() == "delivery.ocm.software/v1alpha1" && obj.GetKind() == "Resource" {
 			targetClient = r.clientRuntime
 		}
-		return targetClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+		return targetClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership) //nolint:staticcheck // Apply via Patch is required for unstructured objects
 	}
 
 	// Use clientInfra as default (it will be overridden per-object by routingPostProcess).
@@ -1132,7 +1135,7 @@ func (r *DeploymentSubroutine) createKCPWebhookSecret(ctx context.Context, inst 
 	obj.SetNamespace(inst.Namespace)
 
 	// Apply the secret using SSA (idempotent - creates if not exists, updates if exists)
-	if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil {
+	if err := r.clientRuntime.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		return err
 	}
 	return nil
@@ -1214,7 +1217,7 @@ func (r *DeploymentSubroutine) updateKcpWebhookSecret(ctx context.Context, inst 
 	kcpWebhookSecret.SetManagedFields(nil)
 
 	// Apply the updated secret using SSA
-	err = r.clientRuntime.Patch(ctx, kcpWebhookSecret, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+	err = r.clientRuntime.Patch(ctx, kcpWebhookSecret, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership) //nolint:staticcheck // Apply via Patch is required for unstructured objects
 	if err != nil {
 		log.Error().Err(err).Str("secret", webhookSecret).Str("namespace", operatorCfg.KCP.Namespace).Msg("Failed to update kcp webhook secret")
 		return subroutines.OK(), err
@@ -1382,7 +1385,7 @@ func applyManifestFromFileWithMergedValues(ctx context.Context, path string, k8s
 		return err
 	}
 
-	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership)
+	err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership) //nolint:staticcheck // Apply via Patch is required for unstructured objects
 	if err != nil {
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}

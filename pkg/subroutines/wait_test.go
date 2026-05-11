@@ -311,7 +311,7 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-					GroupVersionKind: metav1.GroupVersionKind{
+						GroupVersionKind: metav1.GroupVersionKind{
 							Group:   "kustomize.toolkit.fluxcd.io",
 							Version: "v1",
 							Kind:    "Kustomization",
@@ -377,7 +377,7 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 			Wait: &corev1alpha1.WaitConfig{
 				ResourceTypes: []corev1alpha1.ResourceType{
 					{
-					GroupVersionKind: metav1.GroupVersionKind{
+						GroupVersionKind: metav1.GroupVersionKind{
 							Group:   "helm.toolkit.fluxcd.io",
 							Version: "v2",
 							Kind:    "HelmRelease",

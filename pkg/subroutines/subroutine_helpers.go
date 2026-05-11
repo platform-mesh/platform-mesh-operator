@@ -465,66 +465,6 @@ func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (
 	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
 }
 
-func loadAdminKubeconfig(ctx context.Context, cl client.Client) (*clientcmdapi.Config, error) {
-	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	secretName := operatorCfg.KCP.ClusterAdminSecretName
-	secret, err := GetSecret(cl, secretName, operatorCfg.KCP.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
-	}
-	if secret == nil {
-		return nil, fmt.Errorf("secret %s/%s is nil", operatorCfg.KCP.Namespace, secretName)
-	}
-	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/%s has no Data", operatorCfg.KCP.Namespace, secretName)
-	}
-
-	// Try kubeconfig key first (Opaque secret with pre-built kubeconfig)
-	if kubeconfigData, ok := secret.Data["kubeconfig"]; ok && len(kubeconfigData) > 0 {
-		cfg, err := clientcmd.Load(kubeconfigData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
-		}
-		return cfg, nil
-	}
-
-	// Fall back to cert-based approach (kubernetes.io/tls secret with ca.crt, tls.crt, tls.key)
-	caData, ok := secret.Data["ca.crt"]
-	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing both \"kubeconfig\" and \"ca.crt\" keys", operatorCfg.KCP.Namespace, secretName)
-	}
-	tlsCrt, ok := secret.Data["tls.crt"]
-	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.crt\"", operatorCfg.KCP.Namespace, secretName)
-	}
-	tlsKey, ok := secret.Data["tls.key"]
-	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.key\"", operatorCfg.KCP.Namespace, secretName)
-	}
-
-	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters = map[string]*clientcmdapi.Cluster{
-		"kcp": {
-			Server:                   "https://kcp",
-			CertificateAuthorityData: caData,
-		},
-	}
-	cfg.Contexts = map[string]*clientcmdapi.Context{
-		"admin": {
-			Cluster:  "kcp",
-			AuthInfo: "admin",
-		},
-	}
-	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
-		"admin": {
-			ClientCertificateData: tlsCrt,
-			ClientKeyData:         tlsKey,
-		},
-	}
-	cfg.CurrentContext = "admin"
-	return cfg, nil
-}
-
 func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := operatorCfg.KCP.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
@@ -662,7 +602,6 @@ func ApplyManifestFromFile(
 		}
 	}
 
-
 	if (obj.GetKind() == "APIExport" || obj.GetKind() == "APIBinding") && obj.GetName() == "core.platform-mesh.io" {
 		apiExport := kcpapiv1alpha.APIExport{}
 		err = k8sClient.Get(ctx, types.NamespacedName{Name: "system.platform-mesh.io"}, &apiExport)
@@ -761,20 +700,6 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 	}
 
 	return false
-}
-
-// matchesStatusFieldValue checks if a resource has a specific value at a given nested field path.
-// This is useful for resources like ArgoCD Applications that use nested status fields
-// (e.g., status.sync.status) instead of the standard conditions array.
-func matchesStatusFieldValue(resource *unstructured.Unstructured, fieldPath []string, expectedValue string) bool {
-	if resource == nil || len(fieldPath) == 0 {
-		return false
-	}
-	value, found, err := unstructured.NestedString(resource.Object, fieldPath...)
-	if err != nil || !found {
-		return false
-	}
-	return value == expectedValue
 }
 
 func unstructuredFromFile(path string, templateData map[string]any, log *logger.Logger) (unstructured.Unstructured, error) {

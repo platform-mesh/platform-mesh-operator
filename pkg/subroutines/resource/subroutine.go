@@ -268,7 +268,7 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	}
 
 	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
-	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to update ArgoCD Application")
 		return subroutineslib.OK(), err
 	}
@@ -389,7 +389,7 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 	}
 
 	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
-	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		return subroutineslib.OK(), err
 	}
 
@@ -517,7 +517,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	_ = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
 	_ = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
 
-	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to apply HelmRepository")
 		return subroutineslib.OK(), err
 	}
@@ -583,7 +583,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	}
 
 	// Apply using SSA (creates if not exists, updates if exists)
-	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to apply OCIRepository")
 		return subroutineslib.OK(), err
 	}
@@ -629,7 +629,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	}
 
 	// Apply using SSA (creates if not exists, updates if exists)
-	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil {
+	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to apply GitRepository")
 		return subroutineslib.OK(), err
 	}

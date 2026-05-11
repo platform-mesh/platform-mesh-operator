@@ -381,7 +381,7 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerKcpSetup))
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerKcpSetup)) //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		if err != nil {
 			return gcerrors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}

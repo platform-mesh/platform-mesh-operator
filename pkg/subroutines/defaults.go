@@ -62,9 +62,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth:     ptr.To(false),
 	},
 	{
-		Path:    "root:orgs",
-		RawPath: ptr.To("/services/contentconfigurations"),
-		Secret:  "portal-kubeconfig",
+		Path:      "root:orgs",
+		RawPath:   ptr.To("/services/contentconfigurations"),
+		Secret:    "portal-kubeconfig",
 		AdminAuth: ptr.To(true),
 	},
 	{

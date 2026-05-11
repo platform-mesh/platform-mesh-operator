@@ -36,8 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrlmanager "sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -58,28 +58,32 @@ type fakeCtrlManager struct {
 	scheme *runtime.Scheme
 }
 
-func (f *fakeCtrlManager) GetClient() client.Client                                { return f.client }
-func (f *fakeCtrlManager) GetScheme() *runtime.Scheme                              { return f.scheme }
-func (f *fakeCtrlManager) GetConfig() *rest.Config                                 { panic("not implemented") }
-func (f *fakeCtrlManager) GetCache() cache.Cache                                   { panic("not implemented") }
-func (f *fakeCtrlManager) GetFieldIndexer() client.FieldIndexer                    { panic("not implemented") }
-func (f *fakeCtrlManager) GetEventRecorderFor(_ string) record.EventRecorder       { panic("not implemented") }
-func (f *fakeCtrlManager) GetEventRecorder(_ string) events.EventRecorder          { panic("not implemented") }
-func (f *fakeCtrlManager) GetRESTMapper() meta.RESTMapper                          { panic("not implemented") }
-func (f *fakeCtrlManager) GetAPIReader() client.Reader                             { panic("not implemented") }
-func (f *fakeCtrlManager) GetHTTPClient() *http.Client                             { panic("not implemented") }
-func (f *fakeCtrlManager) Add(_ ctrlmanager.Runnable) error                        { return nil }
-func (f *fakeCtrlManager) Elected() <-chan struct{}                                 { panic("not implemented") }
+func (f *fakeCtrlManager) GetClient() client.Client             { return f.client }
+func (f *fakeCtrlManager) GetScheme() *runtime.Scheme           { return f.scheme }
+func (f *fakeCtrlManager) GetConfig() *rest.Config              { panic("not implemented") }
+func (f *fakeCtrlManager) GetCache() cache.Cache                { panic("not implemented") }
+func (f *fakeCtrlManager) GetFieldIndexer() client.FieldIndexer { panic("not implemented") }
+func (f *fakeCtrlManager) GetEventRecorderFor(_ string) record.EventRecorder {
+	panic("not implemented")
+}
+func (f *fakeCtrlManager) GetEventRecorder(_ string) events.EventRecorder { panic("not implemented") }
+func (f *fakeCtrlManager) GetRESTMapper() meta.RESTMapper                 { panic("not implemented") }
+func (f *fakeCtrlManager) GetAPIReader() client.Reader                    { panic("not implemented") }
+func (f *fakeCtrlManager) GetHTTPClient() *http.Client                    { panic("not implemented") }
+func (f *fakeCtrlManager) Add(_ ctrlmanager.Runnable) error               { return nil }
+func (f *fakeCtrlManager) Elected() <-chan struct{}                       { panic("not implemented") }
 func (f *fakeCtrlManager) AddMetricsServerExtraHandler(_ string, _ http.Handler) error {
 	panic("not implemented")
 }
-func (f *fakeCtrlManager) AddHealthzCheck(_ string, _ healthz.Checker) error      { return nil }
-func (f *fakeCtrlManager) AddReadyzCheck(_ string, _ healthz.Checker) error       { return nil }
-func (f *fakeCtrlManager) Start(_ context.Context) error                           { panic("not implemented") }
-func (f *fakeCtrlManager) GetWebhookServer() webhook.Server                        { panic("not implemented") }
-func (f *fakeCtrlManager) GetLogger() logr.Logger                                  { return logr.Discard() }
-func (f *fakeCtrlManager) GetControllerOptions() ctrlconfig.Controller             { return ctrlconfig.Controller{} }
-func (f *fakeCtrlManager) GetConverterRegistry() conversion.Registry               { panic("not implemented") }
+func (f *fakeCtrlManager) AddHealthzCheck(_ string, _ healthz.Checker) error { return nil }
+func (f *fakeCtrlManager) AddReadyzCheck(_ string, _ healthz.Checker) error  { return nil }
+func (f *fakeCtrlManager) Start(_ context.Context) error                     { panic("not implemented") }
+func (f *fakeCtrlManager) GetWebhookServer() webhook.Server                  { panic("not implemented") }
+func (f *fakeCtrlManager) GetLogger() logr.Logger                            { return logr.Discard() }
+func (f *fakeCtrlManager) GetControllerOptions() ctrlconfig.Controller {
+	return ctrlconfig.Controller{}
+}
+func (f *fakeCtrlManager) GetConverterRegistry() conversion.Registry { panic("not implemented") }
 
 // fakeManager wraps fakeCtrlManager and implements mcmanager.Manager for unit tests.
 type fakeManager struct {

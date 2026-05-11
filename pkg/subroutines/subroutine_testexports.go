@@ -33,7 +33,6 @@ func (s *DeploymentSubroutine) ApplyManifestFromFileWithMergedValues(ctx context
 	return applyManifestFromFileWithMergedValues(ctx, path, k8sClient, templateData)
 }
 
-
 func (s *KcpsetupSubroutine) UnstructuredFromFile(path string, templateData map[string]any, log *logger.Logger) (unstructured.Unstructured, error) {
 	return unstructuredFromFile(path, templateData, log)
 }

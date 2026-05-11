@@ -934,7 +934,6 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	s.Assert().Contains(err.Error(), "Failed to apply")
 }
 
-
 func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Success() {
 	// Arrange
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
