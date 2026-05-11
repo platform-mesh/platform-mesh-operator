@@ -149,7 +149,9 @@ func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig
 
 	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig(
 		ratelimiter.WithRequeueDelay(30*time.Second),
+		ratelimiter.WithExponentialMaxBackoff(1*time.Minute),
 		ratelimiter.WithStaticWindow(20*time.Minute),
+		ratelimiter.WithExponentialInitialBackoff(30*time.Second),
 	))
 	if err != nil {
 		return nil, fmt.Errorf("creating rate limiter: %w", err)
