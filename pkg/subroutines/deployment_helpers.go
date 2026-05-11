@@ -351,14 +351,11 @@ func deploymentTechFileFilter(deploymentTech string, log *logger.Logger) func(fi
 func (r *DeploymentSubroutine) argoHelmReleasePostProcess(ctx context.Context, log *logger.Logger) func(ctx context.Context, obj *unstructured.Unstructured) error {
 	return func(ctx context.Context, obj *unstructured.Unstructured) error {
 		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
-			// If the Application doesn't exist yet and the template provides a placeholder repoURL,
-			// skip creating it — ArgoCD rejects Applications with invalid repoURLs.
-			// ResourceSubroutine will update the repoURL once the OCM Resource is ready,
-			// and DeploymentSubroutine will create the Application on the next reconcile.
-			if r.argoAppHasPlaceholderAndNotExists(ctx, obj, log) {
-				log.Debug().Str("app", obj.GetName()).Msg("Skipping Application creation: repoURL is still a placeholder, waiting for ResourceSubroutine")
-				return errSkipObject
-			}
+			// preserveExistingArgoSourceFields strips placeholder values from the patch when the
+			// Application already exists (so ResourceSubroutine-managed fields are not overwritten),
+			// and is a no-op for new Applications (leaving the placeholder in the patch so ArgoCD
+			// creates the Application object — ArgoCD accepts placeholder repoURLs and shows them
+			// as degraded until ResourceSubroutine sets the real values).
 			r.preserveExistingArgoSourceFields(ctx, obj.Object, obj.GetName(), obj.GetNamespace(), log)
 			r.mergeImageVersionsIntoHelmValues(obj.Object, obj.GetName(), obj.GetNamespace(), log)
 		}
@@ -367,21 +364,4 @@ func (r *DeploymentSubroutine) argoHelmReleasePostProcess(ctx context.Context, l
 		}
 		return nil
 	}
-}
-
-// argoAppHasPlaceholderAndNotExists returns true when an Application template uses the
-// placeholder repoURL AND the Application does not yet exist on the cluster.
-func (r *DeploymentSubroutine) argoAppHasPlaceholderAndNotExists(ctx context.Context, obj *unstructured.Unstructured, log *logger.Logger) bool {
-	repoURL, _, _ := unstructured.NestedString(obj.Object, "spec", "source", "repoURL")
-	if repoURL != argoPlaceholderRepoURL {
-		return false
-	}
-	existing := &unstructured.Unstructured{}
-	existing.SetGroupVersionKind(argoApplicationGVK)
-	if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existing); err != nil {
-		// Application doesn't exist — skip until ResourceSubroutine creates real values
-		return true
-	}
-	// Application exists (from a previous reconcile) — let preserveExistingArgoSourceFields handle it
-	return false
 }
