@@ -880,3 +880,77 @@ func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_BaseDomainWithD
 	// When port is 443, baseDomainWithPort should equal baseDomain
 	s.Equal("my.domain.com", result["baseDomainWithPort"])
 }
+
+// ---- loadProfileSections tests ----
+
+func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_Success() {
+	scheme := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(scheme)
+	_ = v1alpha1.AddToScheme(scheme)
+
+	profileYAML := `infra:
+  deploymentTechnology: argocd
+  certManager:
+    enabled: true
+components:
+  keycloak:
+    enabled: true
+`
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh-profile", Namespace: "platform-mesh-system"},
+		Data:       map[string]string{"profile.yaml": profileYAML},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
+	sub := &DeploymentSubroutine{clientRuntime: cl}
+
+	inst := &v1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: "platform-mesh-system"},
+	}
+
+	infraYAML, componentsYAML, err := sub.loadProfileSections(context.Background(), inst)
+	s.Require().NoError(err)
+	s.Contains(infraYAML, "deploymentTechnology")
+	s.Contains(infraYAML, "argocd")
+	s.Contains(componentsYAML, "keycloak")
+}
+
+func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_MissingConfigMap() {
+	scheme := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(scheme)
+	_ = v1alpha1.AddToScheme(scheme)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	sub := &DeploymentSubroutine{clientRuntime: cl}
+
+	inst := &v1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: "platform-mesh-system"},
+	}
+
+	_, _, err := sub.loadProfileSections(context.Background(), inst)
+	s.Require().Error(err)
+}
+
+func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_CustomConfigMapRef() {
+	scheme := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(scheme)
+	_ = v1alpha1.AddToScheme(scheme)
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "custom-profile", Namespace: "other-ns"},
+		Data:       map[string]string{"profile.yaml": "infra:\n  enabled: true\ncomponents:\n  svc: true\n"},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
+	sub := &DeploymentSubroutine{clientRuntime: cl}
+
+	inst := &v1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: "platform-mesh-system"},
+		Spec: v1alpha1.PlatformMeshSpec{
+			ProfileConfigMap: &v1alpha1.ConfigMapReference{Name: "custom-profile", Namespace: "other-ns"},
+		},
+	}
+
+	infraYAML, componentsYAML, err := sub.loadProfileSections(context.Background(), inst)
+	s.Require().NoError(err)
+	s.Contains(infraYAML, "enabled")
+	s.Contains(componentsYAML, "svc")
+}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -174,7 +175,11 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 		return nil, nil
 	}
 
-	docs := strings.Split(renderedStr, "\n---")
+	// Split multi-document YAML. Handle both "---\n" at the start and "\n---\n" between documents.
+	// Strip a leading document separator if present.
+	renderedStr = strings.TrimPrefix(renderedStr, "---\n")
+	renderedStr = strings.TrimPrefix(renderedStr, "---\r\n")
+	docs := strings.Split(renderedStr, "\n---\n")
 	var objs []*unstructured.Unstructured
 	for _, doc := range docs {
 		doc = strings.TrimSpace(doc)
@@ -276,7 +281,10 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 	existingApp.SetGroupVersionKind(argoApplicationGVK)
 
 	if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existingApp); err != nil {
-		// Application doesn't exist yet, nothing to preserve
+		if !kerrors.IsNotFound(err) {
+			log.Warn().Err(err).Str("app", name).Msg("Failed to get existing ArgoCD Application, skipping field preservation")
+		}
+		// Application doesn't exist yet (or transient error) — nothing to preserve
 		return
 	}
 
