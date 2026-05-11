@@ -274,7 +274,16 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			subroutine := NewResourceSubroutine(clientMock, nil, nil)
 
 			clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-			clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					unstr := obj.(*unstructured.Unstructured)
+					unstr.SetName(key.Name)
+					unstr.SetNamespace(key.Namespace)
+					unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+					return nil
+				},
+			)
+			clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
 				helmRelease, ok := obj.(*unstructured.Unstructured)
 				if !ok {
 					return false
@@ -290,7 +299,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 					return false
 				}
 				return actualVersion == tt.expectedVersion
-			}), mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			}), mock.Anything).Return(nil)
 
 			result, err := subroutine.Process(ctx, inst)
 			s.Nil(err)
@@ -430,42 +439,43 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	patchCallCount := 0
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-			patchCallCount++
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		unstr := obj.(*unstructured.Unstructured)
+		if unstr.GetKind() != "HelmRepository" {
+			return false
+		}
+		url, found, err := unstructured.NestedString(unstr.Object, "spec", "url")
+		if err != nil || !found || url != "https://charts.example.com" {
+			return false
+		}
+		provider, found, err := unstructured.NestedString(unstr.Object, "spec", "provider")
+		if err != nil || !found || provider != "generic" {
+			return false
+		}
+		interval, found, err := unstructured.NestedString(unstr.Object, "spec", "interval")
+		if err != nil || !found || interval != "5m" {
+			return false
+		}
+		return true
+	}), mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			unstr := obj.(*unstructured.Unstructured)
-
-			if unstr.GetKind() == "HelmRepository" {
-				url, found, err := unstructured.NestedString(unstr.Object, "spec", "url")
-				s.Require().NoError(err)
-				s.Require().True(found)
-				s.Require().Equal("https://charts.example.com", url)
-
-				provider, found, err := unstructured.NestedString(unstr.Object, "spec", "provider")
-				s.Require().NoError(err)
-				s.Require().True(found)
-				s.Require().Equal("generic", provider)
-
-				interval, found, err := unstructured.NestedString(unstr.Object, "spec", "interval")
-				s.Require().NoError(err)
-				s.Require().True(found)
-				s.Require().Equal("5m", interval)
-			} else if unstr.GetKind() == "HelmRelease" {
-				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
-				s.Require().NoError(err)
-				s.Require().True(found)
-				s.Require().Equal("1.2.3", version)
-			}
-
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
 			return nil
 		},
-	)
+	).Times(1)
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		unstr := obj.(*unstructured.Unstructured)
+		version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
+		return err == nil && found && version == "1.2.3"
+	}), mock.Anything).Return(nil).Times(1)
 
 	result, err := s.subroutine.Process(ctx, inst)
 	s.Nil(err)
 	s.NotNil(result)
-	s.Equal(2, patchCallCount)
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
@@ -534,22 +544,24 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	subroutine := NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		unstr := obj.(*unstructured.Unstructured)
+		return unstr.GetKind() == "HelmRepository"
+	}), mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			unstr := obj.(*unstructured.Unstructured)
-
-			if unstr.GetKind() == "HelmRepository" {
-				return nil
-			}
-			if unstr.GetKind() == "HelmRelease" {
-				version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
-				s.Require().NoError(err)
-				s.Require().True(found)
-				s.Require().Equal("2.5.0", version)
-			}
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
 			return nil
 		},
-	).Times(2)
+	).Times(1)
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		unstr := obj.(*unstructured.Unstructured)
+		version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
+		return err == nil && found && version == "2.5.0"
+	}), mock.Anything).Return(nil).Times(1)
 
 	result, err := subroutine.Process(ctx, inst)
 	s.Nil(err)
@@ -589,7 +601,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error")).Times(1)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error")).Times(1)
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -629,7 +641,16 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("update error")).Times(1)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
+			return nil
+		},
+	).Times(1)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("update error")).Times(1)
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -664,7 +685,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 	subroutine := NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("patch error"))
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -699,7 +720,16 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	subroutine := NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("update error"))
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+			return nil
+		},
+	)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("update error"))
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)

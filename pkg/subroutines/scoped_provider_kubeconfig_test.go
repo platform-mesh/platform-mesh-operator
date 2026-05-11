@@ -482,7 +482,7 @@ func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/abc/core.platform-mesh.io?watch=true"
+		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/abc/core.platform-mesh.io?watch=true"
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
@@ -533,7 +533,7 @@ func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "https://frontproxy-front-proxy.platform-mesh-system:8443/clusters/root:providers:provider2"
+		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:providers:provider2"
 		if got != want {
 			t.Fatalf("server URL: got %q want %q", got, want)
 		}
