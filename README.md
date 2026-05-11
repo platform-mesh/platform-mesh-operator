@@ -185,7 +185,22 @@ If `spec.wait` is not specified, the subroutine uses default configurations that
 
 ## Architecture
 
-The operator uses a subroutine-based architecture (`github.com/platform-mesh/subroutines`) with a lifecycle manager that executes subroutines in order.
+The operator uses a subroutine-based architecture (`github.com/platform-mesh/subroutines`) with a lifecycle manager that executes subroutines **sequentially in a fixed order**. If any subroutine returns an error or explicitly stops the chain, the remaining subroutines are skipped and the reconcile loop is retried after a requeue interval.
+
+### Subroutine Execution Order
+
+The subroutines run in the following order on every reconcile:
+
+1. **Deployment** — renders Go templates and applies infra/component resources (HelmReleases, ArgoCD Applications, OCM Resources)
+2. **KcpSetup** — creates KCP workspaces and applies `manifests/kcp/` to them
+3. **ProviderSecret** — creates workspace-scoped kubeconfig secrets for all `providerConnections`
+4. **FeatureToggles** — applies feature-gated KCP manifests
+5. **Wait** — waits for deployment resources (e.g., HelmReleases) to reach a ready state
+
+The ordering is significant:
+
+- **Deployment runs first** so that infra components (cert-manager, KCP operator, etc.) are applied before any subroutine that depends on them being available in the cluster.
+- **KcpSetup runs before ProviderSecret** because the KCP workspaces must exist before kubeconfig secrets can be written into them.
 
 ### Go Templates
 
