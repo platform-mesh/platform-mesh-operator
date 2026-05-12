@@ -323,7 +323,7 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 
 	go func() {
 		err := mgr.Start(ctx)
-		s.Nil(err)
+		s.NoError(err, "providers operator should Start")
 	}()
 	s.logger.Info().Msg("PlatformMesh operator started")
 }
