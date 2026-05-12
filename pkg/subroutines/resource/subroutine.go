@@ -559,7 +559,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	log.Info().Msg("Processing OCI Chart Resource")
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(ociRepoGvk)
-	obj.SetName(inst.GetName())
+	obj.SetName(trimPMSuffixes(inst.GetName()))
 	obj.SetNamespace(inst.GetNamespace())
 
 	// Set desired fields

@@ -37,7 +37,7 @@ spec:
   {{- else }}
   chartRef:
     kind: OCIRepository
-    name: {{ $service }}-chart
+    name: {{ $service }}
     namespace: {{ $.releaseNamespace }}
   {{- end }}
   interval: 1m
