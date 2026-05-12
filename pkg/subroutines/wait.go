@@ -18,23 +18,26 @@ import (
 
 func NewWaitSubroutine(
 	client client.Client,
-	kcpHelper KcpHelper,
+	clientRuntime client.Client,
 	cfg *config.OperatorConfig,
+	helper KcpHelper,
 	kcpUrl string,
 ) *WaitSubroutine {
 	return &WaitSubroutine{
-		client:    client,
-		kcpHelper: kcpHelper,
-		cfg:       cfg,
-		kcpUrl:    kcpUrl,
+		client:        client,
+		clientRuntime: clientRuntime,
+		cfg:           cfg,
+		kcpHelper:     helper,
+		kcpUrl:        kcpUrl,
 	}
 }
 
 type WaitSubroutine struct {
-	client    client.Client
-	kcpHelper KcpHelper
-	cfg       *config.OperatorConfig
-	kcpUrl    string
+	client        client.Client // infra cluster — resource readiness checks
+	clientRuntime client.Client // runtime cluster — KCP secret access
+	cfg           *config.OperatorConfig
+	kcpHelper     KcpHelper
+	kcpUrl        string
 }
 
 const (
@@ -42,7 +45,7 @@ const (
 )
 
 func (r *WaitSubroutine) Finalize(
-	ctx context.Context, runtimeObj client.Object,
+	_ context.Context, _ client.Object,
 ) (subroutines.Result, error) {
 	return subroutines.OK(), nil
 }
@@ -116,15 +119,15 @@ func (r *WaitSubroutine) Process(
 
 	// Check if WorkspaceAuthenticationConfiguration audience is still a placeholder
 	// If so, trigger a reconcile to ensure all logic is finished
-	if err := r.checkWorkspaceAuthConfigAudience(ctx, log); err != nil {
+	if err := r.checkWorkspaceAuthConfigAudience(ctx, log, instance); err != nil {
 		return subroutines.StopWithRequeue(DefaultRequeueInterval, err.Error()), nil
 	}
 
 	return subroutines.OK(), nil
 }
 
-func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger) error {
-	kubeCfg, err := buildKubeconfigFromConfig(r.client, r.cfg, r.kcpUrl)
+func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
+	kubeCfg, err := buildKubeconfigFromConfig(r.clientRuntime, r.cfg, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
 		return nil
@@ -170,10 +173,16 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 		return fmt.Errorf("WorkspaceAuthenticationConfiguration audience is not yet set")
 	}
 
+	if len(audiences) == 1 {
+		if audiences[0] == "<placeholder>" {
+			return fmt.Errorf("audiences is set to \"<placeholder>\"")
+		}
+	}
+
 	return nil
 }
 
-func (r *WaitSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
+func (r *WaitSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
 	return []string{}
 }
 

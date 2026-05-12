@@ -28,28 +28,29 @@ import (
 type KcpsetupSubroutine struct {
 	client       client.Client
 	kcpHelper    KcpHelper
-	kcpUrl       string
 	helm         HelmGetter
 	kcpDirectory string
 	// Cache for CA bundles to avoid redundant secret lookups
 	caBundleCache map[string]string
 	cfg           *config.OperatorConfig
+	kcpUrl        string
 }
 
 const (
 	KcpsetupSubroutineName      = "KcpsetupSubroutine"
 	KcpsetupSubroutineFinalizer = "platform-mesh.core.platform-mesh.io/finalizer"
+	fieldManagerKcpSetup        = "platform-mesh-kcp-setup"
 )
 
 func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
 	return &KcpsetupSubroutine{
 		client:        client,
 		kcpDirectory:  kcpdir,
-		kcpUrl:        kcpUrl,
 		kcpHelper:     helper,
 		helm:          DefaultHelmGetter{},
 		caBundleCache: make(map[string]string),
 		cfg:           cfg,
+		kcpUrl:        kcpUrl,
 	}
 }
 
@@ -58,12 +59,12 @@ func (r *KcpsetupSubroutine) GetName() string {
 }
 
 func (r *KcpsetupSubroutine) Finalize(
-	ctx context.Context, runtimeObj client.Object,
+	_ context.Context, _ client.Object,
 ) (subroutines.Result, error) {
-	return subroutines.OK(), nil // TODO: Implement
+	return subroutines.OK(), nil
 }
 
-func (r *KcpsetupSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
+func (r *KcpsetupSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
@@ -85,7 +86,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 
 	frontProxy := &unstructured.Unstructured{}
 	frontProxy.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
-	// Wait for root shard to be ready
+	// Wait for front proxy to be ready
 	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.FrontProxyName, Namespace: operatorCfg.KCP.Namespace}, frontProxy)
 	if err != nil || !matchesConditionWithStatus(frontProxy, "Available", "True") {
 		log.Info().Msg("FrontProxy is not ready..")
@@ -93,7 +94,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	}
 
 	// Build kcp kubeconfig
-	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
+	cfg, err := buildKubeconfig(ctx, r.client, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build kubeconfig")
 		return subroutines.OK(), gcerrors.Wrap(err, "Failed to build kubeconfig")
@@ -128,7 +129,6 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	log.Debug().Msg("Successful kcp setup")
 
 	return subroutines.OK(), nil
-
 }
 
 func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
@@ -302,7 +302,7 @@ func (r *KcpsetupSubroutine) getCaBundle(
 	caData, ok := caSecret.Data[webhookConfig.SecretData]
 	if !ok {
 		log.Error().Msg("Failed to get caData from secret")
-		return nil, fmt.Errorf("failed to get caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
+		return nil, gcerrors.New("failed to get caData from secret: %s/%s, key: %s", webhookConfig.SecretRef.Namespace, webhookConfig.SecretRef.Name, webhookConfig.SecretData)
 	}
 
 	decodedCaData := caData
@@ -381,8 +381,7 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
-		err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
-			client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
+		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerKcpSetup)) //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		if err != nil {
 			return gcerrors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}

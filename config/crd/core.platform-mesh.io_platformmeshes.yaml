@@ -235,6 +235,21 @@ spec:
                         type: string
                     type: object
                 type: object
+              profileConfigMap:
+                description: ProfileConfigMap references a ConfigMap containing profile
+                  configuration for this PlatformMesh instance.
+                properties:
+                  name:
+                    description: Name is the name of the ConfigMap.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the ConfigMap. If not
+                      specified, defaults to the PlatformMesh resource's namespace.
+                    type: string
+                required:
+                - name
+                type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true
               wait:

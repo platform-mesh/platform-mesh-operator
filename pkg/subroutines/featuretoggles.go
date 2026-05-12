@@ -77,6 +77,22 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Getting started configuration' feature")
+		case "feature-enable-marketplace-account":
+			// Implement the logic to enable the marketplace feature
+			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-account")
+			if applyErr != nil {
+				log.Error().Err(applyErr).Msg("Failed to apply marketplace manifests")
+				return subroutines.OK(), applyErr
+			}
+			log.Info().Msg("Enabled 'Marketplace configuration' feature")
+		case "feature-enable-marketplace-org":
+			// Implement the logic to enable the marketplace feature
+			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-marketplace-org")
+			if applyErr != nil {
+				log.Error().Err(applyErr).Msg("Failed to apply marketplace manifests")
+				return subroutines.OK(), applyErr
+			}
+			log.Info().Msg("Enabled 'Marketplace configuration' feature")
 		case "feature-accounts-in-accounts":
 			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-accounts-in-accounts")
 			if applyErr != nil {

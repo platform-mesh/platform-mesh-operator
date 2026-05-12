@@ -4,7 +4,7 @@
 # platform-mesh-operator
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/platform-mesh/platform-mesh-operator/badge)](https://scorecard.dev/viewer/?uri=github.com/platform-mesh/platform-mesh-operator)
 
-The platform-mesh-operator helps bootstrap new platform-mesh environment during initial setup. It does so by reconciling and `Kind: PlatformMesh` resource which looks like this
+The platform-mesh-operator bootstraps and reconciles platform-mesh environments. It reconciles a `Kind: PlatformMesh` resource which looks like this:
 
 ```yaml
 apiVersion: core.platform-mesh.io/v1alpha1
@@ -12,48 +12,33 @@ kind: PlatformMesh
 metadata:
   name: platform-mesh-sample
   namespace: platform-mesh-system
-spec:iam-service
-  exposure:
-    baseDomain: example.com
-    port: 443
-    protocol: https
-  ocm:
-    repo:
-      name: platform-mesh
-    component:
-      name: platform-mesh
-    referencePath:
-    - name: "core"
+spec:
   kcp:
+    adminSecretRef:
+      name: platform-mesh-kcp-internal-admin-kubeconfig
     providerConnections:
     - endpointSliceName: core.platform-mesh.io
       path: root:platform-mesh-system
       secret: platform-mesh-operator-kubeconfig
-    initializerConnections:
-    - workspaceTypeName: universal
-      path: root:initializers
-      secret: initializer-kubeconfig
-    extraWorkspaces:
-    - path: "root:orgs:my-new-workspace"
-      type:
-        name: "universal"
-        path: "root"
-    extraProviderConnections:
-    - path: "root:orgs:my-new-workspace"
-      secret: "my-new-workspace-kubeconfig"
-  values:
-    service1:
-      enabled: true
-      targetNamespace: default
-      values:
-        type: None
-    service2:
-      enabled: false
+      adminAuth: true
 ```
 
 ## PlatformMesh Resource Configuration
 
 The `PlatformMesh` resource provides a comprehensive way to configure your platform-mesh environment. Below is a detailed explanation of each section and field available in the resource specification:
+
+### Profile ConfigMap
+
+The operator reads its deployment configuration from a profile ConfigMap. By default it looks for a ConfigMap named `<instance-name>-profile` in the instance namespace. This can be overridden:
+
+```yaml
+spec:
+  profileConfigMap:
+    name: platform-mesh-profile
+    namespace: platform-mesh-system
+```
+
+The ConfigMap must contain a `profile.yaml` key with two top-level sections: `infra` and `components`. The operator renders Go templates inside the profile at reconcile time, substituting variables like `{{ .baseDomainPort }}` and `{{ .baseDomain }}` from the exposure configuration.
 
 ### Exposure Configuration
 
@@ -69,44 +54,44 @@ spec:
 
 ### KCP Configuration
 
-The `kcp` section manages Kubernetes Control Plane setup and connections:
+The `kcp` section manages KCP (Kubernetes Control Plane) setup and connections:
 
 #### Provider Connections
 
-Provider connections define how platform-mesh connects to provider Kubernetes clusters:
+Provider connections define how platform-mesh connects to provider workspaces:
 
 ```yaml
 spec:
   kcp:
     providerConnections:
-    - endpointSliceName: core.platform-mesh.io   # Name of the endpoint slice
+    - endpointSliceName: core.platform-mesh.io   # APIExportEndpointSlice name (for admin auth)
       path: root:platform-mesh-system            # Path in KCP workspace hierarchy
-      secret: provider-kubeconfig                # Secret to store connection information
-      external: false                            # Whether this is an external provider
-    
-    # Additional provider connections can be configured
+      secret: provider-kubeconfig                # Secret to store kubeconfig
+      adminAuth: true                            # Use admin cert-based auth (default: true)
+
+    # Scoped provider connections (uses ServiceAccount token + RBAC from APIExport)
+    - apiExportName: core.platform-mesh.io       # APIExport name (for scoped auth)
+      path: root:platform-mesh-system
+      secret: scoped-kubeconfig
+      adminAuth: false                           # Use scoped kubeconfig
+
+    # Additional provider connections
     extraProviderConnections:
     - endpointSliceName: auxiliary.platform-mesh.io
       path: root:auxiliary-system
       secret: auxiliary-kubeconfig
 ```
 
-#### Initializer Connections
-
-Initializer connections are used to set up workspaces with specific types:
+#### Extra Workspaces
 
 ```yaml
 spec:
   kcp:
-    initializerConnections:
-    - workspaceTypeName: universal         # The workspace type to use
-      path: root:initializers              # Path in KCP workspace hierarchy
-      secret: initializer-kubeconfig       # Secret for connection
-    
-    extraInitializerConnections:
-    - workspaceTypeName: specialized
-      path: root:extra-initializers
-      secret: extra-initializer-kubeconfig
+    extraWorkspaces:
+    - path: "root:orgs:my-new-workspace"
+      type:
+        name: "universal"
+        path: "root"
 ```
 
 #### Default API Bindings
@@ -135,31 +120,32 @@ spec:
       name: platform-mesh              # Component name (defaults to "platform-mesh")
     referencePath:                     # Path of references to follow
     - name: core
-    - name: services
 ```
 
-### Values Configuration
+### Values and InfraValues
 
-Custom values can be provided:
+Custom values can be provided for components and infra respectively:
 
 ```yaml
 spec:
-  values: 
+  values:
     key1: value1
-    nested:
-      key2: value2
+  infraValues:
+    key2: value2
 ```
 
-Those values are passed 1-1 to the `platform-mesh-operator-components` chart, deployed by the "Deployment" subroutine.
+These are merged with the profile's `components` and `infra` sections when rendering Go templates.
 
 ### Feature Toggles
 
-Certain features can be enabled or disabled using feature toggles in the PlatformMesh resource specification. Feature toggles are configured as follows:
+Certain features can be enabled or disabled using feature toggles in the PlatformMesh resource specification:
 
 ```yaml
 spec:
   featureToggles:
   - name: "<feature-name>"
+    parameters:
+      key: value
 ```
 
 #### Available Feature Toggles
@@ -172,101 +158,7 @@ spec:
 | `feature-disable-email-verification` | Disables email verification requirement in WorkspaceAuthenticationConfiguration |
 | `feature-disable-contentconfigurations` | Disables loading of all ContentConfiguration manifests during KCP setup |
 
-#### Example Usage
-
-```yaml
-apiVersion: core.platform-mesh.io/v1alpha1
-kind: PlatformMesh
-metadata:
-  name: platform-mesh-sample
-  namespace: platform-mesh-system
-spec:
-  featureToggles:
-  - name: "feature-enable-getting-started"
-  - name: "feature-disable-email-verification"
-  # ... other configuration
-```
-
-
-## Subroutines
-
-The platform-mesh-operator processes the PlatformMesh resource through several subroutines:
-
-### Deployment
-
-The Deployment subroutine manages the deployment of platform-mesh components across the cluster:
-
-- Merges custom values from the `PlatformMesh` resource with default configurations.
-- Applies templated manifests for `platform-mesh-operator-infra-components` and waits for the HelmRelease to become ready and also for `cert-manager` to become ready.
-- Applies templated Kubernetes manifests for `platform-mesh-operator-components`, including `Resource` and `HelmRelease` objects.
-- Manages OCM (Open Component Model) integration by configuring resources based on repository, component, and reference path settings.
-- Manages authorization webhook secrets by creating an issuer, a certificate, and a KCP webhook secret, and keeps the secret updated with the correct CA bundle.
-- Waits for the `istio-istiod` Helm release to become ready.
-- Checks for the Istio sidecar proxy in the operator's own pod and triggers a restart if it's not present to ensure proper communication with KCP.
-- Waits for KCP components like `RootShard` and `FrontProxy` to become available.
-
-#### Merging of custom values in `DeploymentSubroutine`
-
-When creating the `platform-mesh-operator-infra-components` and `platform-mesh-operator-components` helmreleases, their configuration is derived the from **PlatformMesh** resource as follows:
-
-- HelmRelease `platform-mesh-operator-infra-components` has `spec.values` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
-- Resource `platform-mesh-operator-infra-components` `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
-
-- HelmRelease `platform-mesh-operator-components` has `spec.values.services` which is equal to the `PlatformMesh.Spec.Values` after replacing templated values.
-- Resource `platform-mesh-operator-components` `spec.componentRef` is set to point to `PlatformMesh.Spec.OCM.Component.Name`
-
-For both HelmReleases the spec.values are populated with these templated fields:
-- baseDomain
-- baseDomainPort
-- iamWebhookCA
-- port
-- protocol
-
-
-### KcpSetup
-
-The KcpSetup subroutine handles the initialization of the KCP environment:
-
-- Creates workspaces based on the specified paths in `providerConnections` and `initializerConnections`
-- Sets up API bindings as specified in `extraDefaultAPIBindings`
-- Create extra Workspaces specified in the `spec.KCP.extraWorkspaces`
-
-### ProviderSecret
-
-The ProviderSecret subroutine manages the creation and maintenance of secrets for provider connections:
-
-- Creates secrets for each provider connection specified in the `providerConnections` and `extraProviderConnections` sections
-- Updates the secrets when configurations change
-- Manages access credentials for connecting to provider clusters
-
-### Defaults
-
-The Defaults subroutine applies default configurations when specific fields are not explicitly set:
-
-- Applies default values for `ocm.repo.name` and `ocm.component.name`
-- Sets up default configurations for the platform-mesh environment
-- Ensures a consistent baseline configuration
-
-### Webhook
-
-The Webhook subroutine handles webhook configurations for the platform-mesh:
-
-- Sets up and manages webhook configurations for API validation and mutation
-- Configures webhook secrets and references as defined in the configuration
-- Ensures proper webhook functionality for platform-mesh resources
-
-### Wait
-
-The Wait subroutine ensures that specified resources are ready before proceeding with the reconciliation:
-
-- Waits for resources to match specific conditions (e.g., HelmRelease resources with Ready condition)
-- Uses configurable wait criteria defined in the `spec.wait` section of the PlatformMesh resource
-- Falls back to default wait configurations when no custom wait configuration is specified
-- By default, waits for `platform-mesh-operator-components` and `platform-mesh-operator-infra-components` HelmRelease resources to be ready
-- Supports filtering resources by namespace, labels, and API versions
-- Requeues the reconciliation if any monitored resource is not yet ready
-
-#### Wait Configuration
+### Wait Configuration
 
 The wait behavior can be customized through the `spec.wait` section:
 
@@ -289,8 +181,97 @@ spec:
       conditionType: "Ready"
 ```
 
-If `spec.wait` is not specified, the subroutine uses default configurations that wait for the core platform-mesh HelmRelease resources.
+If `spec.wait` is not specified, the subroutine uses default configurations that wait for the `platform-mesh-operator-infra-components` HelmRelease to be ready.
 
+## Architecture
+
+The operator uses a subroutine-based architecture (`github.com/platform-mesh/subroutines`) with a lifecycle manager that executes subroutines **sequentially in a fixed order**. If any subroutine returns an error or explicitly stops the chain, the remaining subroutines are skipped and the reconcile loop is retried after a requeue interval.
+
+### Subroutine Execution Order
+
+The subroutines run in the following order on every reconcile:
+
+1. **Deployment** — renders Go templates and applies infra/component resources (HelmReleases, ArgoCD Applications, OCM Resources)
+2. **KcpSetup** — creates KCP workspaces and applies `manifests/kcp/` to them
+3. **ProviderSecret** — creates workspace-scoped kubeconfig secrets for all `providerConnections`
+4. **FeatureToggles** — applies feature-gated KCP manifests
+5. **Wait** — waits for deployment resources (e.g., HelmReleases) to reach a ready state
+
+The ordering is significant:
+
+- **Deployment runs first** so that infra components (cert-manager, KCP operator, etc.) are applied before any subroutine that depends on them being available in the cluster.
+- **KcpSetup runs before ProviderSecret** because the KCP workspaces must exist before kubeconfig secrets can be written into them.
+
+### Go Templates
+
+The operator renders deployment manifests directly from Go templates located in:
+- `gotemplates/infra/` — infrastructure components (cert-manager, traefik, gateway-api, etcd-druid, kcp-operator)
+- `gotemplates/components/` — application components (HelmReleases, OCM Resources for each service)
+
+These templates are rendered using the profile ConfigMap data merged with exposure-derived template variables (`baseDomain`, `baseDomainPort`, `port`, `protocol`). The gotemplates replace the previously used `platform-mesh-operator-components` and `platform-mesh-operator-infra-components` Helm charts.
+
+### Deployment Technologies
+
+The operator supports two deployment technologies (configured per-section in the profile):
+- **FluxCD** (`fluxcd`): Creates HelmRelease and OCM Resource objects. FluxCD reconciles them into the cluster.
+- **ArgoCD** (`argocd`): Creates ArgoCD Application objects. The ResourceSubroutine manages OCI repository references for ArgoCD.
+
+## Subroutines
+
+The platform-mesh-operator processes the PlatformMesh resource through several subroutines:
+
+### Deployment
+
+The Deployment subroutine manages the deployment of platform-mesh components:
+
+- Reads the profile ConfigMap and renders Go templates from `gotemplates/infra/` and `gotemplates/components/`
+- Creates OCM Resources, HelmReleases (or ArgoCD Applications) for each enabled service
+- Manages authorization webhook secrets (issuer, certificate, KCP webhook secret with CA bundle)
+- Waits for cert-manager to be ready before proceeding
+- Optionally waits for Istio istiod and ensures the operator pod has an istio-proxy sidecar
+- Waits for KCP `RootShard` and `FrontProxy` to become available
+
+### KcpSetup
+
+The KcpSetup subroutine handles initialization of the KCP environment:
+
+- Creates workspaces based on paths in `providerConnections`
+- Applies KCP manifests (APIExports, APIResourceSchemas, ContentConfigurations, etc.) from `manifests/kcp/`
+- Sets up API bindings as specified in `extraDefaultAPIBindings`
+- Creates extra workspaces specified in `spec.kcp.extraWorkspaces`
+
+### ProviderSecret
+
+The ProviderSecret subroutine manages kubeconfig secrets for provider connections:
+
+- **Admin auth mode** (`adminAuth: true`): Reads the admin kubeconfig from `kcp.adminSecretRef`, resolves the endpoint URL from the APIExportEndpointSlice, appends the root CA, and writes the kubeconfig secret
+- **Scoped auth mode** (`adminAuth: false`): Creates a ServiceAccount, ClusterRole, ClusterRoleBinding in the target workspace, generates a scoped kubeconfig with a bound token
+
+### FeatureToggles
+
+The FeatureToggles subroutine applies or removes KCP manifests based on enabled feature toggles:
+
+- Reads manifests from `manifests/features/<feature-name>/`
+- Applies them to the appropriate KCP workspace paths
+- Supports parameterized features via `parameters` map
+
+### Wait
+
+The Wait subroutine ensures specified resources are ready before marking reconciliation complete:
+
+- Waits for resources to match specific conditions (e.g., HelmRelease with `Ready=True`)
+- Uses configurable wait criteria from `spec.wait` or defaults
+- Supports label selectors, namespace filtering, and custom condition types
+- Supports status field path matching for non-standard resources
+
+### Resource (ResourceSubroutine)
+
+The Resource subroutine (in `pkg/subroutines/resource/`) manages OCM Resource objects for the deployment:
+
+- Watches OCM Resource objects and reconciles them based on deployment technology
+- For FluxCD: creates OCIRepository → HelmRelease chain with chartRef
+- For ArgoCD: updates Application objects with resolved OCI repository URLs from OCM Resources
+- Manages image version extraction and stores versions in the ImageVersionStore
 
 ## Releasing
 
@@ -310,4 +291,3 @@ Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file in this repository f
 Please refer to our [Code of Conduct](https://github.com/platform-mesh/.github/blob/main/CODE_OF_CONDUCT.md) for information on the expected conduct for contributing to Platform Mesh.
 
 <p align="center"><img alt="Bundesministerium für Wirtschaft und Energie (BMWE)-EU funding logo" src="https://apeirora.eu/assets/img/BMWK-EU.png" width="400"/></p>
-

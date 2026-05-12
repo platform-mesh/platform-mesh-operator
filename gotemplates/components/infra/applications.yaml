@@ -1,0 +1,98 @@
+{{ $values := .values }}
+{{- range $service, $config := .values.services }}
+{{- if and $config.enabled (not $config.skipHelmRelease) -}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $service}}
+  namespace: {{ $.releaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ $config.syncWave | default 1 }}"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  {{- if $config.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml $config.ignoreDifferences | nindent 4 }}
+  {{- end }}
+  source:
+    {{- if $config.helmRepo }}
+    {{- if $config.repoURL }}
+    repoURL: {{ $config.repoURL }}
+    {{- else }}
+    # Default Helm repo URL pattern - can be overridden via config.repoURL
+    repoURL: https://charts.example.com
+    {{- end }}
+    chart: {{ $config.chart | default $service }}
+    {{- if $config.version }}
+    targetRevision: "{{ $config.version }}"
+    {{- else }}
+    targetRevision: "*"
+    {{- end }}
+    {{- if or $config.values $config.skipCrds }}
+    helm:
+      {{- if $config.skipCrds }}
+      skipCrds: true
+      {{- end }}
+      {{- if $config.values }}
+      values: |
+{{ toYaml $config.values | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- else if $config.gitRepo }}
+    {{- if $config.repoURL }}
+    repoURL: {{ $config.repoURL }}
+    {{- else }}
+    # Default Git repo URL pattern - can be overridden via config.repoURL
+    repoURL: https://github.com/platform-mesh/platform-mesh
+    {{- end }}
+    path: {{ $config.path | default $service }}
+    targetRevision: {{ $config.version | default "HEAD" }}
+    {{- else }}
+    {{- if $config.repoURL }}
+    repoURL: {{ $config.repoURL }}
+    {{- else }}
+    # Placeholder - will be set by ResourceSubroutine based on OCM Resource status
+    repoURL: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
+    {{- end }}
+    chart: {{ $service }}
+    {{- if $config.version }}
+    targetRevision: "{{ $config.version }}"
+    {{- else }}
+    # Placeholder - will be set by ResourceSubroutine based on OCM Resource status
+    targetRevision: "PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE"
+    {{- end }}
+    {{- if or $config.values $config.skipCrds }}
+    helm:
+      {{- if $config.skipCrds }}
+      skipCrds: true
+      {{- end }}
+      {{- if $config.values }}
+      values: |
+{{ toYaml $config.values | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+  destination:
+    # Use destinationServer from profile (infra.destinationServer or components.destinationServer)
+    server: {{ $.destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ $.releaseNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    {{- if $config.syncOptions }}
+    syncOptions:
+{{ toYaml $config.syncOptions | nindent 4 }}
+    {{- else }}
+    syncOptions:
+    - CreateNamespace=true
+    - RespectIgnoreDifferences=true
+    {{- end }}
+---
+{{ end -}}
+{{ end -}}
+
