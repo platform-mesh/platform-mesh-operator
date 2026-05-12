@@ -167,7 +167,7 @@ func (s *DeploymentProcessTestSuite) newOperatorConfig() config.OperatorConfig {
 			Namespace:      "platform-mesh-system",
 			RootShardName:  "root",
 			FrontProxyName: "frontproxy",
-			FrontProxyPort: "6443",
+			FrontProxyPort: "8443",
 		},
 		Subroutines: config.SubroutinesConfig{
 			Deployment: config.DeploymentSubroutineConfig{

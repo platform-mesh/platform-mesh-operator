@@ -73,7 +73,7 @@ func TestVirtualWorkspacePathFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "x"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://h:6443/services/apiexport/id/export-name/"},
+						{URL: "https://h:8443/services/apiexport/id/export-name/"},
 					},
 				},
 			},
@@ -122,7 +122,7 @@ func TestVirtualWorkspacePathFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "nopath"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://only.host:6443"},
+						{URL: "https://only.host:8443"},
 					},
 				},
 			},
@@ -211,11 +211,11 @@ func TestVirtualWorkspaceServerURLFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "x"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://h:6443/services/apiexport/id/export-name/"},
+						{URL: "https://h:8443/services/apiexport/id/export-name/"},
 					},
 				},
 			},
-			want: "https://h:6443/services/apiexport/id/export-name",
+			want: "https://h:8443/services/apiexport/id/export-name",
 		},
 		{
 			name: "first endpoint wins",
@@ -260,7 +260,7 @@ func TestVirtualWorkspaceServerURLFromSlice(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "nopath"},
 				Status: kcpapiv1alpha1.APIExportEndpointSliceStatus{
 					APIExportEndpoints: []kcpapiv1alpha1.APIExportEndpoint{
-						{URL: "https://only.host:6443"},
+						{URL: "https://only.host:8443"},
 					},
 				},
 			},
@@ -399,14 +399,14 @@ func buildKCPConfigForPath(cfg *rest.Config, workspacePath string) *rest.Config 
 
 func TestBuildKCPConfigForPath(t *testing.T) {
 	t.Parallel()
-	cfg := &rest.Config{Host: "https://shard:6443/clusters/root:orgs:ws"}
+	cfg := &rest.Config{Host: "https://shard:8443/clusters/root:orgs:ws"}
 	out := buildKCPConfigForPath(cfg, "root:platform-mesh-system")
-	if out.Host != "https://shard:6443/clusters/root:platform-mesh-system" {
+	if out.Host != "https://shard:8443/clusters/root:platform-mesh-system" {
 		t.Fatalf("Host: got %q", out.Host)
 	}
-	cfgBare := &rest.Config{Host: "shard:6443"}
+	cfgBare := &rest.Config{Host: "shard:8443"}
 	outBare := buildKCPConfigForPath(cfgBare, "root:x")
-	if outBare.Host != "https://shard:6443/clusters/root:x" {
+	if outBare.Host != "https://shard:8443/clusters/root:x" {
 		t.Fatalf("Host (bare): got %q", outBare.Host)
 	}
 }
@@ -414,7 +414,7 @@ func TestBuildKCPConfigForPath(t *testing.T) {
 func TestResolveAPIExportVirtualWorkspaceRawPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	cfg := &rest.Config{Host: "https://kcp:6443"}
+	cfg := &rest.Config{Host: "https://kcp:8443"}
 	t.Run("empty slice name", func(t *testing.T) {
 		t.Parallel()
 		_, err := resolveAPIExportVirtualWorkspaceRawPath(ctx, &Helper{}, cfg, "root:platform-mesh-system", "")
@@ -482,7 +482,7 @@ func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/services/apiexport/abc/core.platform-mesh.io?watch=true"
+		want := "https://frontproxy-front-proxy.platform-mesh-system:8443/services/apiexport/abc/core.platform-mesh.io?watch=true"
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
@@ -533,7 +533,7 @@ func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "https://frontproxy-front-proxy.platform-mesh-system:6443/clusters/root:providers:provider2"
+		want := "https://frontproxy-front-proxy.platform-mesh-system:8443/clusters/root:providers:provider2"
 		if got != want {
 			t.Fatalf("server URL: got %q want %q", got, want)
 		}
