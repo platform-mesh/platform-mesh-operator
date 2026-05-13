@@ -51,13 +51,13 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 	s.Run("Ensure life-cycling ManagedProvider works", func() {
 		// kcp client scoped to :root:providers:my-managed-provider.
 		kcpAdminCfg, err := pmsubs.BuildKcpAdminConfig(s.client, &defaultKcpOperatorConfig, defaultKcpOperatorConfig.Url)
-		s.NoError(err, "getting kcp admin rest config should succeed")
+		s.Require().NoError(err, "getting kcp admin rest config should succeed")
 		providerScopedKcpAdminCfg := rest.CopyConfig(kcpAdminCfg)
 		providerScopedKcpAdminCfg.Host += "/clusters/root:providers:my-managed-provider"
 		providerScopedKcpAdminClient, err := client.New(providerScopedKcpAdminCfg, client.Options{
 			Scheme: s.scheme,
 		})
-		s.NoError(err, "creating kcp admin client should succeed")
+		s.Require().NoError(err, "creating kcp admin client should succeed")
 
 		// This test life-cycles ManagedProvider twice, validating ManagedProvider.spec.cleanupOnDelete.
 		// In both cases, ManagedProvider is expected to create a Deployment in the runtime cluster,
@@ -70,7 +70,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		}
 		s.logger.Info().Msgf("Creating namespace %q", ns.Name)
 		err = s.client.Create(ctx, &ns)
-		s.NoError(err, "creating namespace for a ManagedProvider should succeed")
+		s.Require().NoError(err, "creating namespace for a ManagedProvider should succeed")
 		s.T().Cleanup(func() {
 			cleanupCtx := context.Background()
 			mpList := &providersv1alpha1.ManagedProviderList{}
@@ -102,7 +102,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 			},
 		}
 		err = s.client.Delete(ctx, &managedProvider)
-		s.NoError(err, "deleting ManagedProvider should succeed")
+		s.Require().NoError(err, "deleting ManagedProvider should succeed")
 		s.Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
 				Name:      "my-managed-provider",
@@ -116,9 +116,9 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 			Namespace: "default",
 			Name:      "my-managed-provider",
 		}, &provider)
-		s.NoError(err, "getting Provider with scopedKcpAdminClient should succeed")
-		s.Equal("Ready", provider.Status.Phase, "Provider on kcp side should have reached Phase=Ready")
-		s.Nil(provider.DeletionTimestamp, "Provider should not be marked for deletion")
+		s.Require().NoError(err, "getting Provider with scopedKcpAdminClient should succeed")
+		s.Require().Equal("Ready", provider.Status.Phase, "Provider on kcp side should have reached Phase=Ready")
+		s.Require().Nil(provider.DeletionTimestamp, "Provider should not be marked for deletion")
 
 		// Second variant, with cleanupOnDelete=true. Everything is expected to be gone once ManagedProvider is deleted.
 
@@ -133,7 +133,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 				Name:      "my-managed-provider",
 			},
 		})
-		s.NoError(err, "deleting ManagedProvider should succeed")
+		s.Require().NoError(err, "deleting ManagedProvider should succeed")
 		s.logger.Info().Msgf("ManagedProvider deleted, checking that :root:providers:my-managed-provider workspace is deleted")
 		s.Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
@@ -147,7 +147,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		providersScopedAdminClient, err := client.New(providersScopedAdminCfg, client.Options{
 			Scheme: s.scheme,
 		})
-		s.NoError(err, "creating kcp admin client should succeed")
+		s.Require().NoError(err, "creating kcp admin client should succeed")
 		s.Eventually(func() bool {
 			err = providersScopedAdminClient.Get(ctx, types.NamespacedName{
 				Name: "my-managed-provider",
@@ -183,7 +183,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 
 	s.logger.Info().Msgf("Creating ManagedProvider %q", managedProvider.Name)
 	err := s.client.Create(ctx, &managedProvider)
-	s.NoError(err, "creating ManagedProvider should succeed")
+	s.Require().NoError(err, "creating ManagedProvider should succeed")
 	s.logger.Info().Msgf("ManagedProvider %q created", managedProvider.Name)
 
 	s.logger.Info().Msgf("Waiting until ManagedProvider has its Status.KubeconfigSecretRef populated")
@@ -206,11 +206,11 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 		Namespace: "default",
 		Name:      "my-managed-provider",
 	}, &provider)
-	s.NoError(err, "getting Provider with scopedKcpAdminClient should succeed")
-	s.Equal("Ready", provider.Status.Phase, "Provider on kcp side should have reached Phase=Ready")
-	s.NotNil(provider.Status.KubeconfigSecretRef, "Provider should have its KubeconfigSecretRef populated")
-	s.Equal("platform-mesh-provider-kubeconfig-my-managed-provider", provider.Status.KubeconfigSecretRef.Name, "Provider has unexpected kubeconfig secret name")
-	s.Equal("default", provider.Status.KubeconfigSecretRef.Namespace, "Provider has unexpected kubeconfig secret namespace")
+	s.Require().NoError(err, "getting Provider with scopedKcpAdminClient should succeed")
+	s.Require().Equal("Ready", provider.Status.Phase, "Provider on kcp side should have reached Phase=Ready")
+	s.Require().NotNil(provider.Status.KubeconfigSecretRef, "Provider should have its KubeconfigSecretRef populated")
+	s.Require().Equal("platform-mesh-provider-kubeconfig-my-managed-provider", provider.Status.KubeconfigSecretRef.Name, "Provider has unexpected kubeconfig secret name")
+	s.Require().Equal("default", provider.Status.KubeconfigSecretRef.Namespace, "Provider has unexpected kubeconfig secret namespace")
 
 	// Validate provider kubeconfigs on kcp and kind side.
 
@@ -220,7 +220,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 		Namespace: "default",
 		Name:      "platform-mesh-provider-kubeconfig-my-managed-provider",
 	}, &providerKubeconfigSecretInKcp)
-	s.NoError(err, "getting provider kubeconfig secret using scopedKcpAdminClient should succeed")
+	s.Require().NoError(err, "getting provider kubeconfig secret using scopedKcpAdminClient should succeed")
 
 	s.logger.Info().Msgf("Getting provider kubeconfig secret on runtime sice")
 	var providerKubeconfigSecretInKind corev1.Secret
@@ -233,9 +233,9 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 	}, 240*time.Second, 5*time.Second, "waiting for provider kubeconfig secret locally in namespace e2e-managed-provider")
 
 	providerKubeconfig := providerKubeconfigSecretInKcp.Data["kubeconfig"]
-	s.NotEmpty(providerKubeconfig, "kubeconfig not set in provider kubeconfig secret")
-	s.NotEmpty(providerKubeconfigSecretInKind.Data["kubeconfig"], "provider kubeconfig not copied to runtime cluster")
-	s.Equal(providerKubeconfig, providerKubeconfigSecretInKind.Data["kubeconfig"], "kcp and kind provider kubeconfigs differ")
+	s.Require().NotEmpty(providerKubeconfig, "kubeconfig not set in provider kubeconfig secret")
+	s.Require().NotEmpty(providerKubeconfigSecretInKind.Data["kubeconfig"], "provider kubeconfig not copied to runtime cluster")
+	s.Require().Equal(providerKubeconfig, providerKubeconfigSecretInKind.Data["kubeconfig"], "kcp and kind provider kubeconfigs differ")
 
 	// List ConfigMaps using the provider kubeconfig just to see if it works.
 
@@ -245,8 +245,8 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 	s.logger.Info().Msgf("Listing ConfigMaps in provider workspace using provider's kubeconfig")
 	cmList := &corev1.ConfigMapList{}
 	err = providerClient.List(ctx, cmList, client.InNamespace("default"))
-	s.NoError(err, "listing ConfigMaps in provider workspace using scoped kubeconfig should succeed")
-	s.Greater(len(cmList.Items), 0,
+	s.Require().NoError(err, "listing ConfigMaps in provider workspace using scoped kubeconfig should succeed")
+	s.Require().Greater(len(cmList.Items), 0,
 		"listing ConfigMap in provider workspace using scoped kubeconfig should return non-zero items") // Should contain kube-root-ca.crt CM at least.
 
 	// Check that ManagedProvider reaches Deployed phase and that the Deployment exists.
@@ -288,7 +288,7 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, appConfig)
 
 	runtimeClient, err := client.New(s.config, client.Options{})
-	s.NoError(err, "failed to create kube client for runtime cluster")
+	s.Require().NoError(err, "failed to create kube client for runtime cluster")
 
 	var kcpAdminCfg *rest.Config
 	s.Eventually(func() bool {
@@ -302,7 +302,7 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 	providersVW, err := apiexport.New(scopedKcpAdminCfg, appConfig.ProvidersAPIExportEndpointSliceName, apiexport.Options{
 		Scheme: s.scheme,
 	})
-	s.NoError(err, "failed to create APIExport mc provider")
+	s.Require().NoError(err, "failed to create APIExport mc provider")
 
 	mgr, err := mcmanager.New(s.config, providersVW, ctrl.Options{
 		Scheme:      s.scheme,
@@ -311,19 +311,19 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 			BindAddress: "0",
 		},
 	})
-	s.NoError(err, "failed to create manager for providers operator")
+	s.Require().NoError(err, "failed to create manager for providers operator")
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create manager")
 		return
 	}
 
 	rec, err := providerscontroller.NewProviderReconciler(mgr, &appConfig, commonConfig)
-	s.NoError(err, "failed to ProviderReconciler controller")
-	s.NoError(rec.SetupWithManager(mgr, commonConfig), "failed to setup ProviderReconciler with manager")
+	s.Require().NoError(err, "failed to ProviderReconciler controller")
+	s.Require().NoError(rec.SetupWithManager(mgr, commonConfig), "failed to setup ProviderReconciler with manager")
 
 	go func() {
 		err := mgr.Start(ctx)
-		s.NoError(err, "providers operator should Start")
+		s.Require().NoError(err, "providers operator should Start")
 	}()
 	s.logger.Info().Msg("PlatformMesh operator started")
 }
