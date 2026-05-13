@@ -1023,7 +1023,7 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 	deploymentTech = strings.ToLower(deploymentTech)
 
 	skipFile := deploymentTechFileFilter(deploymentTech, log)
-	postProcess := r.argoHelmReleasePostProcess(ctx, log)
+	postProcess := r.infraManifestPostProcess(ctx, log)
 
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/infra", tmplVars, r.clientInfra, log, "infra", skipFile, postProcess)
 }
@@ -1076,7 +1076,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 	deploymentTech = strings.ToLower(deploymentTech)
 
 	skipFile := deploymentTechFileFilter(deploymentTech, log)
-	postProcess := r.argoHelmReleasePostProcess(ctx, log)
+	postProcess := r.infraManifestPostProcess(ctx, log)
 
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesComponentsDir+"/infra", tmplVars, r.clientInfra, log, "components-infra", skipFile, postProcess)
 }

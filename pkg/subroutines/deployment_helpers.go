@@ -354,9 +354,11 @@ func deploymentTechFileFilter(deploymentTech string, log *logger.Logger) func(fi
 	}
 }
 
-// argoHelmReleasePostProcess returns a post-process function that preserves ArgoCD source fields
-// and merges Resource-managed image versions before applying manifests to the infra cluster.
-func (r *DeploymentSubroutine) argoHelmReleasePostProcess(ctx context.Context, log *logger.Logger) func(ctx context.Context, obj *unstructured.Unstructured) error {
+// infraManifestPostProcess returns a post-process function that adjusts rendered infra manifests
+// before they are applied to the cluster. For ArgoCD Applications it preserves source fields set by
+// ResourceSubroutine; for FluxCD HelmReleases it merges Resource-managed image versions and respects
+// unsuspend state.
+func (r *DeploymentSubroutine) infraManifestPostProcess(ctx context.Context, log *logger.Logger) func(ctx context.Context, obj *unstructured.Unstructured) error {
 	return func(ctx context.Context, obj *unstructured.Unstructured) error {
 		if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
 			// preserveExistingArgoSourceFields strips placeholder values from the patch when the
