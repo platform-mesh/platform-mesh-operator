@@ -50,10 +50,6 @@ type ProviderReconciler struct {
 	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
 }
 
-// +kubebuilder:rbac:groups=providers.platform-mesh.io,resources=providers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=providers.platform-mesh.io,resources=providers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=providers.platform-mesh.io,resources=providers/finalizers,verbs=update
-
 func (r *ProviderReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
 	return r.lifecycle.Reconcile(ctx, req)
 }

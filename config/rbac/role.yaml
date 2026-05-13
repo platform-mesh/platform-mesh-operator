@@ -42,7 +42,6 @@ rules:
   - providers.platform-mesh.io
   resources:
   - managedproviders
-  - providers
   verbs:
   - create
   - delete
@@ -55,14 +54,12 @@ rules:
   - providers.platform-mesh.io
   resources:
   - managedproviders/finalizers
-  - providers/finalizers
   verbs:
   - update
 - apiGroups:
   - providers.platform-mesh.io
   resources:
   - managedproviders/status
-  - providers/status
   verbs:
   - get
   - patch
