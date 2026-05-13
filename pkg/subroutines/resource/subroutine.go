@@ -503,6 +503,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 
 	if getMetadataValue(inst, "unsuspend") == "true" {
 		_ = unstructured.SetNestedField(existing.Object, false, "spec", "suspend")
+		r.storeUnsuspended(namespace, name)
 	}
 
 	if err := r.client.Update(ctx, existing); err != nil {
