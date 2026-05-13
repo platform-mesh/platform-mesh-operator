@@ -1,13 +1,12 @@
 apiVersion: apis.kcp.io/v1alpha2
 kind: APIExport
 metadata:
-  creationTimestamp: null
   name: providers.platform-mesh.io
 spec:
   resources:
     - group: providers.platform-mesh.io
       name: providers
-      schema: v260505-ae6e8f1.providers.providers.platform-mesh.io
+      schema: v260513-b618f02.providers.providers.platform-mesh.io
       storage:
         crd: {}
   # TODO(RFC-006 open question #4): finalise constraints (e.g. namespace selectors)

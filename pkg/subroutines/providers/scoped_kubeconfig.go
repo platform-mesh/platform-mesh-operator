@@ -173,7 +173,7 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 		return subroutines.OK(), gcerrors.Wrap(err, "write kubeconfig Secret %s", kubeconfigSecretName)
 	}
 
-	inst.Status.KubeconfigSecretRef = &providersv1alpha1.SecretReference{
+	inst.Status.KubeconfigSecretRef = &corev1.SecretReference{
 		Name:      kubeconfigSecretName,
 		Namespace: providerSANamespace,
 	}

@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,7 +41,7 @@ type ProviderStatus struct {
 	// kubeconfigSecretRef points to the Secret created in the provider workspace
 	// that contains the scoped kubeconfig.
 	// +optional
-	KubeconfigSecretRef *SecretReference `json:"kubeconfigSecretRef,omitempty"`
+	KubeconfigSecretRef *corev1.SecretReference `json:"kubeconfigSecretRef,omitempty"`
 
 	// conditions represent the current state of the Provider resource.
 	// +listType=map

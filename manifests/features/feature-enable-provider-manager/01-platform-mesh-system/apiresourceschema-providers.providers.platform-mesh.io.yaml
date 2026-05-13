@@ -1,8 +1,7 @@
 apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
-  creationTimestamp: null
-  name: v260505-ae6e8f1.providers.providers.platform-mesh.io
+  name: v260513-b618f02.providers.providers.platform-mesh.io
 spec:
   group: providers.platform-mesh.io
   names:
@@ -128,16 +127,15 @@ spec:
                 that contains the scoped kubeconfig.
               properties:
                 name:
-                  description: name is the Secret name.
+                  description: name is unique within a namespace to reference a secret
+                    resource.
                   type: string
                 namespace:
-                  description: |-
-                    namespace is the Secret namespace. If left empty, it is assumed the namespace
-                    of the referencing object is used.
+                  description: namespace defines the space within which the secret
+                    name must be unique.
                   type: string
-              required:
-              - name
               type: object
+              x-kubernetes-map-type: atomic
             observedGeneration:
               description: observedGeneration is the last generation reconciled by
                 the controller.

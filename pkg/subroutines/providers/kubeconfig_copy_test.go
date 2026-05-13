@@ -119,7 +119,7 @@ func (s *KubeconfigCopyTestSuite) mockProviderWithSecretRef() {
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			provider := obj.(*providersv1alpha1.Provider)
-			provider.Status.KubeconfigSecretRef = &providersv1alpha1.SecretReference{
+			provider.Status.KubeconfigSecretRef = &corev1.SecretReference{
 				Name:      "cowboys-kubeconfig",
 				Namespace: "kcp-side-ns",
 			}
@@ -257,7 +257,7 @@ func (s *KubeconfigCopyTestSuite) TestFinalize_NilKubeconfigRef() {
 func (s *KubeconfigCopyTestSuite) TestFinalize_DeletesSecret() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Status.KubeconfigSecretRef = &providersv1alpha1.SecretReference{
+	inst.Status.KubeconfigSecretRef = &corev1.SecretReference{
 		Name:      "platform-mesh-provider-kubeconfig-cowboys",
 		Namespace: inst.Namespace,
 	}
@@ -275,7 +275,7 @@ func (s *KubeconfigCopyTestSuite) TestFinalize_DeletesSecret() {
 func (s *KubeconfigCopyTestSuite) TestFinalize_SecretNotFound() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Status.KubeconfigSecretRef = &providersv1alpha1.SecretReference{
+	inst.Status.KubeconfigSecretRef = &corev1.SecretReference{
 		Name:      "platform-mesh-provider-kubeconfig-cowboys",
 		Namespace: inst.Namespace,
 	}
@@ -293,7 +293,7 @@ func (s *KubeconfigCopyTestSuite) TestFinalize_SecretNotFound() {
 func (s *KubeconfigCopyTestSuite) TestFinalize_DeleteError() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Status.KubeconfigSecretRef = &providersv1alpha1.SecretReference{
+	inst.Status.KubeconfigSecretRef = &corev1.SecretReference{
 		Name:      "platform-mesh-provider-kubeconfig-cowboys",
 		Namespace: inst.Namespace,
 	}

@@ -124,7 +124,7 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to copy kubeconfig Secret %s from workspace %s into namespace %s", provider.Status.KubeconfigSecretRef.Name, wsPath, inst.Namespace)
 	}
 
-	inst.Status.KubeconfigSecretRef = &providersv1alpha1.SecretReference{
+	inst.Status.KubeconfigSecretRef = &corev1.SecretReference{
 		Name:      copySecret.Name,
 		Namespace: copySecret.Namespace,
 	}

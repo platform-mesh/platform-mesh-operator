@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -79,7 +80,7 @@ type ManagedProviderStatus struct {
 	// kubeconfigSecretRef points to the Secret in the runtime namespace that
 	// contains the scoped kubeconfig copied from the provider kcp workspace.
 	// +optional
-	KubeconfigSecretRef *SecretReference `json:"kubeconfigSecretRef,omitempty"`
+	KubeconfigSecretRef *corev1.SecretReference `json:"kubeconfigSecretRef,omitempty"`
 
 	// conditions represent the current state of the ManagedProvider resource.
 	// +listType=map
@@ -90,16 +91,6 @@ type ManagedProviderStatus struct {
 	// observedGeneration is the last generation reconciled by the controller.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-}
-
-// SecretReference is a reference to a Secret in the same namespace.
-type SecretReference struct {
-	// name is the Secret name.
-	// +required
-	Name string `json:"name"`
-	// namespace is the Secret namespace. If left empty, it is assumed the namespace
-	// of the referencing object is used.
-	Namespace string `json:"namespace,omitempty"`
 }
 
 // +kubebuilder:object:root=true
