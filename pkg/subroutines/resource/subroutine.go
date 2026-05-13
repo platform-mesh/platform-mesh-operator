@@ -231,6 +231,9 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 
 	helmValuesPath := strings.Join(updatePath[2:], ".")
 	r.storeImageVersion(namespace, name, helmValuesPath, version)
+	if getMetadataValue(inst, "unsuspend") == "true" {
+		r.storeUnsuspended(namespace, name)
+	}
 	return subroutineslib.OK(), nil
 }
 
@@ -401,6 +404,12 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 func (r *ResourceSubroutine) storeImageVersion(namespace, name, path, version string) {
 	if r.imageVersionStore != nil {
 		r.imageVersionStore.Set(namespace, name, path, version)
+	}
+}
+
+func (r *ResourceSubroutine) storeUnsuspended(namespace, name string) {
+	if r.imageVersionStore != nil {
+		r.imageVersionStore.SetUnsuspended(namespace, name)
 	}
 }
 

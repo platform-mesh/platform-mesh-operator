@@ -23,12 +23,16 @@ type ImageVersionStore struct {
 	mu sync.RWMutex
 	// versions maps "namespace/appName" -> list of ImageVersion entries
 	versions map[string][]ImageVersion
+	// unsuspended tracks HelmReleases that have been unsuspended by ResourceSubroutine,
+	// so DeploymentSubroutine does not re-apply suspend: true via SSA.
+	unsuspended map[string]bool
 }
 
 // NewImageVersionStore creates a new ImageVersionStore.
 func NewImageVersionStore() *ImageVersionStore {
 	return &ImageVersionStore{
-		versions: make(map[string][]ImageVersion),
+		versions:    make(map[string][]ImageVersion),
+		unsuspended: make(map[string]bool),
 	}
 }
 
@@ -65,6 +69,24 @@ func (s *ImageVersionStore) Get(namespace, appName string) []ImageVersion {
 	result := make([]ImageVersion, len(entries))
 	copy(result, entries)
 	return result
+}
+
+// SetUnsuspended marks a HelmRelease as having been unsuspended by ResourceSubroutine.
+// DeploymentSubroutine checks this before applying a HelmRelease with suspend: true in its
+// rendered template, and overrides it to false so SSA does not re-suspend the release.
+func (s *ImageVersionStore) SetUnsuspended(namespace, name string) {
+	key := namespace + "/" + name
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unsuspended[key] = true
+}
+
+// IsUnsuspended reports whether a HelmRelease has been unsuspended by ResourceSubroutine.
+func (s *ImageVersionStore) IsUnsuspended(namespace, name string) bool {
+	key := namespace + "/" + name
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.unsuspended[key]
 }
 
 // SplitPath splits a dot-separated path string into its components.
