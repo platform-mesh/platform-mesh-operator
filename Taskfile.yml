@@ -61,7 +61,7 @@ tasks:
   setup:kcp-api-gen:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/apigen || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/kcp-dev/kcp/sdk/cmd/apigen@{{.KCP_APIGEN_VERSION}}
+      - test -s {{.LOCAL_BIN}}/apigen || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/kcp-dev/sdk/cmd/apigen@{{.KCP_APIGEN_VERSION}}
 
   ## Development
   mockery:
