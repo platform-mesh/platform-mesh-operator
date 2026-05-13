@@ -150,26 +150,15 @@ spec:
                       type: object
                     type: array
                   extraWorkspaces:
-                    description: ExtraWorkspaces allows declaring additional workspaces
-                      that the operator will create.
                     items:
-                      description: WorkspaceDeclaration defines a workspace to be
-                        created by the operator.
                       properties:
                         path:
-                          description: Path is the full logical path of the workspace
-                            to be created (e.g., "root:orgs:my-workspace").
                           type: string
                         type:
-                          description: Type defines the WorkspaceType for the new
-                            workspace.
                           properties:
                             name:
-                              description: Name is the name of the WorkspaceType.
                               type: string
                             path:
-                              description: Path is the logical cluster path where
-                                the WorkspaceType is defined.
                               type: string
                           required:
                           - name
@@ -236,16 +225,11 @@ spec:
                     type: object
                 type: object
               profileConfigMap:
-                description: ProfileConfigMap references a ConfigMap containing profile
-                  configuration for this PlatformMesh instance.
                 properties:
                   name:
-                    description: Name is the name of the ConfigMap.
                     minLength: 1
                     type: string
                   namespace:
-                    description: Namespace is the namespace of the ConfigMap. If not
-                      specified, defaults to the PlatformMesh resource's namespace.
                     type: string
                 required:
                 - name

@@ -665,3 +665,71 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields_GetEr
 	s.Equal("https://new-repo.git", source["repoURL"])
 	s.Equal("v1.0.0", source["targetRevision"])
 }
+
+func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValues_unsuspend() {
+	tests := []struct {
+		name          string
+		isUnsuspended bool
+		specSuspend   *bool        // nil = field absent from template
+		expectSuspend interface{} // nil = key absent
+	}{
+		{
+			name:          "unsuspended in store → suspend overridden to false",
+			isUnsuspended: true,
+			specSuspend:   boolPtr(true),
+			expectSuspend: false,
+		},
+		{
+			name:          "not unsuspended in store → suspend kept as true",
+			isUnsuspended: false,
+			specSuspend:   boolPtr(true),
+			expectSuspend: true,
+		},
+		{
+			name:          "unsuspended in store but template has no suspend field → suspend not set",
+			isUnsuspended: true,
+			specSuspend:   nil,
+			expectSuspend: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			store := NewImageVersionStore()
+			store.Set("platform-mesh-system", "openfga", "postgresql.image.tag", "17.9.0")
+			if tt.isUnsuspended {
+				store.SetUnsuspended("platform-mesh-system", "openfga")
+			}
+
+			sub := &DeploymentSubroutine{
+				imageVersionStore: store,
+				cfg:               &pmconfig.CommonServiceConfig{},
+				cfgOperator:       &config.OperatorConfig{WorkspaceDir: "../../"},
+			}
+
+			spec := map[string]interface{}{"values": map[string]interface{}{}}
+			if tt.specSuspend != nil {
+				spec["suspend"] = *tt.specSuspend
+			}
+			obj := &unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": "helm.toolkit.fluxcd.io/v2",
+				"kind":       "HelmRelease",
+				"metadata":   map[string]interface{}{"name": "openfga", "namespace": "platform-mesh-system"},
+				"spec":       spec,
+			}}
+
+			sub.mergeImageVersionsIntoHelmReleaseValues(obj, "openfga", "platform-mesh-system", s.log)
+
+			resultSpec := obj.Object["spec"].(map[string]interface{})
+			resultSuspend, hasSuspend := resultSpec["suspend"]
+			if tt.expectSuspend == nil {
+				s.False(hasSuspend, "expected suspend key to be absent")
+			} else {
+				s.True(hasSuspend, "expected suspend key to be present")
+				s.Equal(tt.expectSuspend, resultSuspend)
+			}
+		})
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }

@@ -289,3 +289,25 @@ resources:
 	s.Contains(result, "cpu: 100m")
 	s.Contains(result, "tag: v1.0.0")
 }
+
+func (s *ImageVersionStoreTestSuite) TestSetUnsuspended_And_IsUnsuspended() {
+	store := NewImageVersionStore()
+
+	s.False(store.IsUnsuspended("ns", "openfga"), "should not be unsuspended initially")
+
+	store.SetUnsuspended("ns", "openfga")
+	s.True(store.IsUnsuspended("ns", "openfga"))
+
+	// Different app in same namespace is not affected
+	s.False(store.IsUnsuspended("ns", "keycloak"))
+	// Same name in different namespace is not affected
+	s.False(store.IsUnsuspended("other-ns", "openfga"))
+}
+
+func (s *ImageVersionStoreTestSuite) TestSetUnsuspended_Idempotent() {
+	store := NewImageVersionStore()
+
+	store.SetUnsuspended("ns", "openfga")
+	store.SetUnsuspended("ns", "openfga")
+	s.True(store.IsUnsuspended("ns", "openfga"))
+}

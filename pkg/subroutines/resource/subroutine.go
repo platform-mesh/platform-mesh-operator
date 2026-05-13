@@ -231,6 +231,9 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 
 	helmValuesPath := strings.Join(updatePath[2:], ".")
 	r.storeImageVersion(namespace, name, helmValuesPath, version)
+	if getMetadataValue(inst, "unsuspend") == "true" {
+		r.storeUnsuspended(namespace, name)
+	}
 	return subroutineslib.OK(), nil
 }
 
@@ -404,6 +407,12 @@ func (r *ResourceSubroutine) storeImageVersion(namespace, name, path, version st
 	}
 }
 
+func (r *ResourceSubroutine) storeUnsuspended(namespace, name string) {
+	if r.imageVersionStore != nil {
+		r.imageVersionStore.SetUnsuspended(namespace, name)
+	}
+}
+
 func parseNamespacedName(forVal, defaultName, defaultNamespace string) (name, namespace string) {
 	if forVal == "" {
 		return trimPMSuffixes(defaultName), defaultNamespace
@@ -494,6 +503,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 
 	if getMetadataValue(inst, "unsuspend") == "true" {
 		_ = unstructured.SetNestedField(existing.Object, false, "spec", "suspend")
+		r.storeUnsuspended(namespace, name)
 	}
 
 	if err := r.client.Update(ctx, existing); err != nil {

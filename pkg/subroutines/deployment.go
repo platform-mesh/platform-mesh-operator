@@ -979,6 +979,8 @@ func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmValues(obj map[string]i
 
 // mergeImageVersionsIntoHelmReleaseValues reads the ImageVersionStore for the given HelmRelease and
 // merges any Resource-managed image versions into the object's spec.values structured field.
+// If the store records that the HelmRelease was unsuspended by ResourceSubroutine, it also
+// overrides spec.suspend to false so SSA does not re-apply suspend: true from the template.
 func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmReleaseValues(obj *unstructured.Unstructured, releaseName, namespace string, log *logger.Logger) {
 	if r.imageVersionStore == nil {
 		return
@@ -997,6 +999,14 @@ func (r *DeploymentSubroutine) mergeImageVersionsIntoHelmReleaseValues(obj *unst
 		}
 		log.Debug().Str("helmRelease", releaseName).Str("path", iv.Path).Str("version", iv.Version).Msg("Merged Resource image version into HelmRelease spec.values")
 	}
+
+	if r.imageVersionStore.IsUnsuspended(namespace, releaseName) {
+		renderedSuspend, found, _ := unstructured.NestedBool(obj.Object, "spec", "suspend")
+		if found && renderedSuspend {
+			_ = unstructured.SetNestedField(obj.Object, false, "spec", "suspend")
+			log.Debug().Str("helmRelease", releaseName).Msg("Overriding suspend: true in template — HelmRelease was unsuspended by ResourceSubroutine")
+		}
+	}
 }
 
 // renderAndApplyInfraTemplates renders all templates in gotemplates/infra/infra and applies them.
@@ -1013,7 +1023,7 @@ func (r *DeploymentSubroutine) renderAndApplyInfraTemplates(ctx context.Context,
 	deploymentTech = strings.ToLower(deploymentTech)
 
 	skipFile := deploymentTechFileFilter(deploymentTech, log)
-	postProcess := r.argoHelmReleasePostProcess(ctx, log)
+	postProcess := r.infraManifestPostProcess(ctx, log)
 
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesInfraDir+"/infra", tmplVars, r.clientInfra, log, "infra", skipFile, postProcess)
 }
@@ -1066,7 +1076,7 @@ func (r *DeploymentSubroutine) renderAndApplyComponentsInfraTemplates(ctx contex
 	deploymentTech = strings.ToLower(deploymentTech)
 
 	skipFile := deploymentTechFileFilter(deploymentTech, log)
-	postProcess := r.argoHelmReleasePostProcess(ctx, log)
+	postProcess := r.infraManifestPostProcess(ctx, log)
 
 	return r.renderAndApplyTemplates(ctx, r.gotemplatesComponentsDir+"/infra", tmplVars, r.clientInfra, log, "components-infra", skipFile, postProcess)
 }
