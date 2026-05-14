@@ -476,6 +476,34 @@ spec:
 
 The operator supports multi-cluster deployment where the operator process runs in a **local** cluster but manages resources on separate **runtime** and **infra** clusters.
 
+```mermaid
+graph LR
+    subgraph Local["Local cluster"]
+        OP["platform-mesh-operator"]
+    end
+
+    subgraph Runtime["Runtime cluster"]
+        PM["PlatformMesh CR"]
+        PROF["Profile ConfigMap"]
+        KCP["kcp (RootShard, FrontProxy)"]
+        OCM["OCM Resources"]
+    end
+
+    subgraph Infra["Infra cluster"]
+        FLUX["FluxCD / ArgoCD"]
+        HR["HelmReleases"]
+        OCI["OCIRepositories"]
+        APPS["ArgoCD Applications"]
+    end
+
+    OP -->|"reconciles (remote-runtime-kubeconfig)"| PM
+    OP -->|"reads"| PROF
+    OP -->|"creates OCM Resources"| OCM
+    OP -->|"creates HelmReleases / Apps"| HR
+    OP -->|"creates HelmReleases / Apps"| APPS
+    FLUX -->|"deploys workloads via kubeConfig secret"| Runtime
+```
+
 ### Cluster Roles
 
 | Cluster | What lives there | Client used |
