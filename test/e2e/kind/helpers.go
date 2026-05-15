@@ -84,6 +84,13 @@ func unstructuredsFromFile(path string, templateData map[string]string, log *log
 }
 
 func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]byte, error) {
+	// If no template data is provided, return the raw bytes unchanged.
+	// This avoids the template engine interpreting {{ }} expressions that are meant to be
+	// preserved as-is in the output (e.g. Go template expressions inside ConfigMap values
+	// that the operator renders at runtime).
+	if len(templateData) == 0 {
+		return templateBytes, nil
+	}
 	tmpl, err := template.New("manifest").Parse(string(templateBytes))
 	if err != nil {
 		return []byte{}, errors.Wrap(err, "Failed to parse template")

@@ -39,6 +39,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
@@ -424,9 +425,18 @@ func (s *KindTestSuite) SetupSuite() {
 		s.FailNow("OCM Component CRD not established in time")
 	}
 	s.logger.Info().Msg("components.delivery.ocm.software CRD established")
+	if err = s.waitForCRDEstablished(ctx, "resources.delivery.ocm.software", 5*time.Minute); err != nil {
+		s.FailNow("OCM Resource CRD not established in time")
+	}
+	s.logger.Info().Msg("resources.delivery.ocm.software CRD established")
 
 	if err = s.applyOCM(ctx); err != nil {
 		s.FailNow("Failed to apply OCM manifests", err)
+	}
+
+	// add Platform Mesh profile ConfigMap
+	if err = ApplyManifestFromFile(ctx, "../../../test/e2e/kind/yaml/platform-mesh-resource/default-profile.yaml", s.client, make(map[string]string)); err != nil {
+		s.FailNow("Failed to apply PlatformMesh profile ConfigMap manifest", err)
 	}
 
 	// add Platform Mesh resource
@@ -548,7 +558,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 	appConfig.KCP.RootShardName = "root"
 	appConfig.KCP.Namespace = "platform-mesh-system"
 	appConfig.KCP.FrontProxyName = "frontproxy"
-	appConfig.KCP.FrontProxyPort = "6443"
+	appConfig.KCP.FrontProxyPort = "8443"
 	appConfig.KCP.ClusterAdminSecretName = "kcp-cluster-admin-client-cert"
 
 	commonConfig := &pmconfig.CommonServiceConfig{}
@@ -571,7 +581,9 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 
 	s.kubernetesManager = mgr
 
-	pmReconciler, err := controller.NewPlatformMeshReconciler(s.kubernetesManager, &appConfig, commonConfig, "../../../")
+	imageVersionStore := subroutines.NewImageVersionStore()
+
+	pmReconciler, err := controller.NewPlatformMeshReconciler(s.kubernetesManager, &appConfig, commonConfig, "../../../", mgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create PlatformMesh reconciler")
 		return
@@ -581,7 +593,7 @@ func (s *KindTestSuite) runOperator(ctx context.Context) {
 		return
 	}
 
-	resourceReconciler, err := controller.NewResourceReconciler(s.kubernetesManager, &appConfig)
+	resourceReconciler, err := controller.NewResourceReconciler(s.kubernetesManager, &appConfig, mgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("unable to create Resource reconciler")
 		return

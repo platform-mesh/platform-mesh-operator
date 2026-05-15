@@ -6,6 +6,7 @@ metadata:
 spec:
   exposure:
     port: 8443
+    baseDomain: "portal.localhost"
   ocm:
     repo:
       name: platform-mesh
@@ -14,25 +15,34 @@ spec:
     referencePath: []
   featureToggles:
   - name: "feature-enable-getting-started"
-  kcp: {}
+  - name: feature-disable-email-verification
+  - name: feature-accounts-in-accounts
+  kcp:
+    {}
   values:
+    account-operator:
+      values:
+        hostAliases:
+          enabled: true
+        log:
+          noJson: true
     keycloak:
       enabled: true
       suspend: true
       imageResources:
-      - name: keycloak-image
-        annotations:
-          repo: oci
-          artifact: image
-          for: keycloak
-      - name: keycloak-postgresql-image
-        resource: postgresql-image
-        annotations:
-          repo: oci
-          artifact: image
-          for: keycloak
-          path: postgresql.image.tag
-          unsuspend: "true"
+        - name: keycloak-image
+          annotations:
+            repo: oci
+            artifact: image
+            for: keycloak
+        - name: keycloak-postgresql-image
+          resource: postgresql-image
+          annotations:
+            repo: oci
+            artifact: image
+            for: keycloak
+            path: postgresql.image.tag
+            unsuspend: "true"
       values:
         service:
           clusterIP: 10.96.0.110
@@ -49,62 +59,66 @@ spec:
       values:
         provider:
           packages:
-          - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
+            - xpkg.upbound.io/crossplane-contrib/provider-keycloak:v2.7.2
     infra:
-      dependsOn:
-      - name: kcp-operator
-        namespace: default
+      imageResources: [] # Disable kcp-image OCM Resource to allow custom kcp.image.tag
       values:
-        cors:
-          enabled: true
+        kcp:
+          auth:
+            serviceAccount:
+              enabled: true
+          image:
+            tag: "v0.31.0" # bump kcp image to work around WatchList issues
+          shards: []
+          frontProxy:
+            clusterIP: "10.96.0.100"
+            port: 8443
+        traefik:
           accessControlAllowOriginList:
           - "http://localhost:4200"
           - "http://localhost:4300"
           - "http://*.localhost:4200"
           - "http://*.localhost:4300"
+          - "http://sub.localhost:4300"
           - "https://portal.localhost:8443"
           - "https://*.portal.localhost:8443"
-        gatewayApi:
-          enabled: true
-        mailpit:
+        cors:
           enabled: true
         hostAliases:
           enabled: true
-        kcp:
-          shards: []
-          frontProxy:
-            clusterIP: "10.96.0.100"
-    kcp:
-      enabled: false
-      external: true
     kcp-operator:
       enabled: true
       external: true
-      imageResource:
-        enabled: true
-        labels:
-          infra: "true"
-          component: infra
     security-operator:
       values:
-        caSecret: domain-certificate-ca
-        fga:
+        log:
+          noJson: true
+        system:
           extraArgs:
           - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
           - --idp-smtp-port=1025
           - --idp-from-address=keycloak@portal.localhost
           - --set-default-password
           - --idp-registration-allowed
-        hostAliases:
-          enabled: true
+        fga:
+          extraArgs:
+            - --idp-smtp-server=mailpit.platform-mesh-system.svc.cluster.local
+            - --idp-smtp-port=1025
+            - --idp-from-address=keycloak@portal.localhost
+            - --set-default-password
+            - --idp-registration-allowed
+            - --domain-ca-lookup
+            - --development-allow-unverified-emails
+            - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
         initializer:
           extraArgs:
           - --domain-ca-lookup
           - --idp-registration-allowed
           - --development-allow-unverified-emails
           - --idp-additional-redirect-urls=http://localhost:8000/callback*,http://localhost:4300/callback*,http://sub.localhost:4300/callback*
-        log:
-          noJson: true
+        caSecret: domain-certificate-ca
+        hostAliases:
+          enabled: true
     portal:
       enabled: true
       values:
@@ -116,26 +130,26 @@ spec:
               sectionName: websecure
               kind: Gateway
         extraEnvVars:
-        - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
-          value: https://${org-subdomain}portal.localhost:8443/iam/graphql
-        - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
-          value: "https://${org-subdomain}portal.localhost:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
-        - name: NODE_EXTRA_CA_CERTS
-          value: /etc/ssl/certs/domain-ca.crt
+          - name: OPENMFP_PORTAL_CONTEXT_IAM_SERVICE_API_URL
+            value: https://${org-subdomain}portal.localhost:8443/iam/graphql
+          - name: OPENMFP_PORTAL_CONTEXT_CRD_GATEWAY_API_URL
+            value: "https://${org-subdomain}portal.localhost:8443/api/kubernetes-graphql-gateway/root:orgs:${org-name}/graphql"
+          - name: NODE_EXTRA_CA_CERTS
+            value: /etc/ssl/certs/domain-ca.crt
         extraVolumes:
-        - name: domain-ca
-          secret:
-            secretName: domain-certificate-ca
+          - name: domain-ca
+            secret:
+              secretName: domain-certificate-ca
         extraVolumeMounts:
-        - name: domain-ca
-          mountPath: /etc/ssl/certs/domain-ca.crt
-          subPath: tls.crt
-          readOnly: true
+          - name: domain-ca
+            mountPath: /etc/ssl/certs/domain-ca.crt
+            subPath: tls.crt
+            readOnly: true
         hostAliases:
           enabled: true
     openfga:
-      enabled: true
       suspend: true
+      enabled: true
       values:
         datastore:
           uri: "postgres://postgres:password@openfga-postgres.platform-mesh-system.svc.cluster.local:5432/postgres?sslmode=disable"
@@ -143,18 +157,15 @@ spec:
           auth:
             postgresPassword: password
             database: postgres
-        telemetry:
-          trace:
-            enabled: true
-            otlp:
-              endpoint: observability-opentelemetry-collector.observability.svc.cluster.local:4317
-              tls:
-                enabled: false
+          image:
+            repository: upstream-images/postgresql
+    terminal-controller-manager:
+      enabled: false
     virtual-workspaces:
       values:
         virtualWorkspaceSecretName: virtual-workspaces-cert
         deployment:
-          serverUrl: "https://frontproxy-front-proxy.platform-mesh-system:6443"
+          serverUrl: "https://frontproxy-front-proxy.platform-mesh-system:8443"
           resourceSchemaName: "v250704-6d57f16.contentconfigurations.ui.platform-mesh.io"
           resourceSchemaWorkspace: "root:platform-mesh-system"
     kubernetes-graphql-gateway:
@@ -168,16 +179,22 @@ spec:
           virtualWorkspacesConfig:
             content:
               virtualWorkspaces:
-              - kubeconfig: /app/kubeconfig/kubeconfig
-                name: contentconfigurations
-                url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/contentconfigurations
-              - kubeconfig: /app/kubeconfig/kubeconfig
-                name: marketplace
-                url: https://frontproxy-front-proxy.platform-mesh-system:6443/services/marketplace
+                - kubeconfig: /app/kubeconfig/kubeconfig
+                  name: contentconfigurations
+                  url: https://frontproxy-front-proxy.platform-mesh-system:8443/services/contentconfigurations
+                - kubeconfig: /app/kubeconfig/kubeconfig
+                  name: marketplace
+                  url: https://frontproxy-front-proxy.platform-mesh-system:8443/services/marketplace
             enabled: true
+    rebac-authz-webhook:
+      values:
+        hostAliases:
+          enabled: true
     iam-service:
       enabled: false
       values:
+        extraArgs:
+        - --no-json
         cors:
           enabled: true
         hostAliases:
@@ -201,3 +218,13 @@ spec:
           enabled: true
         istio:
           enabled: false
+    init-agent:
+      values:
+        hostAliases:
+          enabled: true
+    extension-manager-operator:
+      values:
+        hostAliases:
+          enabled: true
+    kcp:
+      external: true
