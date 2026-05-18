@@ -22,7 +22,7 @@ require (
 	github.com/mandelsoft/goutils v0.0.0-20260507153918-c39bb4bb4b7b
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/platform-mesh/golang-commons v0.16.14
+	github.com/platform-mesh/golang-commons v0.16.16
 	github.com/platform-mesh/subroutines v0.4.3
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
@@ -57,7 +57,7 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.25.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/getsentry/sentry-go v0.46.1 // indirect
+	github.com/getsentry/sentry-go v0.46.2 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
