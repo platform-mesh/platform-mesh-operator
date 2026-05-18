@@ -63,30 +63,6 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		// In both cases, ManagedProvider is expected to create a Deployment in the runtime cluster,
 		// and a kubeconfig scoped to provider's workspace.
 
-		ns := corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "e2e-managed-provider",
-			},
-		}
-		s.logger.Info().Msgf("Creating namespace %q", ns.Name)
-		err = s.client.Create(ctx, &ns)
-		s.Require().NoError(err, "creating namespace for a ManagedProvider should succeed")
-		s.T().Cleanup(func() {
-			cleanupCtx := context.Background()
-			mpList := &providersv1alpha1.ManagedProviderList{}
-			if err := s.client.List(cleanupCtx, mpList, client.InNamespace(ns.Name)); err == nil {
-				for i := range mpList.Items {
-					mp := &mpList.Items[i]
-					patch := client.MergeFrom(mp.DeepCopy())
-					mp.Finalizers = nil
-					_ = s.client.Patch(cleanupCtx, mp, patch)
-					_ = client.IgnoreNotFound(s.client.Delete(cleanupCtx, mp))
-				}
-			}
-			_ = client.IgnoreNotFound(s.client.Delete(cleanupCtx, &ns))
-		})
-		s.logger.Info().Msgf("Namespace %q created", ns.Name)
-
 		// First variant, with cleanupOnDelete=false. Only runtime resources are expected to be deleted on ManagedProvider deletion.
 
 		waitForManagedProviderAndValidate(ctx, s, providerScopedKcpAdminClient, func(mp *providersv1alpha1.ManagedProvider) {
@@ -97,7 +73,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		s.logger.Info().Msgf("Deleting ManagedProvider with cleanupOnDelete=false")
 		managedProvider := providersv1alpha1.ManagedProvider{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "e2e-managed-provider",
+				Namespace: "platform-mesh-system", // ManagedProvider is always co-located with PlatformMesh object namespace.
 				Name:      "my-managed-provider",
 			},
 		}
@@ -105,8 +81,8 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		s.Require().NoError(err, "deleting ManagedProvider should succeed")
 		s.Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
+				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
-				Namespace: ns.Name,
 			}, &managedProvider)
 			return kerrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to be deleted, but has err=%q", err)
@@ -129,7 +105,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		s.logger.Info().Msgf("Deleting ManagedProvider with cleanupOnDelete=true")
 		err = s.client.Delete(ctx, &providersv1alpha1.ManagedProvider{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "e2e-managed-provider",
+				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
 			},
 		})
@@ -137,7 +113,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		s.logger.Info().Msgf("ManagedProvider deleted, checking that :root:providers:my-managed-provider workspace is deleted")
 		s.Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
-				Namespace: "e2e-managed-provider",
+				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
 			}, &providersv1alpha1.ManagedProvider{})
 			return kerrors.IsNotFound(err)
@@ -161,7 +137,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 	s.T().Helper()
 
 	managedProviderName := types.NamespacedName{
-		Namespace: "e2e-managed-provider",
+		Namespace: "platform-mesh-system",
 		Name:      "my-managed-provider",
 	}
 	managedProvider := providersv1alpha1.ManagedProvider{
@@ -176,6 +152,9 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 					Registry:      "ghcr.io/platform-mesh/helm-charts",
 					Version:       "0.5.14",
 				},
+			},
+			PlatformMeshReference: providersv1alpha1.PlatformMeshReferenceSpec{
+				Name: "platform-mesh",
 			},
 		},
 	}
@@ -230,7 +209,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pr
 			Name:      "platform-mesh-provider-kubeconfig-my-managed-provider",
 		}, &providerKubeconfigSecretInKind)
 		return err == nil
-	}, 240*time.Second, 5*time.Second, "waiting for provider kubeconfig secret locally in namespace e2e-managed-provider")
+	}, 240*time.Second, 5*time.Second, "waiting for provider kubeconfig secret locally in namespace platform-mesh-system")
 
 	providerKubeconfig := providerKubeconfigSecretInKcp.Data["kubeconfig"]
 	s.Require().NotEmpty(providerKubeconfig, "kubeconfig not set in provider kubeconfig secret")

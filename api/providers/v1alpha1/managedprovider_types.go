@@ -32,6 +32,11 @@ type ManagedProviderSpec struct {
 	// +optional
 	WorkspacePath string `json:"workspacePath,omitempty"`
 
+	// platformMeshRef is a reference to the PlatformMesh object.
+	// It must refer to the PlatformMesh instance this ManagedProvider
+	// is associated with.
+	PlatformMeshReference PlatformMeshReferenceSpec `json:"platformMeshRef"`
+
 	// controller defines the OCM component to deploy as the provider controller.
 	// +required
 	Controller ProviderComponentSpec `json:"controller"`
@@ -43,6 +48,13 @@ type ManagedProviderSpec struct {
 	// cleanupOnDelete removes the kcp workspace when the ManagedProvider is deleted.
 	// +optional
 	CleanupOnDelete bool `json:"cleanupOnDelete,omitempty"`
+}
+
+// PlatformMeshReferenceSpec is a reference to a PlatformMesh object.
+type PlatformMeshReferenceSpec struct {
+	// name of the PlatformMesh object.
+	// +required
+	Name string `json:"name"`
 }
 
 // ProviderComponentSpec references an OCM component to deploy.

@@ -83,6 +83,18 @@ spec:
                 required:
                 - ocm
                 type: object
+              platformMeshRef:
+                description: |-
+                  platformMeshRef is a reference to the PlatformMesh object.
+                  It must refer to the PlatformMesh instance this ManagedProvider
+                  is associated with.
+                properties:
+                  name:
+                    description: name of the PlatformMesh object.
+                    type: string
+                required:
+                - name
+                type: object
               portal:
                 description: portal defines the OCM component to deploy as the provider
                   portal.
@@ -119,6 +131,7 @@ spec:
                 type: string
             required:
             - controller
+            - platformMeshRef
             type: object
           status:
             description: status defines the observed state of ManagedProvider

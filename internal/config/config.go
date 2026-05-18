@@ -55,6 +55,7 @@ type ManagedProviderSubroutineConfig struct {
 }
 
 type ManagedProviderSubroutinesConfig struct {
+	WaitPlatformMesh ManagedProviderSubroutineConfig
 	Workspace        ManagedProviderSubroutineConfig
 	ProviderResource ManagedProviderSubroutineConfig
 	WaitProvider     ManagedProviderSubroutineConfig
@@ -113,6 +114,7 @@ func NewOperatorConfig() OperatorConfig {
 				Enabled: true,
 			},
 			ManagedProvider: ManagedProviderSubroutinesConfig{
+				WaitPlatformMesh: ManagedProviderSubroutineConfig{Enabled: true},
 				Workspace:        ManagedProviderSubroutineConfig{Enabled: true},
 				ProviderResource: ManagedProviderSubroutineConfig{Enabled: true},
 				WaitProvider:     ManagedProviderSubroutineConfig{Enabled: true},
@@ -147,6 +149,7 @@ func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.Subroutines.ProviderSecret.Enabled, "subroutines-provider-secret-enabled", c.Subroutines.ProviderSecret.Enabled, "Enable provider secret subroutine")
 	fs.BoolVar(&c.Subroutines.FeatureToggles.Enabled, "subroutines-feature-toggles-enabled", c.Subroutines.FeatureToggles.Enabled, "Enable feature toggles subroutine")
 	fs.BoolVar(&c.Subroutines.Wait.Enabled, "subroutines-wait-enabled", c.Subroutines.Wait.Enabled, "Enable wait subroutine")
+	fs.BoolVar(&c.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled, "subroutines-managed-provider-wait-platform-mesh-enabled", c.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled, "Enable ManagedProvider wait-platform-mesh subroutine")
 	fs.BoolVar(&c.Subroutines.ManagedProvider.Workspace.Enabled, "subroutines-managed-provider-workspace-enabled", c.Subroutines.ManagedProvider.Workspace.Enabled, "Enable ManagedProvider workspace subroutine")
 	fs.BoolVar(&c.Subroutines.ManagedProvider.ProviderResource.Enabled, "subroutines-managed-provider-resource-enabled", c.Subroutines.ManagedProvider.ProviderResource.Enabled, "Enable ManagedProvider provider-resource subroutine")
 	fs.BoolVar(&c.Subroutines.ManagedProvider.WaitProvider.Enabled, "subroutines-managed-provider-wait-enabled", c.Subroutines.ManagedProvider.WaitProvider.Enabled, "Enable ManagedProvider wait-provider subroutine")

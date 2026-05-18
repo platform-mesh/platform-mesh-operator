@@ -83,6 +83,9 @@ func NewManagedProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.Ope
 	kcpHelper := &pmsubroutines.Helper{}
 
 	var subs []subroutines.Subroutine
+	if operatorCfg.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled {
+		subs = append(subs, pmsubs.NewWaitPlatformMeshSubroutine(localCl))
+	}
 	if operatorCfg.Subroutines.ManagedProvider.Workspace.Enabled {
 		subs = append(subs, pmsubs.NewWorkspaceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl))
 	}
