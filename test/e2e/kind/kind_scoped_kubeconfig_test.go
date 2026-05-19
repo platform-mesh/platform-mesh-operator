@@ -42,7 +42,6 @@ const (
 
 	// Match test/e2e/kind/yaml/platform-mesh-resource/platform-mesh.yaml extraProviderConnections[].path;
 	// ProvidersecretSubroutine creates scoped SA + ClusterRole + ClusterRoleBinding in each provider workspace.
-	e2eScopedKubeconfigProvider1Path = "root:providers:provider1"
 	e2eScopedKubeconfigProvider2Path = "root:providers:provider2"
 
 	e2eKcpProviderWorkspacesYAMLDir = "../../../test/e2e/kind/yaml/kcp-provider-workspaces"
@@ -138,7 +137,8 @@ func providerConnectionEquivalent(a, b corev1alpha1.ProviderConnection) bool {
 		ptr.Deref(a.APIExportName, "") == ptr.Deref(b.APIExportName, "") &&
 		ptr.Deref(a.RawPath, "") == ptr.Deref(b.RawPath, "") &&
 		ptr.Deref(a.Namespace, "") == ptr.Deref(b.Namespace, "") &&
-		ptr.Deref(a.AdminAuth, false) == ptr.Deref(b.AdminAuth, false)
+		ptr.Deref(a.AdminAuth, false) == ptr.Deref(b.AdminAuth, false) &&
+		ptr.Deref(a.ProviderRBACPreset, "") == ptr.Deref(b.ProviderRBACPreset, "")
 }
 
 func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Context) {
@@ -539,36 +539,6 @@ func (s *KindTestSuite) runKubectlWithRawKubeconfig(kubeconfigBytes []byte, kube
 	}
 	args := append([]string{"--kubeconfig", tmp.Name()}, kubectlArgs...)
 	return runCommand("kubectl", args...)
-}
-
-// normalizeScopedKubeconfigServerForLocalRun handles scoped e2e cases.
-// This is test-only behavior for host-run kubectl in local/CI e2e, not generic production kubeconfig rewriting.
-func normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes []byte) ([]byte, error) {
-	cfg, err := clientcmd.Load(kubeconfigBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	currentContext := cfg.Contexts[cfg.CurrentContext]
-	cluster := cfg.Clusters[currentContext.Cluster]
-
-	server := cluster.Server
-
-	// provider2: in-cluster front-proxy DNS is not resolvable from host-run kubectl.
-	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:8443", "localhost:8443", 1)
-
-	// provider1: virtual workspace URL from endpoint slice is flaky for create/get in host-run kubectl.
-	// For this fixed fixture, use the concrete provider1 workspace cluster URL.
-	if strings.Contains(server, "/services/apiexport/") {
-		server = "https://localhost:8443/clusters/" + e2eScopedKubeconfigProvider1Path
-	}
-
-	cluster.Server = server
-	out, err := clientcmd.Write(*cfg)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 // logWorkspaceObservedAfterApply helps CI debug: confirms whether the Workspace object is visible right after SSA apply.

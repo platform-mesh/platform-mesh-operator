@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
@@ -29,6 +30,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/rbacpresets"
 	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 )
 
@@ -50,21 +52,27 @@ func NewProviderSecretSubroutine(
 	helper KcpHelper,
 	helm HelmGetter,
 	kcpUrl string,
+	presetLoader *rbacpresets.Loader,
 ) *ProvidersecretSubroutine {
+	if presetLoader == nil {
+		presetLoader = rbacpresets.NewLoader(rbacpresets.EmbeddedProvidersFS())
+	}
 	sub := &ProvidersecretSubroutine{
-		client:    client,
-		kcpUrl:    kcpUrl,
-		kcpHelper: helper,
-		helm:      helm,
+		client:       client,
+		kcpUrl:       kcpUrl,
+		kcpHelper:    helper,
+		helm:         helm,
+		presetLoader: presetLoader,
 	}
 	return sub
 }
 
 type ProvidersecretSubroutine struct {
-	client    client.Client
-	kcpHelper KcpHelper
-	kcpUrl    string
-	helm      HelmGetter
+	client       client.Client
+	kcpHelper    KcpHelper
+	kcpUrl       string
+	helm         HelmGetter
+	presetLoader *rbacpresets.Loader
 }
 
 const (
@@ -177,6 +185,18 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 ) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
+	preset := strings.TrimSpace(ptr.Deref(pc.ProviderRBACPreset, ""))
+	if preset != "" {
+		if ptr.Deref(pc.APIExportName, "") != "" || ptr.Deref(pc.EndpointSliceName, "") != "" {
+			return subroutines.OK(), fmt.Errorf("providerRBACPreset is mutually exclusive with apiExportName and endpointSliceName")
+		}
+		if err := writeProviderPresetKubeconfigToSecret(ctx, r.presetLoader, r.client, r.kcpHelper, cfg, instance, pc); err != nil {
+			log.Error().Err(err).Str("secret", pc.Secret).Str("preset", preset).Msg("Failed to write preset-based provider kubeconfig")
+			return subroutines.OK(), err
+		}
+		return subroutines.OK(), nil
+	}
 
 	if !ptr.Deref(pc.AdminAuth, false) {
 		if err := writeScopedKubeconfigToSecret(ctx, r.client, r.kcpHelper, cfg, instance, pc); err != nil {

@@ -1,0 +1,45 @@
+# E2E-only preset fixture (kind tests). Not shipped in pkg/rbacpresets/providers.
+apiVersion: rbacpresets.platform-mesh.io/v1alpha1
+kind: ProviderRBACPreset
+metadata:
+  name: e2e-path-raw-path
+spec:
+  serverTarget:
+    type: pathRawPath
+    rawPath: /services/contentconfigurations
+  serviceAccountWorkspace: "{{ .ProviderPath }}"
+  serviceAccountName: "platform-mesh-provider-{{ .Suffix }}"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "{{ .SAName }}"
+  namespace: default
+  annotations:
+    rbacpresets.platform-mesh.io/workspace: "{{ .ProviderPath }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: "{{ .SAName }}"
+  annotations:
+    rbacpresets.platform-mesh.io/workspace: "{{ .ProviderPath }}"
+rules:
+  - apiGroups: ["core.platform-mesh.io"]
+    resources: ["contentconfigurations"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: "{{ .SAName }}"
+  annotations:
+    rbacpresets.platform-mesh.io/workspace: "{{ .ProviderPath }}"
+subjects:
+  - kind: ServiceAccount
+    name: "{{ .SAName }}"
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: "{{ .SAName }}"

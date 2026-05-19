@@ -670,7 +670,7 @@ func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValue
 	tests := []struct {
 		name          string
 		isUnsuspended bool
-		specSuspend   *bool        // nil = field absent from template
+		specSuspend   *bool       // nil = field absent from template
 		expectSuspend interface{} // nil = key absent
 	}{
 		{

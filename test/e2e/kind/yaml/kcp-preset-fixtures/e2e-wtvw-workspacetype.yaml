@@ -1,0 +1,7 @@
+# E2E-only WorkspaceType fixture for workspaceTypeVirtualWorkspace preset tests.
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: WorkspaceType
+metadata:
+  name: e2e-preset-target
+spec:
+  initializer: true

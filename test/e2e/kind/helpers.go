@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"os/exec"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -17,6 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
+
+// e2eScopedKubeconfigProvider1Path matches kind_scoped_kubeconfig_test.go fixtures (provider1 workspace cluster).
+const e2eScopedKubeconfigProvider1Path = "root:providers:provider1"
 
 func dynamicClientForKubeconfig(kubeconfigBytes []byte) (dynamic.Interface, error) {
 	cfg, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigBytes)
@@ -108,4 +113,83 @@ func ReplaceTemplate(templateData map[string]string, templateBytes []byte) ([]by
 		return []byte{}, nil
 	}
 	return result.Bytes(), nil
+}
+
+// runKubectlAuthCanI runs `kubectl auth can-i <verb> <resource>` with a kubeconfig backed by kubeconfigBytes
+// (after normalizeScopedKubeconfigServerForLocalRun). Returns whether kubectl answered "yes".
+func runKubectlAuthCanI(kubeconfigBytes []byte, verb, resource string) (bool, error) {
+	normalizedKubeconfigBytes, err := normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes)
+	if err != nil {
+		return false, err
+	}
+	tmp, err := os.CreateTemp("", "preset-kubeconfig-auth-can-i-*.yaml")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(normalizedKubeconfigBytes); err != nil {
+		_ = tmp.Close()
+		return false, err
+	}
+	if err := tmp.Close(); err != nil {
+		return false, err
+	}
+	args := []string{"--kubeconfig", tmp.Name(), "auth", "can-i", verb, resource}
+	cmd := exec.Command("kubectl", args...)
+	env := os.Environ()
+	if goruntime.GOOS == "darwin" {
+		env = append(env, "DOCKER_HOST=unix:///var/run/docker.sock")
+	} else {
+		env = append(env, "DOCKER_HOST=unix:///run/docker.sock")
+	}
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	raw := string(out)
+	var lastLine string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Warning:") {
+			continue
+		}
+		lastLine = line
+	}
+	switch lastLine {
+	case "yes":
+		return true, nil
+	case "no":
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("kubectl auth can-i: %w, output: %s", err, strings.TrimSpace(raw))
+	}
+	return false, fmt.Errorf("kubectl auth can-i: unexpected output: %q", strings.TrimSpace(raw))
+}
+
+// normalizeScopedKubeconfigServerForLocalRun handles scoped e2e cases.
+// This is test-only behavior for host-run kubectl in local/CI e2e, not generic production kubeconfig rewriting.
+func normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes []byte) ([]byte, error) {
+	cfg, err := clientcmd.Load(kubeconfigBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	currentContext := cfg.Contexts[cfg.CurrentContext]
+	cluster := cfg.Clusters[currentContext.Cluster]
+
+	server := cluster.Server
+
+	// In-cluster front-proxy DNS is not resolvable from host-run kubectl.
+	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:8443", "localhost:8443", 1)
+
+	// provider1: virtual workspace URL from endpoint slice is flaky for create/get in host-run kubectl.
+	if strings.Contains(server, "/services/apiexport/") {
+		server = "https://localhost:8443/clusters/" + e2eScopedKubeconfigProvider1Path
+	}
+
+	cluster.Server = server
+	out, err := clientcmd.Write(*cfg)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
