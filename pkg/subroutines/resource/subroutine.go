@@ -17,6 +17,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
@@ -107,7 +108,16 @@ func getMetadataValue(obj *unstructured.Unstructured, key string) string {
 	return ""
 }
 
-func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutineslib.Result, error) {
+func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutineslib.Result, err error) {
+	start := time.Now()
+	defer func() {
+		labelResult := "success"
+		if err != nil {
+			labelResult = "error"
+		}
+		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
+		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
+	}()
 	inst := runtimeObj.(*unstructured.Unstructured)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("name", r.GetName())
 

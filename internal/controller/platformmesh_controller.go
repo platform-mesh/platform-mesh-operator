@@ -41,6 +41,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
@@ -61,7 +62,15 @@ type PlatformMeshReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 func (r *PlatformMeshReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req)
+	start := time.Now()
+	result, err := r.lifecycle.Reconcile(ctx, req)
+	labelResult := "success"
+	if err != nil {
+		labelResult = "error"
+	}
+	metrics.ReconcileTotal.WithLabelValues(pmReconcilerName, labelResult).Inc()
+	metrics.ReconcileDuration.WithLabelValues(pmReconcilerName).Observe(time.Since(start).Seconds())
+	return result, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
