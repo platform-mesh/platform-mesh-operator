@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -357,6 +358,19 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 		return nil, err
 	}
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
+}
+
+func (s *KindTestSuite) kcpClientForWorkspaceWithScheme(ctx context.Context, scheme *runtime.Scheme, workspacePath string) client.Client {
+	kcpAdminCfg, err := subroutines.BuildKcpAdminConfig(s.client, &defaultKcpOperatorConfig, defaultKcpOperatorConfig.Url)
+	s.Require().NoError(err, "getting kcp admin rest config should succeed")
+	kcpAdminCfg.Host += "/clusters/" + workspacePath
+
+	scopedKcpAdminClient, err := client.New(kcpAdminCfg, client.Options{
+		Scheme: scheme,
+	})
+	s.Require().NoError(err, "creating scoped kcp admin client should succeed")
+
+	return scopedKcpAdminClient
 }
 
 func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
