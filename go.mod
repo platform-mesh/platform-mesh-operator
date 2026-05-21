@@ -22,7 +22,7 @@ require (
 	github.com/mandelsoft/goutils v0.0.0-20260507153918-c39bb4bb4b7b
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/platform-mesh/golang-commons v0.16.17
+	github.com/platform-mesh/golang-commons v0.16.18
 	github.com/platform-mesh/subroutines v0.4.3
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
