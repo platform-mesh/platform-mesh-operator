@@ -46,3 +46,6 @@ gha-logs.txt
 debug
 .cursor/*
 test/e2e/kind/kind-testcluster.kubeconfig
+
+config/crd/apigen/crds/
+config/crd/apigen/out/
