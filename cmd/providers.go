@@ -54,8 +54,9 @@ func buildKcpAdminConfigForWorkspace(restCfg *rest.Config, wsPath string) (*rest
 	}
 	kcpUrl := providersCfg.KCP.Url
 	if kcpUrl == "" {
-		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s/clusters/%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort, wsPath)
+		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort)
 	}
+	kcpUrl += fmt.Sprintf("/clusters/%s", wsPath)
 	return pmsubs.BuildKcpAdminConfig(c, &providersCfg.KCP, kcpUrl)
 }
 
@@ -119,7 +120,7 @@ func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to create kcp admin client config")
 	}
 
-	log.Info().Msgf("Created config for %q", providersEndpointSliceCfg.Host)
+	log.Info().Msgf("Created client config for %q", providersEndpointSliceCfg.Host)
 
 	providersVW, err := apiexport.New(providersEndpointSliceCfg, providersCfg.ProvidersAPIExportEndpointSliceName, apiexport.Options{
 		Scheme: scheme,
