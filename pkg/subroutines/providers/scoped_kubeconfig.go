@@ -38,7 +38,7 @@ import (
 
 const (
 	ScopedKubeconfigSubroutineName = "ScopedKubeconfigSubroutine"
-	scopedKubeconfigFinalizer      = "providers.platform-mesh.io/scoped-kubeconfig-finalizer"
+	scopedKubeconfigFinalizer      = "providers.platform-mesh.io/scoped-kubeconfig"
 
 	providerSANamespace = "default"
 )
@@ -187,6 +187,8 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 func (r *ScopedKubeconfigSubroutine) Finalize(ctx context.Context, obj client.Object) (subroutines.Result, error) {
 	inst := obj.(*providersv1alpha1.Provider)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
+
+	inst.Status.Phase = "Deleting"
 
 	cl, err := r.getClusterClientFromContext(ctx)
 	if err != nil {

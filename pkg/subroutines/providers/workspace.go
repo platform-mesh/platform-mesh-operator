@@ -22,11 +22,14 @@ import (
 	"strings"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
@@ -36,7 +39,7 @@ import (
 
 const (
 	WorkspaceSubroutineName      = "WorkspaceSubroutine"
-	WorkspaceSubroutineFinalizer = "providers.platform-mesh.io/workspace-finalizer"
+	WorkspaceSubroutineFinalizer = "providers.platform-mesh.io/workspace"
 
 	defaultWorkspaceParent    = "root:providers"
 	providerWorkspaceTypeName = "provider"
@@ -50,15 +53,23 @@ type WorkspaceSubroutine struct {
 	kcpHelper pmsubs.KcpHelper
 	cfg       *config.OperatorConfig
 	kcpUrl    string
+
+	limiter workqueue.TypedRateLimiter[*providersv1alpha1.ManagedProvider]
 }
 
-func NewWorkspaceSubroutine(cl client.Client, kcpHelper pmsubs.KcpHelper, cfg *config.OperatorConfig, kcpUrl string) *WorkspaceSubroutine {
+func NewWorkspaceSubroutine(cl client.Client, kcpHelper pmsubs.KcpHelper, cfg *config.OperatorConfig, kcpUrl string) (*WorkspaceSubroutine, error) {
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[*providersv1alpha1.ManagedProvider](
+		ratelimiter.NewConfig())
+	if err != nil {
+		return nil, fmt.Errorf("creating RateLimiter: %v", err)
+	}
 	return &WorkspaceSubroutine{
 		client:    cl,
 		kcpHelper: kcpHelper,
 		cfg:       cfg,
 		kcpUrl:    kcpUrl,
-	}
+		limiter:   rl,
+	}, nil
 }
 
 func (r *WorkspaceSubroutine) GetName() string {
@@ -128,6 +139,8 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, obj client.Object) (
 		return subroutines.OK(), nil
 	}
 
+	inst.Status.Phase = "Deleting"
+
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	wsPath := workspacePath(inst)
 	parentPath, workspaceName, err := splitPath(wsPath)
@@ -147,12 +160,16 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, obj client.Object) (
 
 	ws := &kcptenancyv1alpha.Workspace{}
 	ws.Name = workspaceName
-	if err := client.IgnoreNotFound(scopedKcpClient.Delete(ctx, ws)); err != nil {
+	if err = scopedKcpClient.Delete(ctx, ws); err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().Str("workspace", wsPath).Msg("Deleted provider workspace")
+			r.limiter.Forget(inst)
+			return subroutines.OK(), nil
+		}
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to delete workspace %s", wsPath)
 	}
 
-	log.Info().Str("workspace", wsPath).Msg("Deleted provider workspace")
-	return subroutines.OK(), nil
+	return subroutines.StopWithRequeue(r.limiter.When(inst), "Waiting for workspace to be deleted"), nil
 }
 
 func (r *WorkspaceSubroutine) Finalizers(_ client.Object) []string {

@@ -69,7 +69,9 @@ func (s *WorkspaceTestSuite) SetupTest() {
 	s.operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin"
 	s.operatorCfg.KCP.Namespace = "platform-mesh-system"
 
-	s.testObj = NewWorkspaceSubroutine(s.clientMock, s.kcpHelperMock, &s.operatorCfg, "https://kcp.api.example.com")
+	var err error
+	s.testObj, err = NewWorkspaceSubroutine(s.clientMock, s.kcpHelperMock, &s.operatorCfg, "https://kcp.api.example.com")
+	s.Require().NoError(err)
 }
 
 func (s *WorkspaceTestSuite) TearDownTest() {
@@ -208,6 +210,7 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 		mutate          func(*providersv1alpha1.ManagedProvider)
 		setup           func()
 		wantErrContains string
+		wantRequeue     bool
 	}{
 		{
 			name: "cleanup on delete false",
@@ -246,19 +249,19 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 			wantErrContains: "failed to delete workspace",
 		},
 		{
-			name:   "delete not found ignored",
+			name:   "workspace already deleted (not found)",
 			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
 			setup: func() {
 				s.mockAdminSecret()
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				// client.IgnoreNotFound silences proper apimachinery NotFound errors
 				s.kcpClientMock.EXPECT().Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, "cowboys"))
 			},
+			wantRequeue: false,
 		},
 		{
-			name:   "happy path",
+			name:   "delete issued, requeue to wait for deletion",
 			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
 			setup: func() {
 				s.mockAdminSecret()
@@ -267,6 +270,7 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 				s.kcpClientMock.EXPECT().Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
 			},
+			wantRequeue: true,
 		},
 	}
 
@@ -290,7 +294,11 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 				s.Assert().True(result.IsContinue())
 			} else {
 				s.Require().NoError(err)
-				s.Assert().True(result.IsContinue())
+				if tc.wantRequeue {
+					s.Assert().True(result.IsStopWithRequeue())
+				} else {
+					s.Assert().True(result.IsContinue())
+				}
 			}
 		})
 	}

@@ -67,7 +67,9 @@ func (s *ProviderResourceTestSuite) SetupTest() {
 	s.operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin"
 	s.operatorCfg.KCP.Namespace = "platform-mesh-system"
 
-	s.testObj = NewProviderResourceSubroutine(s.clientMock, s.kcpHelperMock, &s.operatorCfg, "https://kcp.api.example.com")
+	var err error
+	s.testObj, err = NewProviderResourceSubroutine(s.clientMock, s.kcpHelperMock, &s.operatorCfg, "https://kcp.api.example.com")
+	s.Require().NoError(err, "creating ProviderResourceSubroutine should succeed")
 }
 
 func (s *ProviderResourceTestSuite) TearDownTest() {
@@ -288,7 +290,7 @@ func (s *ProviderResourceTestSuite) TestFinalize_DeleteNotFound_Ignored() {
 	s.Assert().True(result.IsContinue())
 }
 
-func (s *ProviderResourceTestSuite) TestFinalize_HappyPath() {
+func (s *ProviderResourceTestSuite) TestFinalize_StillExists() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
 	inst.Spec.CleanupOnDelete = true
@@ -303,6 +305,6 @@ func (s *ProviderResourceTestSuite) TestFinalize_HappyPath() {
 
 	result, err := s.testObj.Finalize(ctx, inst)
 
-	s.Require().NoError(err)
-	s.Assert().True(result.IsContinue())
+	s.Require().NoError(err, "Finalize should succeed")
+	s.Require().True(result.IsStopWithRequeue(), "Result should be StopWithRequeue, is %#v", result)
 }

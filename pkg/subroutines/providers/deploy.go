@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -59,11 +61,17 @@ var (
 // spec.portal. Subsequent reconciliations detect drift via the HelmRelease
 // Ready condition.
 type DeploySubroutine struct {
-	client client.Client
+	client  client.Client
+	limiter workqueue.TypedRateLimiter[*providersv1alpha1.ManagedProvider]
 }
 
-func NewDeploySubroutine(client client.Client) *DeploySubroutine {
-	return &DeploySubroutine{client: client}
+func NewDeploySubroutine(cl client.Client) (*DeploySubroutine, error) {
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[*providersv1alpha1.ManagedProvider](
+		ratelimiter.NewConfig())
+	if err != nil {
+		return nil, fmt.Errorf("creating RateLimiter: %v", err)
+	}
+	return &DeploySubroutine{client: cl, limiter: rl}, nil
 }
 
 func (r *DeploySubroutine) GetName() string {
@@ -195,6 +203,7 @@ func (r *DeploySubroutine) helmReleaseReady(ctx context.Context, namespace, name
 
 func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (subroutines.Result, error) {
 	inst := obj.(*providersv1alpha1.ManagedProvider)
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	inst.Status.Phase = "Deleting"
 
@@ -203,25 +212,40 @@ func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (sub
 		names = append(names, inst.Name+"-portal")
 	}
 
+	needsDeletion := false
 	for _, name := range names {
 		hr := &unstructured.Unstructured{}
 		hr.SetGroupVersionKind(deployHelmReleaseGVK)
 		hr.SetName(name)
 		hr.SetNamespace(inst.Namespace)
-		if err := client.IgnoreNotFound(r.client.Delete(ctx, hr)); err != nil {
-			return subroutines.OK(), gcerrors.Wrap(err, "failed to delete HelmRelease %s/%s", inst.Namespace, name)
+		if err := r.client.Delete(ctx, hr); err != nil {
+			if !kerrors.IsNotFound(err) {
+				return subroutines.OK(), gcerrors.Wrap(err, "failed to delete HelmRelease %s/%s", inst.Namespace, name)
+			}
+		} else {
+			needsDeletion = true
 		}
 
 		oci := &unstructured.Unstructured{}
 		oci.SetGroupVersionKind(deployOCIRepoGVK)
 		oci.SetName(name)
 		oci.SetNamespace(inst.Namespace)
-		if err := client.IgnoreNotFound(r.client.Delete(ctx, oci)); err != nil {
-			return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+		if err := r.client.Delete(ctx, oci); err != nil {
+			if !kerrors.IsNotFound(err) {
+				return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+			}
+		} else {
+			needsDeletion = true
 		}
 	}
 
-	return subroutines.OK(), nil
+	if !needsDeletion {
+		log.Info().Msg("Deleted all Flux resources")
+		r.limiter.Forget(inst)
+		return subroutines.OK(), nil
+	}
+
+	return subroutines.StopWithRequeue(r.limiter.When(inst), "Waiting for Flux resources to be deleted"), nil
 }
 
 func (r *DeploySubroutine) Finalizers(_ client.Object) []string {

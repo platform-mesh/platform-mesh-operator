@@ -36,7 +36,7 @@ import (
 
 const (
 	KubeconfigCopySubroutineName  = "KubeconfigCopySubroutine"
-	kubeconfigCopyFinalizer       = "providers.platform-mesh.io/kubeconfig-copy-finalizer"
+	kubeconfigCopyFinalizer       = "providers.platform-mesh.io/kubeconfig-secret"
 	kubeconfigCopyRequeueDuration = 10 * time.Second
 )
 
@@ -138,6 +138,8 @@ func (r *KubeconfigCopySubroutine) Finalize(ctx context.Context, obj client.Obje
 	if inst.Status.KubeconfigSecretRef == nil {
 		return subroutines.OK(), nil
 	}
+
+	inst.Status.Phase = "Deleting"
 
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

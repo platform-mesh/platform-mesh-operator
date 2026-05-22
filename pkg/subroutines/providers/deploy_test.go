@@ -59,7 +59,9 @@ func (s *DeployTestSuite) SetupTest() {
 	s.clientMock = new(mocks.Client)
 	s.clientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 
-	s.testObj = NewDeploySubroutine(s.clientMock)
+	var err error
+	s.testObj, err = NewDeploySubroutine(s.clientMock)
+	s.Require().NoError(err)
 }
 
 func (s *DeployTestSuite) TearDownTest() {
@@ -349,29 +351,24 @@ func (s *DeployTestSuite) TestProcess_ExistingResourcesUpdated() {
 
 // --- Finalize tests ---
 
-func (s *DeployTestSuite) TestFinalize_ControllerOnly() {
+func (s *DeployTestSuite) TestFinalize_ControllerOnly_Requeues() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
 
-	// HelmRelease delete
+	// HelmRelease and OCIRepository delete both succeed → still pending deletion → requeue
 	s.clientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
 		Return(nil).
-		Once()
-	// OCIRepository delete
-	s.clientMock.EXPECT().
-		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		Return(nil).
-		Once()
+		Times(2)
 
 	result, err := s.testObj.Finalize(ctx, inst)
 
 	s.Require().NoError(err)
-	s.Assert().True(result.IsContinue())
+	s.Assert().True(result.IsStopWithRequeue())
 	s.clientMock.AssertExpectations(s.T())
 }
 
-func (s *DeployTestSuite) TestFinalize_WithPortal() {
+func (s *DeployTestSuite) TestFinalize_WithPortal_Requeues() {
 	ctx := s.newCtx()
 	inst := s.newManagedProviderWithPortal()
 
@@ -384,22 +381,19 @@ func (s *DeployTestSuite) TestFinalize_WithPortal() {
 	result, err := s.testObj.Finalize(ctx, inst)
 
 	s.Require().NoError(err)
-	s.Assert().True(result.IsContinue())
+	s.Assert().True(result.IsStopWithRequeue())
 	s.clientMock.AssertExpectations(s.T())
 }
 
-func (s *DeployTestSuite) TestFinalize_NotFound_Ignored() {
+func (s *DeployTestSuite) TestFinalize_AllAlreadyGone() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
 
+	// Both resources already gone → allGone = true → OK
 	s.clientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, "cowboys-controller")).
-		Once()
-	s.clientMock.EXPECT().
-		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "cowboys-controller")).
-		Once()
+		Times(2)
 
 	result, err := s.testObj.Finalize(ctx, inst)
 

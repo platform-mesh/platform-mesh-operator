@@ -18,12 +18,16 @@ package providers
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
@@ -31,7 +35,10 @@ import (
 	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
-const ProviderResourceSubroutineName = "ProviderResourceSubroutine"
+const (
+	ProviderResourceSubroutineName = "ProviderResourceSubroutine"
+	providerResourceFinalizer      = "providers.platform-mesh.io/provider-resource"
+)
 
 // ProviderResourceSubroutine creates a Provider resource inside the provider
 // workspace, triggering the Provider controller to bootstrap SA, RBAC, and the
@@ -41,15 +48,23 @@ type ProviderResourceSubroutine struct {
 	kcpHelper pmsubs.KcpHelper
 	cfg       *config.OperatorConfig
 	kcpUrl    string
+
+	limiter workqueue.TypedRateLimiter[*providersv1alpha1.ManagedProvider]
 }
 
-func NewProviderResourceSubroutine(cl client.Client, kcpHelper pmsubs.KcpHelper, cfg *config.OperatorConfig, kcpUrl string) *ProviderResourceSubroutine {
+func NewProviderResourceSubroutine(cl client.Client, kcpHelper pmsubs.KcpHelper, cfg *config.OperatorConfig, kcpUrl string) (*ProviderResourceSubroutine, error) {
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[*providersv1alpha1.ManagedProvider](
+		ratelimiter.NewConfig())
+	if err != nil {
+		return nil, fmt.Errorf("creating RateLimiter: %v", err)
+	}
 	return &ProviderResourceSubroutine{
 		client:    cl,
 		kcpHelper: kcpHelper,
 		cfg:       cfg,
 		kcpUrl:    kcpUrl,
-	}
+		limiter:   rl,
+	}, nil
 }
 
 func (r *ProviderResourceSubroutine) GetName() string {
@@ -107,6 +122,8 @@ func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Ob
 		return subroutines.OK(), nil
 	}
 
+	inst.Status.Phase = "Deleting"
+
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	wsPath := workspacePath(inst)
 
@@ -122,14 +139,18 @@ func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Ob
 
 	provider := &providersv1alpha1.Provider{}
 	provider.Name = inst.Name
-	if err := client.IgnoreNotFound(scopedKubeClient.Delete(ctx, provider)); err != nil {
+	if err = scopedKubeClient.Delete(ctx, provider); err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().Str("workspace", wsPath).Msg("Deleted provider")
+			r.limiter.Forget(inst)
+			return subroutines.OK(), nil
+		}
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to delete provider %s", provider.Name)
 	}
 
-	log.Info().Str("workspace", wsPath).Msg("Deleted provider")
-	return subroutines.OK(), nil
+	return subroutines.StopWithRequeue(r.limiter.When(inst), "Waiting for Provider to be deleted"), nil
 }
 
 func (r *ProviderResourceSubroutine) Finalizers(_ client.Object) []string {
-	return []string{}
+	return []string{providerResourceFinalizer}
 }

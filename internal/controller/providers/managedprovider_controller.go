@@ -87,10 +87,18 @@ func NewManagedProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.Ope
 		subs = append(subs, pmsubs.NewWaitPlatformMeshSubroutine(localCl))
 	}
 	if operatorCfg.Subroutines.ManagedProvider.Workspace.Enabled {
-		subs = append(subs, pmsubs.NewWorkspaceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl))
+		sub, err := pmsubs.NewWorkspaceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error creating WorkspaceSubroutine: %v", err)
+		}
+		subs = append(subs, sub)
 	}
 	if operatorCfg.Subroutines.ManagedProvider.ProviderResource.Enabled {
-		subs = append(subs, pmsubs.NewProviderResourceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl))
+		sub, err := pmsubs.NewProviderResourceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error creating ProviderResourceSubroutine: %v", err)
+		}
+		subs = append(subs, sub)
 	}
 	if operatorCfg.Subroutines.ManagedProvider.WaitProvider.Enabled {
 		subs = append(subs, pmsubs.NewWaitProviderSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl))
@@ -99,12 +107,16 @@ func NewManagedProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.Ope
 		subs = append(subs, pmsubs.NewKubeconfigCopySubroutine(localCl, kcpHelper, operatorCfg, kcpUrl))
 	}
 	if operatorCfg.Subroutines.ManagedProvider.Deploy.Enabled {
-		subs = append(subs, pmsubs.NewDeploySubroutine(localCl))
+		sub, err := pmsubs.NewDeploySubroutine(localCl)
+		if err != nil {
+			return nil, fmt.Errorf("error creating DeploySubroutine: %v", err)
+		}
+		subs = append(subs, sub)
 	}
 
 	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
 	if err != nil {
-		return nil, fmt.Errorf("creating rate limiter: %w", err)
+		return nil, fmt.Errorf("error creating rate limiter: %w", err)
 	}
 
 	lc := lifecycle.New(mgr, ManagedProviderControllerName, func() client.Object {
