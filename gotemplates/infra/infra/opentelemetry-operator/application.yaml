@@ -1,0 +1,53 @@
+{{- if .opentelemetryOperator.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .opentelemetryOperator.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ .opentelemetryOperator.syncWave | default 0 }}"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  {{- if .opentelemetryOperator.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml .opentelemetryOperator.ignoreDifferences | nindent 4 }}
+  {{- end }}
+  source:
+    {{- if .opentelemetryOperator.repoURL }}
+    repoURL: {{ .opentelemetryOperator.repoURL }}
+    {{- else }}
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    {{- end }}
+    chart: opentelemetry-operator
+    {{- if .opentelemetryOperator.targetRevision }}
+    targetRevision: "{{ .opentelemetryOperator.targetRevision }}"
+    {{- else }}
+    targetRevision: "*"
+    {{- end }}
+    {{- if .opentelemetryOperator.values }}
+    helm:
+      values: |
+{{ toYaml .opentelemetryOperator.values | nindent 8 }}
+    {{- end }}
+  destination:
+    server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ .opentelemetryOperator.targetNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    {{- if .opentelemetryOperator.syncOptions }}
+    syncOptions:
+{{ toYaml .opentelemetryOperator.syncOptions | nindent 4 }}
+    {{- else }}
+    syncOptions:
+    - CreateNamespace=true
+    {{- if .opentelemetryOperator.ignoreDifferences }}
+    - RespectIgnoreDifferences=true
+    {{- end }}
+    {{- end }}
+{{- end }}
