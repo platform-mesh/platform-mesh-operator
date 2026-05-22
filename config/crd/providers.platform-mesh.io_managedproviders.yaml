@@ -128,7 +128,12 @@ spec:
                 description: |-
                   workspacePath is the full kcp logical path for the provider workspace.
                   Defaults to root:providers:<name> when omitted.
+                  When set, must be of the form root:providers:<name>
                 type: string
+                x-kubernetes-validations:
+                - message: workspacePath must be of the form root:providers:<Workspace
+                    name>
+                  rule: self == '' || self.matches('^root:providers:[a-z][a-z0-9]*$')
             required:
             - controller
             - platformMeshRef

@@ -29,7 +29,10 @@ import (
 type ManagedProviderSpec struct {
 	// workspacePath is the full kcp logical path for the provider workspace.
 	// Defaults to root:providers:<name> when omitted.
+	// When set, must be of the form root:providers:<name>
+	//
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == '' || self.matches('^root:providers:[a-z][a-z0-9]*$')",message="workspacePath must be of the form root:providers:<Workspace name>"
 	WorkspacePath string `json:"workspacePath,omitempty"`
 
 	// platformMeshRef is a reference to the PlatformMesh object.
