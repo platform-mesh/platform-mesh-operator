@@ -56,7 +56,7 @@ func writeProviderPresetKubeconfigToSecret(
 	if err != nil {
 		return err
 	}
-	if err := applyPresetManifests(ctx, kcpHelper, cfg, rendered.ByWorkspace); err != nil {
+	if err := applyPresetManifests(ctx, kcpHelper, cfg, rendered.ByWorkspace, presetName, pc.Secret); err != nil {
 		return err
 	}
 
@@ -179,7 +179,7 @@ func scopedProviderHostPort(operatorCfg config.OperatorConfig, instance *corev1a
 	return fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort), nil
 }
 
-func applyPresetManifests(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Config, manifestsByWorkspace []rbacpresets.WorkspaceManifests) error {
+func applyPresetManifests(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Config, manifestsByWorkspace []rbacpresets.WorkspaceManifests, presetName, providerSecret string) error {
 	for _, workspaceManifests := range manifestsByWorkspace {
 		workspace := strings.TrimSpace(workspaceManifests.Workspace)
 		if workspace == "" {
@@ -193,7 +193,7 @@ func applyPresetManifests(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Co
 			return errors.Wrap(err, "ensure namespace %s for preset workspace %s", defaultScopedSANamespace, workspace)
 		}
 		for i := range workspaceManifests.Manifests {
-			if err := createOrUpdatePresetManifest(ctx, kcpClient, &workspaceManifests.Manifests[i]); err != nil {
+			if err := createOrUpdatePresetManifest(ctx, kcpClient, &workspaceManifests.Manifests[i], presetName, providerSecret); err != nil {
 				return errors.Wrap(err, "apply preset manifest in workspace %s", workspace)
 			}
 		}
@@ -201,7 +201,7 @@ func applyPresetManifests(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Co
 	return nil
 }
 
-func createOrUpdatePresetManifest(ctx context.Context, kcpClient client.Client, manifest *unstructured.Unstructured) error {
+func createOrUpdatePresetManifest(ctx context.Context, kcpClient client.Client, manifest *unstructured.Unstructured, presetName, providerSecret string) error {
 	if manifest == nil || manifest.Object == nil {
 		return nil
 	}
@@ -209,6 +209,7 @@ func createOrUpdatePresetManifest(ctx context.Context, kcpClient client.Client, 
 	if desired.GetName() == "" {
 		return fmt.Errorf("manifest %s has empty name", desired.GetKind())
 	}
+	labelPresetManifest(desired, presetName, providerSecret)
 	defaultPresetManifestNamespace(desired)
 
 	current := &unstructured.Unstructured{}
@@ -222,6 +223,17 @@ func createOrUpdatePresetManifest(ctx context.Context, kcpClient client.Client, 
 	}
 	desired.SetResourceVersion(current.GetResourceVersion())
 	return kcpClient.Update(ctx, desired)
+}
+
+func labelPresetManifest(obj *unstructured.Unstructured, presetName, providerSecret string) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[rbacpresets.LabelManagedBy] = rbacpresets.ManagedByPlatformMesh
+	labels[rbacpresets.LabelPreset] = presetName
+	labels[rbacpresets.LabelProviderSecret] = providerSecret
+	obj.SetLabels(labels)
 }
 
 func defaultPresetManifestNamespace(obj *unstructured.Unstructured) {

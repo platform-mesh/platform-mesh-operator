@@ -163,8 +163,7 @@ func TestApplyPresetManifestsCreatesObjectsInAnnotatedWorkspaces(t *testing.T) {
 	scheme := presetTestScheme(t)
 	pmSystemClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	rootClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	rendered, err := rbacpresets.RenderPreset("test", []byte(`apiVersion: rbacpresets.platform-mesh.io/v1alpha1
-kind: ProviderRBACPreset
+	rendered, err := rbacpresets.RenderPreset("test", []byte(`kind: ProviderRBACPreset
 metadata:
   name: test
 spec:
@@ -202,13 +201,19 @@ roleRef:
 		"root:platform-mesh-system": pmSystemClient,
 		"root":                      rootClient,
 	}}
-	err = applyPresetManifests(context.Background(), helper, &rest.Config{}, rendered.ByWorkspace)
+	err = applyPresetManifests(context.Background(), helper, &rest.Config{}, rendered.ByWorkspace, "test", "test-kubeconfig")
 	require.NoError(t, err)
 
 	var sa corev1.ServiceAccount
 	require.NoError(t, pmSystemClient.Get(context.Background(), client.ObjectKey{Name: "platform-mesh-provider-test", Namespace: "default"}, &sa))
+	require.Equal(t, rbacpresets.ManagedByPlatformMesh, sa.Labels[rbacpresets.LabelManagedBy])
+	require.Equal(t, "test", sa.Labels[rbacpresets.LabelPreset])
+	require.Equal(t, "test-kubeconfig", sa.Labels[rbacpresets.LabelProviderSecret])
 	var crb rbacv1.ClusterRoleBinding
 	require.NoError(t, rootClient.Get(context.Background(), client.ObjectKey{Name: "platform-mesh-provider-test-extra"}, &crb))
+	require.Equal(t, rbacpresets.ManagedByPlatformMesh, crb.Labels[rbacpresets.LabelManagedBy])
+	require.Equal(t, "test", crb.Labels[rbacpresets.LabelPreset])
+	require.Equal(t, "test-kubeconfig", crb.Labels[rbacpresets.LabelProviderSecret])
 	require.Empty(t, crb.GetAnnotations())
 }
 
@@ -312,12 +317,15 @@ func TestCreateOrUpdatePresetManifestUpdatesExistingObjects(t *testing.T) {
 		},
 	}}
 
-	err := createOrUpdatePresetManifest(context.Background(), kcpClient, obj)
+	err := createOrUpdatePresetManifest(context.Background(), kcpClient, obj, "test", "test-kubeconfig")
 	require.NoError(t, err)
 
 	var role rbacv1.ClusterRole
 	require.NoError(t, kcpClient.Get(context.Background(), client.ObjectKey{Name: "preset-role"}, &role))
 	require.Equal(t, []string{"list"}, role.Rules[0].Verbs)
+	require.Equal(t, rbacpresets.ManagedByPlatformMesh, role.Labels[rbacpresets.LabelManagedBy])
+	require.Equal(t, "test", role.Labels[rbacpresets.LabelPreset])
+	require.Equal(t, "test-kubeconfig", role.Labels[rbacpresets.LabelProviderSecret])
 }
 
 func TestCreateOrUpdatePresetManifestIgnoresAlreadyExistingNamespace(t *testing.T) {

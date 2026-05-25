@@ -1,5 +1,4 @@
 # E2E-only preset fixture (kind tests). Not shipped in pkg/rbacpresets/providers.
-apiVersion: rbacpresets.platform-mesh.io/v1alpha1
 kind: ProviderRBACPreset
 metadata:
   name: e2e-raw-path

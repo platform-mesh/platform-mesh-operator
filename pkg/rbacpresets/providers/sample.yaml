@@ -1,6 +1,5 @@
 # Minimal reference preset: workspace-cluster server URL, SA + ClusterRole + ClusterRoleBinding.
 # Copy and extend for operator-specific presets
-apiVersion: rbacpresets.platform-mesh.io/v1alpha1
 kind: ProviderRBACPreset
 metadata:
   name: sample
