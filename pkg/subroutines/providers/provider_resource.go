@@ -77,7 +77,7 @@ func (r *ProviderResourceSubroutine) Process(ctx context.Context, obj client.Obj
 
 	wsPath := workspacePath(inst)
 
-	restCfg, err := pmsubs.BuildKcpAdminConfig(r.client, &r.cfg.KCP, r.kcpUrl)
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}
@@ -127,7 +127,7 @@ func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Ob
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	wsPath := workspacePath(inst)
 
-	restCfg, err := pmsubs.BuildKcpAdminConfig(r.client, &r.cfg.KCP, r.kcpUrl)
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}

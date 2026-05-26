@@ -361,7 +361,7 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 }
 
 func (s *KindTestSuite) kcpClientForWorkspaceWithScheme(ctx context.Context, scheme *runtime.Scheme, workspacePath string) client.Client {
-	kcpAdminCfg, err := subroutines.BuildKcpAdminConfig(s.client, &defaultKcpOperatorConfig, defaultKcpOperatorConfig.Url)
+	kcpAdminCfg, err := subroutines.BuildKubeconfigFromConfig(s.client, &defaultKcpOperatorConfig, defaultKcpOperatorConfig.Url)
 	s.Require().NoError(err, "getting kcp admin rest config should succeed")
 	kcpAdminCfg.Host += "/clusters/" + workspacePath
 

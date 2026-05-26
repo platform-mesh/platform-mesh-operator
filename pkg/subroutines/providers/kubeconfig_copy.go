@@ -69,7 +69,7 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 
 	wsPath := workspacePath(inst)
 
-	restCfg, err := pmsubs.BuildKcpAdminConfig(r.client, &r.operatorCfg.KCP, r.kcpUrl)
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.operatorCfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}

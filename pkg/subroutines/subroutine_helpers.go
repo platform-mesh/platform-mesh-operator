@@ -464,16 +464,12 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 
 func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	return buildKubeconfigFromConfig(client, &operatorCfg.KCP, kcpUrl)
+	return BuildKubeconfigFromConfig(client, &operatorCfg.KCP, kcpUrl)
 }
 
-// BuildKcpAdminConfig builds a *rest.Config for the kcp admin from the cluster-admin
+// BuildKubeconfigFromConfig builds a *rest.Config for the kcp admin from the cluster-admin
 // certificate Secret. It is the exported equivalent of buildKubeconfigFromConfig.
-func BuildKcpAdminConfig(client client.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
-	return buildKubeconfigFromConfig(client, kcpConfig, kcpUrl)
-}
-
-func buildKubeconfigFromConfig(client client.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
+func BuildKubeconfigFromConfig(client client.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := kcpConfig.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, kcpConfig.Namespace)
 	if err != nil {

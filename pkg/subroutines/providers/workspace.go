@@ -88,7 +88,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, obj client.Object) (s
 
 	log.Debug().Str("parentPath", parentPath).Str("workspaceName", workspaceName).Msg("Ensuring provider workspace")
 
-	restCfg, err := pmsubs.BuildKcpAdminConfig(r.client, &r.cfg.KCP, r.kcpUrl)
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}
@@ -148,7 +148,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, obj client.Object) (
 		return subroutines.OK(), err
 	}
 
-	restCfg, err := pmsubs.BuildKcpAdminConfig(r.client, &r.cfg.KCP, r.kcpUrl)
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}

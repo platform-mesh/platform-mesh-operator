@@ -266,7 +266,7 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 
 	var kcpAdminCfg *rest.Config
 	s.Require().Eventually(func() bool {
-		kcpAdminCfg, err = subroutines.BuildKcpAdminConfig(runtimeClient, &appConfig.KCP, appConfig.KCP.Url)
+		kcpAdminCfg, err = subroutines.BuildKubeconfigFromConfig(runtimeClient, &appConfig.KCP, appConfig.KCP.Url)
 		return err == nil
 	}, 240*time.Second, 5*time.Second, "waiting for kcp REST config")
 

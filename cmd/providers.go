@@ -57,7 +57,7 @@ func buildKcpAdminConfigForWorkspace(restCfg *rest.Config, wsPath string) (*rest
 		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort)
 	}
 	kcpUrl += fmt.Sprintf("/clusters/%s", wsPath)
-	return pmsubs.BuildKcpAdminConfig(c, &providersCfg.KCP, kcpUrl)
+	return pmsubs.BuildKubeconfigFromConfig(c, &providersCfg.KCP, kcpUrl)
 }
 
 func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore

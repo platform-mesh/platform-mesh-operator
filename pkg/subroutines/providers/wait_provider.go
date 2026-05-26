@@ -66,7 +66,7 @@ func (r *WaitProviderSubroutine) Process(ctx context.Context, obj client.Object)
 
 	wsPath := workspacePath(inst)
 
-	restCfg, err := pmsubs.BuildKcpAdminConfig(r.client, &r.cfg.KCP, r.kcpUrl)
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}
