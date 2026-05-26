@@ -14,8 +14,6 @@ metadata:
   namespace: platform-mesh-system
 spec:
   kcp:
-    adminSecretRef:
-      name: platform-mesh-kcp-internal-admin-kubeconfig
     providerConnections:
     - endpointSliceName: core.platform-mesh.io
       path: root:platform-mesh-system
@@ -611,7 +609,7 @@ The KcpSetup subroutine handles initialization of the KCP environment:
 
 The ProviderSecret subroutine manages kubeconfig secrets for provider connections:
 
-- **Admin auth mode** (`adminAuth: true`): Reads the admin kubeconfig from `kcp.adminSecretRef`, resolves the endpoint URL from the APIExportEndpointSlice, appends the root CA, and writes the kubeconfig secret
+- **Admin auth mode** (`adminAuth: true`): Reads the admin kubeconfig from the `kubeconfig-kcp-admin` secret in the configured KCP namespace, resolves the endpoint URL from the APIExportEndpointSlice, appends the root CA, and writes the kubeconfig secret
 - **Scoped auth mode** (`adminAuth: false`): Creates a ServiceAccount, ClusterRole, ClusterRoleBinding in the target workspace, generates a scoped kubeconfig with a bound token
 
 ### FeatureToggles
