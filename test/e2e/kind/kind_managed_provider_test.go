@@ -79,8 +79,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 
 		var provider providersv1alpha1.Provider
 		err = providerScopedKcpAdminClient.Get(ctx, types.NamespacedName{
-			Namespace: "default",
-			Name:      "my-managed-provider",
+			Name: "my-managed-provider",
 		}, &provider)
 		s.Require().NoError(err, "getting Provider with scopedKcpAdminClient should succeed")
 		s.Require().Equal("Ready", provider.Status.Phase, "Provider on kcp side should have reached Phase=Ready")
