@@ -175,7 +175,7 @@ func NewProvidersConfig() ProvidersConfig {
 			Namespace:              "platform-mesh-system",
 			RootShardName:          "root",
 			FrontProxyName:         "frontproxy",
-			FrontProxyPort:         "6443",
+			FrontProxyPort:         "8443",
 			ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
 		},
 		ProvidersAPIExportEndpointSliceName:      "providers.platform-mesh.io",
