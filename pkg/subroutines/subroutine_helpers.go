@@ -26,6 +26,7 @@ import (
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
+	providers1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
 	"github.com/rs/zerolog/log"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -78,6 +79,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	utilruntime.Must(rbacv1.AddToScheme(scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme))
+	utilruntime.Must(providers1alpha1.AddToScheme(scheme))
 
 	cl, err := client.New(config, client.Options{
 		Scheme: scheme,
@@ -462,27 +464,29 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 
 func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
+	return BuildKubeconfigFromConfig(client, &operatorCfg.KCP, kcpUrl)
 }
 
-func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
-	secretName := operatorCfg.KCP.ClusterAdminSecretName
-	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
+// BuildKubeconfigFromConfig builds a *rest.Config for the kcp admin from the cluster-admin
+// certificate Secret. It is the exported equivalent of buildKubeconfigFromConfig.
+func BuildKubeconfigFromConfig(client client.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
+	secretName := kcpConfig.ClusterAdminSecretName
+	secret, err := GetSecret(client, secretName, kcpConfig.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+		return nil, fmt.Errorf("getting secret %s/%s: %w", kcpConfig.Namespace, secretName, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/%s is nil", operatorCfg.KCP.Namespace, secretName)
+		return nil, fmt.Errorf("secret %s/%s is nil", kcpConfig.Namespace, secretName)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/%s has no Data", operatorCfg.KCP.Namespace, secretName)
+		return nil, fmt.Errorf("secret %s/%s has no Data", kcpConfig.Namespace, secretName)
 	}
 
 	// Try kubeconfig key first (Opaque secret with pre-built kubeconfig)
 	if kubeconfigData, ok := secret.Data["kubeconfig"]; ok && len(kubeconfigData) > 0 {
 		cfg, err := clientcmd.Load(kubeconfigData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", operatorCfg.KCP.Namespace, secretName, err)
+			return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", kcpConfig.Namespace, secretName, err)
 		}
 		// Override the server URL in all clusters with the provided kcpUrl
 		for _, cluster := range cfg.Clusters {
@@ -494,15 +498,15 @@ func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.Operato
 	// Fall back to cert-based approach (kubernetes.io/tls secret with ca.crt, tls.crt, tls.key)
 	caData, ok := secret.Data["ca.crt"]
 	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing both \"kubeconfig\" and \"ca.crt\" keys", operatorCfg.KCP.Namespace, secretName)
+		return nil, fmt.Errorf("secret %s/%s missing both \"kubeconfig\" and \"ca.crt\" keys", kcpConfig.Namespace, secretName)
 	}
 	tlsCrt, ok := secret.Data["tls.crt"]
 	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.crt\"", operatorCfg.KCP.Namespace, secretName)
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.crt\"", kcpConfig.Namespace, secretName)
 	}
 	tlsKey, ok := secret.Data["tls.key"]
 	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.key\"", operatorCfg.KCP.Namespace, secretName)
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.key\"", kcpConfig.Namespace, secretName)
 	}
 
 	cfg := clientcmdapi.NewConfig()
