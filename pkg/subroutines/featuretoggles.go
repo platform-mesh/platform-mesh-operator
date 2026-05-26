@@ -116,8 +116,6 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 			log.Info().Msg("Enabled 'Terminal controller manager' feature")
 		case "feature-disable-email-verification":
 			log.Info().Msg("Enabled 'disable-email-verification' feature")
-		case "feature-enable-provider-manager":
-			log.Info().Msg("Enabled 'Provider manager' feature")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
