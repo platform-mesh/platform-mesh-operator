@@ -15,16 +15,6 @@ var (
 		[]string{"controller", "result"},
 	)
 
-	// ReconcileDuration observes how long each reconcile loop takes, labelled by controller.
-	ReconcileDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "platform_mesh_operator_reconcile_duration_seconds",
-			Help:    "Duration of reconcile calls in seconds by controller.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"controller"},
-	)
-
 	// SubroutineTotal counts Process calls per subroutine and result (success/error).
 	SubroutineTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -48,7 +38,6 @@ var (
 func init() {
 	ctrlmetrics.Registry.MustRegister(
 		ReconcileTotal,
-		ReconcileDuration,
 		SubroutineTotal,
 		SubroutineDuration,
 	)

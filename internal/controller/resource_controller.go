@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/filter"
@@ -60,14 +59,12 @@ type ResourceReconciler struct {
 }
 
 func (r *ResourceReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
-	start := time.Now()
 	result, err := r.lifecycle.Reconcile(ctx, req)
 	labelResult := "success"
 	if err != nil {
 		labelResult = "error"
 	}
 	metrics.ReconcileTotal.WithLabelValues(resourceReconcilerName, labelResult).Inc()
-	metrics.ReconcileDuration.WithLabelValues(resourceReconcilerName).Observe(time.Since(start).Seconds())
 	return result, err
 }
 

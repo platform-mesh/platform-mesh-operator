@@ -29,14 +29,6 @@ func (s *MetricsTestSuite) TestReconcileTotal() {
 	s.Require().Equal(before+1, testutil.ToFloat64(metrics.ReconcileTotal.WithLabelValues("ResourceReconciler", "error")))
 }
 
-// TestReconcileDuration verifies that the ReconcileDuration histogram records
-// observations per controller label.
-func (s *MetricsTestSuite) TestReconcileDuration() {
-	before := testutil.CollectAndCount(metrics.ReconcileDuration)
-	metrics.ReconcileDuration.WithLabelValues("PlatformMeshReconciler").Observe(0.05)
-	s.Assert().Greater(testutil.CollectAndCount(metrics.ReconcileDuration), before)
-}
-
 // TestSubroutineTotal verifies that the SubroutineTotal counter increments
 // correctly for each subroutine/result label combination.
 func (s *MetricsTestSuite) TestSubroutineTotal() {

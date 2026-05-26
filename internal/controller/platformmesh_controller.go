@@ -62,14 +62,12 @@ type PlatformMeshReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 func (r *PlatformMeshReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
-	start := time.Now()
 	result, err := r.lifecycle.Reconcile(ctx, req)
 	labelResult := "success"
 	if err != nil {
 		labelResult = "error"
 	}
 	metrics.ReconcileTotal.WithLabelValues(pmReconcilerName, labelResult).Inc()
-	metrics.ReconcileDuration.WithLabelValues(pmReconcilerName).Observe(time.Since(start).Seconds())
 	return result, err
 }
 
