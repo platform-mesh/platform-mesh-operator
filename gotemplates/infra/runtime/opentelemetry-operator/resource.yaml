@@ -18,14 +18,10 @@ spec:
   resource:
     byReference:
       referencePath:
-      {{ range .ocm.referencePath }}
+      {{- range .ocm.referencePath }}
         - name: {{ .name }}
-      {{ end }}
-{{- if .opentelemetryOperator.absoluteReferencePath }}
-      {{ range .opentelemetryOperator.absoluteReferencePath }}
-        - name: {{ .name }}
-      {{ end }}
-{{- end }}
+      {{- end }}
+        - name: {{ .opentelemetryOperator.ocmComponentName }}
       resource:
         name: {{ .opentelemetryOperator.ocmResourceName }}
 {{- end }}

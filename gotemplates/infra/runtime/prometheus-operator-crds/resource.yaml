@@ -18,14 +18,10 @@ spec:
   resource:
     byReference:
       referencePath:
-      {{ range .ocm.referencePath }}
+      {{- range .ocm.referencePath }}
         - name: {{ .name }}
-      {{ end }}
-{{- if .prometheusOperatorCRDs.absoluteReferencePath }}
-      {{ range .prometheusOperatorCRDs.absoluteReferencePath }}
-        - name: {{ .name }}
-      {{ end }}
-{{- end }}
+      {{- end }}
+        - name: {{ .prometheusOperatorCRDs.ocmComponentName }}
       resource:
         name: {{ .prometheusOperatorCRDs.ocmResourceName }}
 {{- end }}
