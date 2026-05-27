@@ -165,8 +165,8 @@ github.com/pingcap/errors v0.11.4 h1:lFuQV/oaUMGcD2tqt+01ROSmJs75VG1ToEOkZIZ4nE4
 github.com/pingcap/errors v0.11.4/go.mod h1:Oi8TUi2kEtXXLMJk9l1cGmz20kV3TaQ0usTwv5KuLY8=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/platform-mesh/golang-commons v0.17.0 h1:v3TAw+loKMQsEiQ+9cc/IJNFe0ALTvxdKWs8G1uGKro=
-github.com/platform-mesh/golang-commons v0.17.0/go.mod h1:VdE01kZ5nGekAASRxRg6fSvfT1LW+KrsVzoLNHsT5wA=
+github.com/platform-mesh/golang-commons v0.17.1 h1:OGaIHayZZXPnH0kGzOe2HtlwS+iS6xcR4N3CA7LhAH0=
+github.com/platform-mesh/golang-commons v0.17.1/go.mod h1:PtkzoD405/q5eiuc/Em9VfVwxvhre+2knXTasdSK9Wk=
 github.com/platform-mesh/subroutines v0.4.3 h1:b/Op25a+N2x9H09Gmzyjl7/8HkHiJ5YEzCur95eU37c=
 github.com/platform-mesh/subroutines v0.4.3/go.mod h1:z8nW91Y/vuhaE1gNC6Tt3ZDlPX0czS1aUV/J7dnYhaM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -263,8 +263,8 @@ google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 h1:
 google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478/go.mod h1:C6ADNqOxbgdUUeRTU+LCHDPB9ttAMCTff6auwCVa4uc=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260420184626-e10c466a9529 h1:XF8+t6QQiS0o9ArVan/HW8Q7cycNPGsJf6GA2nXxYAg=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260420184626-e10c466a9529/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
-google.golang.org/grpc v1.81.0 h1:W3G9N3KQf3BU+YuCtGKJk0CmxQNbAISICD/9AORxLIw=
-google.golang.org/grpc v1.81.0/go.mod h1:xGH9GfzOyMTGIOXBJmXt+BX/V0kcdQbdcuwQ/zNw42I=
+google.golang.org/grpc v1.81.1 h1:VnnIIZ88UzOOKLukQi+ImGz8O1Wdp8nAGGnvOfEIWQQ=
+google.golang.org/grpc v1.81.1/go.mod h1:xGH9GfzOyMTGIOXBJmXt+BX/V0kcdQbdcuwQ/zNw42I=
 google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af h1:+5/Sw3GsDNlEmu7TfklWKPdQ0Ykja5VEmq2i817+jbI=
 google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
