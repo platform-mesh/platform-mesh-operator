@@ -29,10 +29,9 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:          "root:platform-mesh-system",
-		Secret:        "rebac-authz-webhook-kubeconfig",
-		APIExportName: ptr.To("core.platform-mesh.io"),
-		AdminAuth:     ptr.To(false),
+		Path:      "root:platform-mesh-system",
+		Secret:    "rebac-authz-webhook-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
 		Path:      "root:platform-mesh-system",
