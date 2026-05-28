@@ -4,7 +4,7 @@ go 1.26.1
 
 replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260311125053-bd5709c8d5dd
 
-replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.0
+replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.1
 
 replace (
 	k8s.io/api => k8s.io/api v0.35.4
