@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
@@ -18,6 +19,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 )
 
 const FeatureToggleSubroutineName = "FeatureToggleSubroutine"
@@ -62,7 +64,16 @@ func (r *FeatureToggleSubroutine) Finalizers(instance client.Object) []string { 
 	return []string{}
 }
 
-func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
+func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutines.Result, err error) {
+	start := time.Now()
+	defer func() {
+		labelResult := "success"
+		if err != nil {
+			labelResult = "error"
+		}
+		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
+		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
+	}()
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 

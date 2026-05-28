@@ -3,6 +3,7 @@ package subroutines
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
@@ -14,6 +15,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 )
 
 func NewWaitSubroutine(
@@ -52,7 +54,16 @@ func (r *WaitSubroutine) Finalize(
 
 func (r *WaitSubroutine) Process(
 	ctx context.Context, runtimeObj client.Object,
-) (subroutines.Result, error) {
+) (res subroutines.Result, err error) {
+	start := time.Now()
+	defer func() {
+		labelResult := "success"
+		if err != nil {
+			labelResult = "error"
+		}
+		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
+		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
+	}()
 	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
