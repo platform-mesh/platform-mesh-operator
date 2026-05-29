@@ -36,10 +36,6 @@ spec:
                                   "entity": "Account",
                                   "scope": "Cluster",
                                   "version": "v1alpha1",
-                                  "readyCondition": {
-                                    "jsonPathExpression": "status.conditions[?(@.type=='Ready' && @.status=='True')]",
-                                    "property": ["status.conditions.status", "status.conditions.type"]
-                                  },
                                   "ui": {
                                       "logoUrl": "https://platform-mesh.io/main/pm_logo.svg",
                                       "listView": {
@@ -49,12 +45,12 @@ spec:
                                                   "property": "metadata.name"
                                               },
                                               {
-                                                  "label": "Display Name",
-                                                  "property": "spec.displayName"
+                                                  "label": "Namespace",
+                                                  "property": "metadata.namespace"
                                               },
                                               {
-                                                  "label": "Type",
-                                                  "property": "spec.type"
+                                                  "label": "Description",
+                                                  "property": "spec.description"
                                               }
                                           ]
                                       }
