@@ -37,6 +37,7 @@ import (
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
 )
@@ -58,7 +59,13 @@ type ResourceReconciler struct {
 }
 
 func (r *ResourceReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req)
+	result, err := r.lifecycle.Reconcile(ctx, req)
+	labelResult := "success"
+	if err != nil {
+		labelResult = "error"
+	}
+	metrics.ReconcileTotal.WithLabelValues(resourceReconcilerName, labelResult).Inc()
+	return result, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

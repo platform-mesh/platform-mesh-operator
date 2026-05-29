@@ -4,7 +4,7 @@ go 1.26.1
 
 replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260311125053-bd5709c8d5dd
 
-replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.0
+replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.1
 
 replace (
 	k8s.io/api => k8s.io/api v0.35.4
@@ -26,6 +26,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/platform-mesh/golang-commons v0.17.1
 	github.com/platform-mesh/subroutines v0.4.3
+	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -88,6 +89,7 @@ require (
 	github.com/kcp-dev/apimachinery/v2 v2.31.1 // indirect
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
@@ -98,7 +100,6 @@ require (
 	github.com/onsi/gomega v1.39.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.2 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect

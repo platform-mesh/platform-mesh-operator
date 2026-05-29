@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
@@ -19,6 +20,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -68,7 +70,16 @@ func (r *KcpsetupSubroutine) Finalizers(_ client.Object) []string { // coverage-
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
-func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutines.Result, err error) {
+	start := time.Now()
+	defer func() {
+		labelResult := "success"
+		if err != nil {
+			labelResult = "error"
+		}
+		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
+		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
+	}()
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
@@ -78,7 +89,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	rootShard := &unstructured.Unstructured{}
 	rootShard.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	// Wait for root shard to be ready
-	err := r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
+	err = r.client.Get(ctx, types.NamespacedName{Name: operatorCfg.KCP.RootShardName, Namespace: operatorCfg.KCP.Namespace}, rootShard)
 	if err != nil || !matchesConditionWithStatus(rootShard, "Available", "True") {
 		log.Info().Msg("RootShard is not ready..")
 		return subroutines.StopWithRequeue(DefaultRequeueInterval, "RootShard is not ready"), nil
