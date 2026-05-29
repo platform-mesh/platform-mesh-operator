@@ -37,6 +37,8 @@ import (
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
+	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
 )
 
@@ -50,14 +52,20 @@ var gvk = schema.GroupVersionKind{
 	Kind:    "Resource",
 }
 
-// ResourceReconciler reconciles OCM Resource objects
+// ResourceReconciler reconciles a Resource object
 type ResourceReconciler struct {
 	lifecycle   *lifecycle.Lifecycle
 	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
 }
 
 func (r *ResourceReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req)
+	result, err := r.lifecycle.Reconcile(ctx, req)
+	labelResult := "success"
+	if err != nil {
+		labelResult = "error"
+	}
+	metrics.ReconcileTotal.WithLabelValues(resourceReconcilerName, labelResult).Inc()
+	return result, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -85,11 +93,19 @@ func (r *ResourceReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconf
 }
 
 // NewResourceReconciler wires the read-only Resource subroutine lifecycle.
-func NewResourceReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig) (*ResourceReconciler, error) {
+func NewResourceReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, clientInfra client.Client, imageVersionStore *pmsubs.ImageVersionStore) (*ResourceReconciler, error) {
 	localCl := mgr.GetLocalManager().GetClient()
-	subs := []subroutines.Subroutine{
-		resource.NewResourceSubroutine(localCl),
+
+	// If no dedicated infra client is provided, default to the local client.
+	if clientInfra == nil {
+		clientInfra = localCl
 	}
+
+	resourceSubroutine := resource.NewResourceSubroutine(clientInfra, cfg, imageVersionStore)
+	// Set the runtime client for reading profile ConfigMaps (they're in the runtime cluster)
+	resourceSubroutine.SetRuntimeClient(localCl)
+
+	subs := []subroutines.Subroutine{resourceSubroutine}
 
 	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
 	if err != nil {

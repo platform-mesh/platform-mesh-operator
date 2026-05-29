@@ -150,26 +150,15 @@ spec:
                       type: object
                     type: array
                   extraWorkspaces:
-                    description: ExtraWorkspaces allows declaring additional workspaces
-                      that the operator will create.
                     items:
-                      description: WorkspaceDeclaration defines a workspace to be
-                        created by the operator.
                       properties:
                         path:
-                          description: Path is the full logical path of the workspace
-                            to be created (e.g., "root:orgs:my-workspace").
                           type: string
                         type:
-                          description: Type defines the WorkspaceType for the new
-                            workspace.
                           properties:
                             name:
-                              description: Name is the name of the WorkspaceType.
                               type: string
                             path:
-                              description: Path is the logical cluster path where
-                                the WorkspaceType is defined.
                               type: string
                           required:
                           - name
@@ -234,6 +223,16 @@ spec:
                         default: platform-mesh
                         type: string
                     type: object
+                type: object
+              profileConfigMap:
+                properties:
+                  name:
+                    minLength: 1
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
                 type: object
               values:
                 x-kubernetes-preserve-unknown-fields: true

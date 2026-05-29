@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    uses: platform-mesh/.github/.github/workflows/job-golang-lint.yml@9ddacafbe3260312cb1cc3f9974ad2fece8effe0
+    with:
+      useTask: true
+
+  test:
+    uses: ./.github/workflows/job-golang-test-source.yml
+    with:
+      runsOn: 'ubuntu-latest-large'
+
+  docker-build:
+    uses: platform-mesh/.github/.github/workflows/job-docker-build.yml@9ddacafbe3260312cb1cc3f9974ad2fece8effe0
+    with:
+      imageTagName: ghcr.io/platform-mesh/platform-mesh-operator
+
+  quality-gate:
+    if: always()
+    permissions: {}
+    needs: [lint, test, docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "test failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docker-build.result }}" != "success" ]]; then
+            echo "docker-build failed"
+            exit 1
+          fi

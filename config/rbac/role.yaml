@@ -5,6 +5,14 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - core.platform-mesh.io
   resources:
   - platformmeshes
@@ -26,6 +34,32 @@ rules:
   - core.platform-mesh.io
   resources:
   - platformmeshes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - providers.platform-mesh.io
+  resources:
+  - managedproviders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - providers.platform-mesh.io
+  resources:
+  - managedproviders/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - providers.platform-mesh.io
+  resources:
+  - managedproviders/status
   verbs:
   - get
   - patch

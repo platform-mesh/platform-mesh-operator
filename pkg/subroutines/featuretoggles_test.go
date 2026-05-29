@@ -66,6 +66,23 @@ func (s *FeaturesTestSuite) setupFeatureToggleApplyMocks(
 	operatorCfg config.OperatorConfig, applyKcpManifestsCalls int,
 ) *mocks.Client {
 	secretGetCount := applyKcpManifestsCalls * 2 // (once in applyKcpManifests, once in buildKubeconfig)
+	fakeKubeconfig := []byte(`apiVersion: v1
+clusters:
+- cluster:
+    server: https://kcp.example.com
+  name: kcp
+contexts:
+- context:
+    cluster: kcp
+    user: admin
+  name: kcp
+current-context: kcp
+kind: Config
+users:
+- name: admin
+  user:
+    token: fake-token
+`)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
 			Name:      operatorCfg.KCP.ClusterAdminSecretName,
@@ -74,9 +91,10 @@ func (s *FeaturesTestSuite) setupFeatureToggleApplyMocks(
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"ca.crt":  []byte("test-ca-data"),
-				"tls.crt": []byte("test-tls-crt"),
-				"tls.key": []byte("test-tls-key"),
+				"ca.crt":     []byte("test-ca-data"),
+				"tls.crt":    []byte("test-tls-crt"),
+				"tls.key":    []byte("test-tls-key"),
+				"kubeconfig": fakeKubeconfig,
 			}
 			return nil
 		}).
