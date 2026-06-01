@@ -87,9 +87,32 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 				}
 			}
 
-			// Apply the rendered manifest
-			if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
-				return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+			// Apply the rendered manifest.
+			// ArgoCD Applications use merge patch to avoid CRD schema validation rejecting
+			// patches that omit required fields (e.g. spec.source.repoURL) managed by ResourceSubroutine.
+			if obj.GetKind() == "Application" && obj.GetAPIVersion() == "argoproj.io/v1alpha1" {
+				existing := &unstructured.Unstructured{}
+				existing.SetGroupVersionKind(obj.GroupVersionKind())
+				if err := k8sClient.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, existing); err != nil {
+					if !kerrors.IsNotFound(err) {
+						return errors.Wrap(err, "Failed to get existing ArgoCD Application for merge patch: %s/%s", obj.GetNamespace(), obj.GetName())
+					}
+					// Application does not exist yet — fall through to SSA for initial creation.
+					if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+						return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+					}
+				} else {
+					base := existing.DeepCopy()
+					existing.Object = obj.Object
+					existing.SetResourceVersion(base.GetResourceVersion())
+					if err := k8sClient.Patch(ctx, existing, client.MergeFrom(base)); err != nil {
+						return errors.Wrap(err, "Failed to merge-patch ArgoCD Application from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+					}
+				}
+			} else {
+				if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+					return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
+				}
 			}
 		}
 
