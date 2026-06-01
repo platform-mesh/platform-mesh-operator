@@ -458,11 +458,12 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_not() {
 
 func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 	tests := []struct {
-		name                 string
-		existingApp          *unstructured.Unstructured
-		objMap               map[string]interface{}
-		expectedRepoURL      string
-		expectedRevPreserved bool
+		name                          string
+		existingApp                   *unstructured.Unstructured
+		objMap                        map[string]interface{}
+		expectedRepoURL               string
+		expectedRevPreserved          bool
+		expectedTargetRevisionDeleted bool
 	}{
 		{
 			name:        "app does not exist - nothing to preserve",
@@ -531,8 +532,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 					},
 				},
 			},
-			expectedRepoURL:      "",
-			expectedRevPreserved: true,
+			expectedRepoURL:               "https://existing-repo.git",
+			expectedTargetRevisionDeleted: true,
 		},
 		{
 			name: "existing app has same values as new - no preservation needed",
@@ -628,6 +629,10 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 				s.False(hasTargetRevision, "targetRevision should have been deleted to preserve existing")
 			} else if tt.expectedRepoURL != "" {
 				s.Equal(tt.expectedRepoURL, source["repoURL"])
+			}
+			if tt.expectedTargetRevisionDeleted {
+				_, hasTargetRevision := source["targetRevision"]
+				s.False(hasTargetRevision, "targetRevision should have been deleted to preserve existing")
 			}
 		})
 	}
