@@ -54,35 +54,6 @@ spec:
                 description: cleanupOnDelete removes the kcp workspace when the ManagedProvider
                   is deleted.
                 type: boolean
-              controller:
-                description: controller defines the OCM component to deploy as the
-                  provider controller.
-                properties:
-                  ocm:
-                    description: ocm identifies the component in an OCM registry.
-                    properties:
-                      componentName:
-                        description: componentName is the fully-qualified OCM component
-                          name.
-                        type: string
-                      registry:
-                        description: registry is the OCM registry host (e.g. ghcr.io/platform-mesh/ocm).
-                        type: string
-                      values:
-                        description: values are Helm values passed to the deployed
-                          chart.
-                        x-kubernetes-preserve-unknown-fields: true
-                      version:
-                        description: version is the component version to deploy.
-                        type: string
-                    required:
-                    - componentName
-                    - registry
-                    - version
-                    type: object
-                required:
-                - ocm
-                type: object
               platformMeshRef:
                 description: |-
                   platformMeshRef is a reference to the PlatformMesh object.
@@ -95,48 +66,96 @@ spec:
                 required:
                 - name
                 type: object
-              portal:
-                description: portal defines the OCM component to deploy as the provider
-                  portal.
-                properties:
-                  ocm:
-                    description: ocm identifies the component in an OCM registry.
-                    properties:
-                      componentName:
-                        description: componentName is the fully-qualified OCM component
-                          name.
-                        type: string
-                      registry:
-                        description: registry is the OCM registry host (e.g. ghcr.io/platform-mesh/ocm).
-                        type: string
-                      values:
-                        description: values are Helm values passed to the deployed
-                          chart.
-                        x-kubernetes-preserve-unknown-fields: true
-                      version:
-                        description: version is the component version to deploy.
-                        type: string
-                    required:
-                    - componentName
-                    - registry
-                    - version
-                    type: object
-                required:
-                - ocm
-                type: object
-              workspacePath:
+              provider:
                 description: |-
-                  workspacePath is the full kcp logical path for the provider workspace.
-                  Defaults to root:providers:<name> when omitted.
-                  When set, must be of the form root:providers:<name>
+                  provider references the Provider resource.
+                  If not provided, a corresponding Provider is created in root:providers:system by default.
+                  If corresponding Provider doesn't exist, it is created.
+                  If specified, the workspace ProviderReference.Path must exist.
+                properties:
+                  name:
+                    description: name is the name of the referenced Provider.
+                    type: string
+                  path:
+                    description: path is a logical cluster path where the Provider
+                      is defined.
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(:[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                required:
+                - name
+                - path
+                type: object
+              providerHostOverride:
+                description: |-
+                  providerHostOverride overrides the kcp front-proxy host written into the
+                  generated kubeconfig Secret. Optional; defaults to the operator-configured
+                  front-proxy URL.
                 type: string
-                x-kubernetes-validations:
-                - message: workspacePath must be of the form root:providers:<Workspace
-                    name>
-                  rule: self == '' || self.matches('^root:providers:[a-z][a-z0-9]*$')
+              providerKubeconfigSecret:
+                description: |-
+                  providerKubeconfigSecret is a Secret specification used to store
+                  the provider's kubeconfig in the runtime cluster. This is the admin kubeconfig
+                  that provider controllers can use to access the workspace in :root:providers:<WS name>.
+                  If not provided, a default of Name:<ManagedProvider.Name>-provider-kubeconfig,
+                  Key:kubeconfig is used.
+                properties:
+                  key:
+                    description: key is the key in data map where the kubeconfig YAML
+                      content is stored.
+                    type: string
+                  name:
+                    description: name is the name of the Secret.
+                    type: string
+                required:
+                - key
+                - name
+                type: object
+              runtimeDeployments:
+                description: runtimeDeployments is a list of components to be deployed
+                  in the runtime cluster.
+                items:
+                  description: ProviderComponentSpec references an OCM component to
+                    deploy.
+                  properties:
+                    ocm:
+                      description: ocm identifies the component in an OCM registry.
+                      properties:
+                        componentName:
+                          description: componentName is the fully-qualified OCM component
+                            name.
+                          type: string
+                        insecure:
+                          description: |-
+                            insecure allows HTTP (insecure) connection to the OCI repository.
+                            Disabled by default.
+                          type: boolean
+                        registry:
+                          description: registry is the OCM registry host (e.g. ghcr.io/platform-mesh/ocm).
+                          type: string
+                        values:
+                          description: values are Helm values passed to the deployed
+                            chart.
+                          x-kubernetes-preserve-unknown-fields: true
+                        version:
+                          description: version is the component version to deploy.
+                          type: string
+                      required:
+                      - componentName
+                      - registry
+                      - version
+                      type: object
+                  type: object
+                type: array
+              runtimeKubeconfigSecretName:
+                description: |-
+                  runtimeKubeconfigSecretName is the name of the Secret that contains
+                  data.kubeconfig key, with kubeconfig referencing the runtime cluster
+                  where the provider components are to be deployed.
+                  If not provided, the hosting platform-mesh cluster is used.
+                type: string
             required:
-            - controller
             - platformMeshRef
+            - runtimeDeployments
             type: object
           status:
             description: status defines the observed state of ManagedProvider
@@ -202,9 +221,17 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              kubeconfigSecretRef:
+              observedGeneration:
+                description: observedGeneration is the last generation reconciled
+                  by the controller.
+                format: int64
+                type: integer
+              phase:
+                description: phase summarises the overall lifecycle state of the ManagedProvider.
+                type: string
+              providerKubeconfigSecretRef:
                 description: |-
-                  kubeconfigSecretRef points to the Secret in the runtime namespace that
+                  providerKubeconfigSecretRef points to the Secret in the runtime namespace that
                   contains the scoped kubeconfig copied from the provider kcp workspace.
                 properties:
                   name:
@@ -217,14 +244,6 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              observedGeneration:
-                description: observedGeneration is the last generation reconciled
-                  by the controller.
-                format: int64
-                type: integer
-              phase:
-                description: phase summarises the overall lifecycle state of the ManagedProvider.
-                type: string
             type: object
         required:
         - spec
