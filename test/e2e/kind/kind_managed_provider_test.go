@@ -53,8 +53,15 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		// In both cases, ManagedProvider is expected to create a Deployment in the runtime cluster,
 		// and a kubeconfig scoped to provider's workspace.
 
+		allProvidersScopedAdminClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers")
+		var systemProviderWs kcptenancyv1alpha.Workspace
+		err := allProvidersScopedAdminClient.Get(ctx, types.NamespacedName{Name: "system"}, &systemProviderWs)
+		s.Require().NoError(err, "getting Workspace system in :root:providers should succeed")
+		s.Require().NotEmpty(systemProviderWs.Spec.Cluster, "cluster name for :root:providers:system workspace should not be empty")
+		providerWsName := "my-managed-provider-" + systemProviderWs.Spec.Cluster
+		providerWsPath := "root:providers:" + providerWsName
+
 		// First variant, with cleanupOnDelete=false. Only runtime resources are expected to be deleted on ManagedProvider deletion.
-		providerScopedKcpAdminClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers:my-managed-provider")
 		waitForManagedProviderAndValidate(ctx, s, func(mp *providersv1alpha1.ManagedProvider) {
 			mp.Spec.CleanupOnDelete = false
 		})
@@ -67,7 +74,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 				Name:      "my-managed-provider",
 			},
 		}
-		err := s.client.Delete(ctx, &managedProvider)
+		err = s.client.Delete(ctx, &managedProvider)
 		s.Require().NoError(err, "deleting ManagedProvider should succeed")
 		s.Require().Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
@@ -78,7 +85,8 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to be deleted, but has err=%q", err)
 
 		var provider providersv1alpha1.Provider
-		err = providerScopedKcpAdminClient.Get(ctx, types.NamespacedName{
+		systemProviderWsClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers:system")
+		err = systemProviderWsClient.Get(ctx, types.NamespacedName{
 			Name: "my-managed-provider",
 		}, &provider)
 		s.Require().NoError(err, "getting Provider with scopedKcpAdminClient should succeed")
@@ -99,21 +107,42 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 			},
 		})
 		s.Require().NoError(err, "deleting ManagedProvider should succeed")
-		s.logger.Info().Msgf("ManagedProvider deleted, checking that :root:providers:my-managed-provider workspace is deleted")
+
+		s.logger.Info().Msgf("Waiting until workspace %s is deleted", providerWsPath)
+		var ws kcptenancyv1alpha.Workspace
+		s.Require().Eventually(func() bool {
+			err = allProvidersScopedAdminClient.Get(ctx, types.NamespacedName{
+				Name: providerWsName,
+			}, &ws)
+			return kerrors.IsNotFound(err)
+		}, 6*time.Minute, 5*time.Second, "waiting for workspace to be deleted, but has err=%v, Workspace=%#v", err, ws) // This may take a long time...
+
+		s.logger.Info().Msgf("Waiting until Provider my-managed-provider in root:providers:system is deleted")
+		s.Require().Eventually(func() bool {
+			err = systemProviderWsClient.Get(ctx, types.NamespacedName{
+				Name: "my-managed-provider",
+			}, &providersv1alpha1.Provider{})
+			return kerrors.IsNotFound(err)
+		}, 240*time.Second, 5*time.Second, "waiting for Provider to be deleted, but has err=%v", err)
+
+		s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator is deleted")
+		var deployment appsv1.Deployment
+		s.Require().Eventually(func() bool {
+			err = s.client.Get(ctx, types.NamespacedName{
+				Namespace: "platform-mesh-system",
+				Name:      "example-httpbin-operator",
+			}, &deployment)
+			return kerrors.IsNotFound(err)
+		}, 240*time.Second, 5*time.Second, "waiting for Deployment to be deleted, but has err=%v, Deployment=%#v", err, deployment)
+
+		s.logger.Info().Msgf("Waiting until ManagedProvider my-managed-provider is deleted")
 		s.Require().Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
 				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
-			}, &providersv1alpha1.ManagedProvider{})
+			}, &managedProvider)
 			return kerrors.IsNotFound(err)
-		}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to be deleted, but has err=%v", err)
-		providersScopedAdminClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers")
-		s.Require().Eventually(func() bool {
-			err = providersScopedAdminClient.Get(ctx, types.NamespacedName{
-				Name: "my-managed-provider",
-			}, &kcptenancyv1alpha.Workspace{})
-			return kerrors.IsNotFound(err)
-		}, 240*time.Second, 5*time.Second, "waiting for provider's workspace :root:providers:my-managed-provider to be deleted, but has err=%v", err)
+		}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to be deleted, but has err=%v, ManagedProvider=%#v", err, managedProvider)
 	})
 }
 
@@ -128,13 +157,13 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 			Namespace: managedProviderName.Namespace,
 		},
 		Spec: providersv1alpha1.ManagedProviderSpec{
-			Controller: providersv1alpha1.ProviderComponentSpec{
-				OCM: providersv1alpha1.OCMComponentSpec{
+			RuntimeDeployments: []providersv1alpha1.ProviderComponentSpec{{
+				OCM: &providersv1alpha1.OCMComponentSpec{
 					ComponentName: "example-httpbin-operator",
 					Registry:      "ghcr.io/platform-mesh/helm-charts",
 					Version:       "0.5.14",
 				},
-			},
+			}},
 			PlatformMeshReference: providersv1alpha1.PlatformMeshReferenceSpec{
 				Name: "platform-mesh",
 			},
@@ -170,36 +199,55 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 
 	// Validate kcp side first.
 
-	s.logger.Info().Msgf("Waiting until root:providers:my-managed-provider workspace is created")
+	// We're expecting the Providers controller to build a workspace :root:providers:<ManagedProvider.Name>-<Provider's logical cluster name>.
+	// Let's build the name first.
+	var systemProviderWs kcptenancyv1alpha.Workspace
+	err = allProvidersScopedAdminClient.Get(ctx, types.NamespacedName{Name: "system"}, &systemProviderWs)
+	s.Require().NoError(err, "getting Workspace system in :root:providers should succeed")
+	s.Require().NotEmpty(systemProviderWs.Spec.Cluster, "cluster name for :root:providers:system workspace should not be empty")
+
+	s.logger.Info().Msgf("Waiting until Provider is created in root:providers:system")
+	systemProviderWsClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers:system")
+	s.Require().Eventually(func() bool {
+		err = systemProviderWsClient.Get(ctx, types.NamespacedName{
+			Name: managedProvider.Name,
+		}, &providersv1alpha1.Provider{})
+		return err == nil
+	}, 240*time.Second, 5*time.Second, "waiting for Provider in :root:providers:system to be created, but has err=%v", err)
+
+	providerWsName := managedProvider.Name + "-" + systemProviderWs.Spec.Cluster
+	providerWsPath := "root:providers:" + providerWsName
+	s.logger.Info().Msgf("Provider contents should be in %s workspace", providerWsPath)
+
+	s.logger.Info().Msgf("Waiting until %s workspace is created", providerWsPath)
 	s.Require().Eventually(func() bool {
 		err = allProvidersScopedAdminClient.Get(ctx, types.NamespacedName{
-			Name: "my-managed-provider",
+			Name: providerWsName,
 		}, &kcptenancyv1alpha.Workspace{})
 		return err == nil
-	}, 240*time.Second, 5*time.Second, "waiting for provider's workspace :root:providers:my-managed-provider to be created, but has err=%v", err)
+	}, 240*time.Second, 5*time.Second, "waiting for provider's workspace %s to be created, but has err=%v", providerWsPath, err)
 
-	s.logger.Info().Msgf("Waiting until Provider in root:providers:my-managed-provider reaches Phase=Ready")
-	myManagedProviderScopedKcpAdminClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers:my-managed-provider")
+	s.logger.Info().Msgf("Waiting until Provider in %s reaches Phase=Ready", providerWsPath)
 	var provider providersv1alpha1.Provider
 	s.Require().Eventually(func() bool {
-		err = myManagedProviderScopedKcpAdminClient.Get(ctx, types.NamespacedName{
+		err = systemProviderWsClient.Get(ctx, types.NamespacedName{
 			Name: "my-managed-provider",
 		}, &provider)
 		if err != nil {
 			return false
 		}
 		return provider.Status.Phase == "Ready"
-	}, 240*time.Second, 5*time.Second, "waiting for Provider in :root:providers:my-managed-provider to be Ready, but has err=%v Provider=%#v", err, provider)
-	s.Require().NotNil(provider.Status.KubeconfigSecretRef, "Provider should have its KubeconfigSecretRef populated")
+	}, 240*time.Second, 5*time.Second, "waiting for Provider in :root:providers:system to be Ready, but has err=%v Provider=%#v", err, provider)
+	s.Require().NotNil(provider.Status.ProviderKubeconfigSecretRef, "Provider should have its ProviderKubeconfigSecretRef populated")
 	s.Require().Equal(&corev1.SecretReference{
-		Name:      "platform-mesh-provider-kubeconfig-my-managed-provider",
-		Namespace: "default",
-	}, provider.Status.KubeconfigSecretRef, "Provider on kcp side has unexpected KubeconfigSecretRef contents")
+		Name:      "my-managed-provider-provider-kubeconfig",
+		Namespace: "platform-mesh-system",
+	}, provider.Status.ProviderKubeconfigSecretRef, "Provider on kcp side has unexpected ProviderKubeconfigSecretRef contents")
 
 	// Validate provider kubeconfigs on kcp side and try to list ConfigMaps using that.
-	createProviderClientFromSecretRefAndListConfigMaps(myManagedProviderScopedKcpAdminClient, types.NamespacedName{
-		Namespace: provider.Status.KubeconfigSecretRef.Namespace,
-		Name:      provider.Status.KubeconfigSecretRef.Name,
+	createProviderClientFromSecretRefAndListConfigMaps(systemProviderWsClient, types.NamespacedName{
+		Namespace: provider.Status.ProviderKubeconfigSecretRef.Namespace,
+		Name:      provider.Status.ProviderKubeconfigSecretRef.Name,
 	}, "kcp")
 
 	// Now validate runtime cluster side.
@@ -210,16 +258,16 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 		if err != nil {
 			return false
 		}
-		return managedProvider.Status.KubeconfigSecretRef != nil
+		return managedProvider.Status.ProviderKubeconfigSecretRef != nil
 	}, 240*time.Second, 5*time.Second, "waiting for kubeconfig ref in ManagedProvider, got err=%v ManagedProvider=%#v", err, managedProvider)
-	s.logger.Info().Msgf("ManagedProvider has its Status.KubeconfigSecretRef populated")
-	s.Require().Equal(managedProvider.Status.KubeconfigSecretRef.Name, "platform-mesh-provider-kubeconfig-my-managed-provider", "")
-	s.Require().Equal(managedProvider.Status.KubeconfigSecretRef.Namespace, managedProviderName.Namespace, "")
+	s.logger.Info().Msgf("ManagedProvider has its Status.ProviderKubeconfigSecretRef populated")
+	s.Require().Equal(managedProvider.Status.ProviderKubeconfigSecretRef.Name, "my-managed-provider-provider-kubeconfig", "")
+	s.Require().Equal(managedProvider.Status.ProviderKubeconfigSecretRef.Namespace, managedProviderName.Namespace, "")
 
 	// Validate provider kubeconfigs on PM side and try to list ConfigMaps using that.
 	createProviderClientFromSecretRefAndListConfigMaps(s.client, types.NamespacedName{
-		Namespace: managedProvider.Status.KubeconfigSecretRef.Namespace,
-		Name:      managedProvider.Status.KubeconfigSecretRef.Name,
+		Namespace: managedProvider.Status.ProviderKubeconfigSecretRef.Namespace,
+		Name:      managedProvider.Status.ProviderKubeconfigSecretRef.Name,
 	}, "PM")
 
 	// Check that ManagedProvider reaches Deployed phase and that the Deployment exists.
@@ -233,14 +281,14 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 		return managedProvider.Status.Phase == "Deployed"
 	}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to reach Phase=Deployed, but has err=%q Phase=%q", err, managedProvider.Status.Phase)
 
-	s.logger.Info().Msgf("Waiting until Deployment my-managed-provider-controller-example-httpbin-operator appears")
+	s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator appears")
 	s.Require().Eventually(func() bool {
 		err = s.client.Get(ctx, types.NamespacedName{
 			Namespace: managedProviderName.Namespace,
-			Name:      "my-managed-provider-controller-example-httpbin-operator",
+			Name:      "example-httpbin-operator",
 		}, &appsv1.Deployment{})
 		return err == nil
-	}, 240*time.Second, 5*time.Second, "waiting for Deployment my-managed-provider-controller-example-httpbin-operator, but has err=%v", err)
+	}, 240*time.Second, 5*time.Second, "waiting for Deployment example-httpbin-operator, but has err=%v", err)
 }
 
 func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
@@ -252,6 +300,8 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 
 	appConfig.ProvidersAPIExportEndpointSliceName = "providers.platform-mesh.io"
 	appConfig.ProvidersAPIExportEndpointSliceWorkspace = "root:platform-mesh-system"
+	appConfig.Subroutines.Providers.Workspace.Enabled = true
+	appConfig.Subroutines.Providers.Kubeconfig.Enabled = true
 	appConfig.KCP = defaultKcpOperatorConfig
 
 	commonConfig := &pmconfig.CommonServiceConfig{
@@ -290,7 +340,7 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 		return
 	}
 
-	rec, err := providerscontroller.NewProviderReconciler(mgr, &appConfig, commonConfig)
+	rec, err := providerscontroller.NewProviderReconciler(mgr, &appConfig, commonConfig, runtimeClient)
 	s.Require().NoError(err, "failed to ProviderReconciler controller")
 	s.Require().NoError(rec.SetupWithManager(mgr, commonConfig), "failed to setup ProviderReconciler with manager")
 
