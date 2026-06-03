@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
@@ -56,10 +57,16 @@ var (
 	}
 )
 
+// ocmResourceName returns the last path segment of an OCM component name.
+// e.g. "github.com/platform-mesh/wildwest-controller" returns "wildwest-controller"
+func ocmResourceName(componentName string) string {
+	lastSlashIndex := strings.LastIndexByte(componentName, '/') + 1
+	return componentName[lastSlashIndex:]
+}
+
 // DeploySubroutine creates Flux OCIRepository and HelmRelease objects on the
-// runtime cluster for the OCM components referenced in spec.controller and
-// spec.portal. Subsequent reconciliations detect drift via the HelmRelease
-// Ready condition.
+// runtime cluster for the OCM components referenced in spec.runtimeDeployments.
+// Subsequent reconciliations detect drift via the HelmRelease Ready condition.
 type DeploySubroutine struct {
 	client  client.Client
 	limiter workqueue.TypedRateLimiter[*providersv1alpha1.ManagedProvider]
@@ -81,7 +88,7 @@ func (r *DeploySubroutine) GetName() string {
 func (r *DeploySubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 
-	result, err := r.deployComponent(ctx, inst.Namespace, inst.Name+"-controller", inst.Spec.Controller.OCM)
+	result, err := r.doRuntimeDeployments(ctx, inst)
 	if err != nil {
 		return subroutines.OK(), err
 	}
@@ -90,22 +97,31 @@ func (r *DeploySubroutine) Process(ctx context.Context, obj client.Object) (subr
 		return result, nil
 	}
 
-	if inst.Spec.Portal != nil {
-		result, err = r.deployComponent(ctx, inst.Namespace, inst.Name+"-portal", inst.Spec.Portal.OCM)
-		if err != nil {
-			return subroutines.OK(), err
-		}
-		if !result.IsContinue() {
-			inst.Status.Phase = "Deploying"
-			return result, nil
-		}
-	}
-
 	inst.Status.Phase = "Deployed"
 	return subroutines.OK(), nil
 }
 
-func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name string, ocm providersv1alpha1.OCMComponentSpec) (subroutines.Result, error) {
+func (r *DeploySubroutine) doRuntimeDeployments(ctx context.Context, managedProvider *providersv1alpha1.ManagedProvider) (subroutines.Result, error) {
+	runtimeKubeconfigSecretName := managedProvider.Spec.RuntimeKubeconfigSecretName
+
+	for _, component := range managedProvider.Spec.RuntimeDeployments {
+		if component.OCM != nil {
+			ocm := component.OCM
+			name := ocmResourceName(ocm.ComponentName)
+			result, err := r.deployOCMComponent(ctx, managedProvider.Namespace, name, ocm, runtimeKubeconfigSecretName)
+			if err != nil {
+				return subroutines.OK(), err
+			}
+			if !result.IsContinue() {
+				return result, nil
+			}
+		}
+	}
+
+	return subroutines.OK(), nil
+}
+
+func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, name string, ocm *providersv1alpha1.OCMComponentSpec, runtimeKubeconfigSecretName string) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", DeploySubroutineName).ChildLogger("component", name)
 
 	ociURL := fmt.Sprintf("oci://%s/%s", ocm.Registry, ocm.ComponentName)
@@ -125,6 +141,9 @@ func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name 
 			return err
 		}
 		if err := unstructured.SetNestedField(ociRepo.Object, "1m0s", "spec", "interval"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(ociRepo.Object, ocm.Insecure, "spec", "insecure"); err != nil {
 			return err
 		}
 		return unstructured.SetNestedMap(ociRepo.Object, map[string]interface{}{
@@ -158,6 +177,15 @@ func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name 
 		}
 		if err := unstructured.SetNestedField(helmRelease.Object, namespace, "spec", "chartRef", "namespace"); err != nil {
 			return err
+		}
+		if runtimeKubeconfigSecretName != "" {
+			// The user requests to deploy this in a different runtime cluster.
+			if err := unstructured.SetNestedMap(helmRelease.Object, map[string]interface{}{
+				"name": runtimeKubeconfigSecretName,
+				"key":  "kubeconfig",
+			}, "spec", "kubeConfig", "secretRef"); err != nil {
+				return err
+			}
 		}
 		if values != nil {
 			return unstructured.SetNestedMap(helmRelease.Object, values, "spec", "values")
@@ -207,35 +235,35 @@ func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (sub
 
 	inst.Status.Phase = "Deleting"
 
-	names := []string{inst.Name + "-controller"}
-	if inst.Spec.Portal != nil {
-		names = append(names, inst.Name+"-portal")
-	}
-
 	needsDeletion := false
-	for _, name := range names {
-		hr := &unstructured.Unstructured{}
-		hr.SetGroupVersionKind(deployHelmReleaseGVK)
-		hr.SetName(name)
-		hr.SetNamespace(inst.Namespace)
-		if err := r.client.Delete(ctx, hr); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return subroutines.OK(), gcerrors.Wrap(err, "failed to delete HelmRelease %s/%s", inst.Namespace, name)
-			}
-		} else {
-			needsDeletion = true
-		}
+	for _, component := range inst.Spec.RuntimeDeployments {
+		if component.OCM != nil {
+			ocm := component.OCM
+			name := ocmResourceName(ocm.ComponentName)
 
-		oci := &unstructured.Unstructured{}
-		oci.SetGroupVersionKind(deployOCIRepoGVK)
-		oci.SetName(name)
-		oci.SetNamespace(inst.Namespace)
-		if err := r.client.Delete(ctx, oci); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+			hr := &unstructured.Unstructured{}
+			hr.SetGroupVersionKind(deployHelmReleaseGVK)
+			hr.SetName(name)
+			hr.SetNamespace(inst.Namespace)
+			if err := r.client.Delete(ctx, hr); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return subroutines.OK(), gcerrors.Wrap(err, "failed to delete HelmRelease %s/%s", inst.Namespace, name)
+				}
+			} else {
+				needsDeletion = true
 			}
-		} else {
-			needsDeletion = true
+
+			oci := &unstructured.Unstructured{}
+			oci.SetGroupVersionKind(deployOCIRepoGVK)
+			oci.SetName(name)
+			oci.SetNamespace(inst.Namespace)
+			if err := r.client.Delete(ctx, oci); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+				}
+			} else {
+				needsDeletion = true
+			}
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/filter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	pmsubroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/subroutines"
 	"github.com/platform-mesh/subroutines/conditions"
 	"github.com/platform-mesh/subroutines/lifecycle"
@@ -44,7 +45,7 @@ const ProviderControllerName = "ProviderReconciler"
 
 // ProviderReconciler reconciles Provider objects in kcp workspaces via the
 // providers.platform-mesh.io virtual workspace. For each Provider it creates
-// a ServiceAccount, RBAC, and a kubeconfig Secret inside the provider workspace.
+// a workspace, ServiceAccount, RBAC, and a kubeconfig Secret inside the provider workspace.
 type ProviderReconciler struct {
 	lifecycle   *lifecycle.Lifecycle
 	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
@@ -70,7 +71,7 @@ func (r *ProviderReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconf
 		Complete(r)
 }
 
-func NewProviderReconciler(mgr mcmanager.Manager, providersCfg *config.ProvidersConfig, commonCfg *pmconfig.CommonServiceConfig) (*ProviderReconciler, error) {
+func NewProviderReconciler(mgr mcmanager.Manager, providersCfg *config.ProvidersConfig, commonCfg *pmconfig.CommonServiceConfig, localClient client.Client) (*ProviderReconciler, error) {
 	kcpUrl := providersCfg.KCP.Url
 	if kcpUrl == "" {
 		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort)
@@ -81,14 +82,32 @@ func NewProviderReconciler(mgr mcmanager.Manager, providersCfg *config.Providers
 		return nil, fmt.Errorf("creating rate limiter: %w", err)
 	}
 
-	subs := []subroutines.Subroutine{
-		pmsubs.NewScopedKubeconfigSubroutine(kcpUrl, func(ctx context.Context) (client.Client, error) {
-			cluster, err := mgr.ClusterFromContext(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return cluster.GetClient(), nil
-		}),
+	kcpHelper := &pmsubroutines.Helper{}
+
+	var subs []subroutines.Subroutine
+
+	if providersCfg.Subroutines.Providers.Workspace.Enabled {
+		sub, err := pmsubs.NewProviderWorkspaceSubroutine(localClient, kcpHelper, providersCfg.KCP, kcpUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error creating ProviderWorkspaceSubroutine: %v", err)
+		}
+		subs = append(subs, sub)
+	}
+
+	if providersCfg.Subroutines.Providers.Kubeconfig.Enabled {
+		subs = append(subs, pmsubs.NewScopedKubeconfigSubroutine(
+			localClient,
+			kcpHelper,
+			providersCfg.KCP,
+			kcpUrl,
+			func(ctx context.Context) (client.Client, error) {
+				cluster, err := mgr.ClusterFromContext(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return cluster.GetClient(), nil
+			},
+		))
 	}
 
 	lc := lifecycle.New(mgr, ProviderControllerName, func() client.Object {
