@@ -191,6 +191,7 @@ func (s *ScopedKubeconfigTestSuite) TestProcess_NewKcpClientForProvidersFails() 
 }
 
 func (s *ScopedKubeconfigTestSuite) TestProcess_WorkspaceNotFound_Requeue() {
+	inst := s.newProvider()
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 		Return(s.kcpClientMock, nil)
@@ -198,13 +199,15 @@ func (s *ScopedKubeconfigTestSuite) TestProcess_WorkspaceNotFound_Requeue() {
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-abc123"}, mock.AnythingOfType("*v1alpha1.Workspace")).
 		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, "wildwest-abc123"))
 
-	result, err := s.testObj.Process(s.newCtx(), s.newProvider())
+	result, err := s.testObj.Process(s.newCtx(), inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ProviderPhaseProvisioningWorkspace, inst.Status.Phase)
 }
 
 func (s *ScopedKubeconfigTestSuite) TestProcess_WorkspaceNotReady_Requeue() {
+	inst := s.newProvider()
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 		Return(s.kcpClientMock, nil)
@@ -216,10 +219,11 @@ func (s *ScopedKubeconfigTestSuite) TestProcess_WorkspaceNotReady_Requeue() {
 			return nil
 		})
 
-	result, err := s.testObj.Process(s.newCtx(), s.newProvider())
+	result, err := s.testObj.Process(s.newCtx(), inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ProviderPhaseProvisioningWorkspace, inst.Status.Phase)
 }
 
 func (s *ScopedKubeconfigTestSuite) TestProcess_NamespaceCreateFails() {
@@ -323,7 +327,7 @@ func (s *ScopedKubeconfigTestSuite) TestProcess_HappyPath() {
 	s.Require().NotNil(inst.Status.ProviderKubeconfigSecretRef)
 	s.Assert().Equal("wildwest-provider-kubeconfig", inst.Status.ProviderKubeconfigSecretRef.Name)
 	s.Assert().Equal("default", inst.Status.ProviderKubeconfigSecretRef.Namespace)
-	s.Assert().Equal("Ready", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ProviderPhaseReady, inst.Status.Phase)
 }
 
 func (s *ScopedKubeconfigTestSuite) TestProcess_HostOverride() {

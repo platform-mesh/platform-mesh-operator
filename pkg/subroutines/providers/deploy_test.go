@@ -19,6 +19,7 @@ package providers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/platform-mesh/golang-commons/context/keys"
@@ -136,11 +137,53 @@ func (s *DeployTestSuite) mockHelmReleaseReadyCheck(name, namespace string, read
 		Once()
 }
 
-// mockComponentDeployed sets up all mock calls for a single component that
-// creates both resources fresh and reaches the given readiness state.
-func (s *DeployTestSuite) mockComponentDeployed(name, namespace string, ready bool) {
-	s.mockCreateOrUpdate(name, namespace) // OCIRepository
-	s.mockCreateOrUpdate(name, namespace) // HelmRelease
+// mockExistingNoopOCIRepo simulates an OCIRepository that already exists with a
+// matching spec (OperationResultNone) and whose generation matches observedGeneration,
+// indicating the artifact controller has fully processed the current spec.
+func (s *DeployTestSuite) mockExistingNoopOCIRepo(name, namespace string, ocm *providersv1alpha1.OCMComponentSpec) {
+	ociURL := fmt.Sprintf("oci://%s/%s", ocm.Registry, ocm.ComponentName)
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: name, Namespace: namespace}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			u := obj.(*unstructured.Unstructured)
+			u.SetResourceVersion("1")
+			u.SetGeneration(1)
+			_ = unstructured.SetNestedField(u.Object, ociURL, "spec", "url")
+			_ = unstructured.SetNestedField(u.Object, ocm.Version, "spec", "ref", "tag")
+			_ = unstructured.SetNestedField(u.Object, "generic", "spec", "provider")
+			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
+			_ = unstructured.SetNestedField(u.Object, ocm.Insecure, "spec", "insecure")
+			_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{
+				"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+				"operation": "copy",
+			}, "spec", "layerSelector")
+			_ = unstructured.SetNestedField(u.Object, int64(1), "status", "observedGeneration")
+			return nil
+		}).Once()
+}
+
+// mockExistingNoopHelmRelease simulates a HelmRelease that already exists with a
+// matching spec (OperationResultNone).
+func (s *DeployTestSuite) mockExistingNoopHelmRelease(name, namespace string) {
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: name, Namespace: namespace}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			u := obj.(*unstructured.Unstructured)
+			u.SetResourceVersion("1")
+			_ = unstructured.SetNestedField(u.Object, "5m", "spec", "interval")
+			_ = unstructured.SetNestedField(u.Object, "OCIRepository", "spec", "chartRef", "kind")
+			_ = unstructured.SetNestedField(u.Object, name, "spec", "chartRef", "name")
+			_ = unstructured.SetNestedField(u.Object, namespace, "spec", "chartRef", "namespace")
+			return nil
+		}).Once()
+}
+
+// mockComponentDeployed sets up mocks for a component already present on the cluster
+// with a matching spec (OperationResultNone, generation reconciled) and the given
+// HelmRelease readiness state. Use this to test the condition-check path.
+func (s *DeployTestSuite) mockComponentDeployed(name, namespace string, ocm *providersv1alpha1.OCMComponentSpec, ready bool) {
+	s.mockExistingNoopOCIRepo(name, namespace, ocm)
+	s.mockExistingNoopHelmRelease(name, namespace)
 	s.mockHelmReleaseReadyCheck(name, namespace, ready)
 }
 
@@ -192,9 +235,10 @@ func (s *DeployTestSuite) TestProcess_HelmReleaseCreateFails() {
 func (s *DeployTestSuite) TestProcess_HelmReleaseGetFails() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
+	ocm := inst.Spec.RuntimeDeployments[0].OCM
 
-	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // OCIRepository OK
-	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // HelmRelease OK
+	s.mockExistingNoopOCIRepo("wildwest-controller", "providers-wildwest-ns", ocm)
+	s.mockExistingNoopHelmRelease("wildwest-controller", "providers-wildwest-ns")
 	// helmReleaseReady Get → non-404 error
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
@@ -211,63 +255,70 @@ func (s *DeployTestSuite) TestProcess_HelmReleaseGetFails() {
 func (s *DeployTestSuite) TestProcess_ControllerNotReady() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
+	ocm := inst.Spec.RuntimeDeployments[0].OCM
 
-	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", false)
+	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", ocm, false)
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal("Deploying", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ControllerReady_NoPortal() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
+	ocm := inst.Spec.RuntimeDeployments[0].OCM
 
-	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", true)
+	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", ocm, true)
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsContinue())
-	s.Assert().Equal("Deployed", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseReady, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ControllerReady_PortalNotReady() {
 	ctx := s.newCtx()
 	inst := s.newManagedProviderWithPortal()
+	controllerOCM := inst.Spec.RuntimeDeployments[0].OCM
+	portalOCM := inst.Spec.RuntimeDeployments[1].OCM
 
-	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", true)
-	s.mockComponentDeployed("wildwest-portal", "providers-wildwest-ns", false)
+	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", controllerOCM, true)
+	s.mockComponentDeployed("wildwest-portal", "providers-wildwest-ns", portalOCM, false)
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal("Deploying", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ControllerReady_PortalReady() {
 	ctx := s.newCtx()
 	inst := s.newManagedProviderWithPortal()
+	controllerOCM := inst.Spec.RuntimeDeployments[0].OCM
+	portalOCM := inst.Spec.RuntimeDeployments[1].OCM
 
-	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", true)
-	s.mockComponentDeployed("wildwest-portal", "providers-wildwest-ns", true)
+	s.mockComponentDeployed("wildwest-controller", "providers-wildwest-ns", controllerOCM, true)
+	s.mockComponentDeployed("wildwest-portal", "providers-wildwest-ns", portalOCM, true)
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsContinue())
-	s.Assert().Equal("Deployed", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseReady, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_HelmReleaseNotFoundDuringReadyCheck() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
+	ocm := inst.Spec.RuntimeDeployments[0].OCM
 
-	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // OCIRepository
-	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // HelmRelease
+	s.mockExistingNoopOCIRepo("wildwest-controller", "providers-wildwest-ns", ocm)
+	s.mockExistingNoopHelmRelease("wildwest-controller", "providers-wildwest-ns")
 	// helmReleaseReady: NotFound → treated as not ready, no error
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
@@ -278,7 +329,7 @@ func (s *DeployTestSuite) TestProcess_HelmReleaseNotFoundDuringReadyCheck() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal("Deploying", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_WithHelmValues() {
@@ -302,12 +353,12 @@ func (s *DeployTestSuite) TestProcess_WithHelmValues() {
 			return nil
 		}).
 		Once()
-	s.mockHelmReleaseReadyCheck("wildwest-controller", "providers-wildwest-ns", true)
-
 	result, err := s.testObj.Process(ctx, inst)
 
+	// Both resources were Created → immediate requeue without checking HelmRelease conditions.
 	s.Require().NoError(err)
-	s.Assert().True(result.IsContinue())
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 	s.Require().NotNil(capturedHR)
 	vals, found, _ := unstructured.NestedMap(capturedHR.Object, "spec", "values")
 	s.Assert().True(found)
@@ -344,13 +395,63 @@ func (s *DeployTestSuite) TestProcess_ExistingResourcesUpdated() {
 		Update(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
 		Return(nil).
 		Once()
-	s.mockHelmReleaseReadyCheck("wildwest-controller", "providers-wildwest-ns", true)
+
+	result, err := s.testObj.Process(ctx, inst)
+
+	// Both resources were Updated → immediate requeue, HelmRelease conditions not checked.
+	s.Require().NoError(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+}
+
+func (s *DeployTestSuite) TestProcess_ResourcesCreated_ImmediateRequeue() {
+	ctx := s.newCtx()
+	inst := s.newManagedProvider()
+
+	// Fresh Create for both resources → OperationResultCreated → immediate StopWithRequeue.
+	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // OCIRepository
+	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // HelmRelease
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
-	s.Assert().True(result.IsContinue())
-	s.Assert().Equal("Deployed", inst.Status.Phase)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+}
+
+func (s *DeployTestSuite) TestProcess_GenerationMismatch_Requeue() {
+	ctx := s.newCtx()
+	inst := s.newManagedProvider()
+	ocm := inst.Spec.RuntimeDeployments[0].OCM
+	ociURL := fmt.Sprintf("oci://%s/%s", ocm.Registry, ocm.ComponentName)
+
+	// OCIRepository exists but observedGeneration lags behind generation → Flux hasn't
+	// fully processed the current spec yet.
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			u := obj.(*unstructured.Unstructured)
+			u.SetResourceVersion("1")
+			u.SetGeneration(2)
+			_ = unstructured.SetNestedField(u.Object, ociURL, "spec", "url")
+			_ = unstructured.SetNestedField(u.Object, ocm.Version, "spec", "ref", "tag")
+			_ = unstructured.SetNestedField(u.Object, "generic", "spec", "provider")
+			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
+			_ = unstructured.SetNestedField(u.Object, ocm.Insecure, "spec", "insecure")
+			_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{
+				"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+				"operation": "copy",
+			}, "spec", "layerSelector")
+			_ = unstructured.SetNestedField(u.Object, int64(1), "status", "observedGeneration") // lag
+			return nil
+		}).Once()
+	s.mockExistingNoopHelmRelease("wildwest-controller", "providers-wildwest-ns")
+
+	result, err := s.testObj.Process(ctx, inst)
+
+	s.Require().NoError(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 // --- Finalize tests ---

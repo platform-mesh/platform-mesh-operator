@@ -21,6 +21,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ProviderPhasePending                = "Pending"
+	ProviderPhaseProvisioningWorkspace  = "ProvisioningWorkspace"
+	ProviderPhaseProvisioningKubeconfig = "ProvisioningKubeconfig"
+	ProviderPhaseReady                  = "Ready"
+	ProviderPhaseDeleting               = "Deleting"
+)
+
 // ProviderSpec defines the desired state of Provider.
 // Provider is a kcp-level resource that handles kcp-side bootstrap only
 // (Workspace, ServiceAccount, RBAC, kubeconfig Secret). It has no runtime-side effects.

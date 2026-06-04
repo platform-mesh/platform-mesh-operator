@@ -98,6 +98,8 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 	tokenSecretName := providerServiceAccountTokenSecretName(inst)
 	clusterRoleBindingName := providerClusterRoleBindingName(inst)
 
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningKubeconfig
+
 	userWsClient, err := r.getClusterClientFromContext(ctx)
 	if err != nil {
 		return subroutines.OK(), err
@@ -123,6 +125,7 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 	if err := providersClient.Get(ctx, types.NamespacedName{Name: wsName}, ws); err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("workspace", wsPath).Msg("Provider workspace not found yet, requeuing")
+			inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningWorkspace
 			return subroutines.StopWithRequeue(waitProviderRequeueDuration, "Waiting for provider workspace"), nil
 		}
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to get provider workspace %s", wsName)
@@ -130,6 +133,7 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 
 	if ws.Status.Phase != "Ready" {
 		log.Info().Str("workspace", wsPath).Str("phase", string(ws.Status.Phase)).Msg("Provider workspace not Ready yet, requeuing")
+		inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningWorkspace
 		return subroutines.StopWithRequeue(waitProviderRequeueDuration, "Waiting for provider workspace to become Ready"), nil
 	}
 
@@ -226,7 +230,7 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 		Namespace: kubeconfigSecretNamespace,
 	}
 
-	inst.Status.Phase = "Ready"
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseReady
 
 	log.Info().Str("provider", inst.Name).Str("secret", kubeconfigSecretName).Msg("Ensured scoped kubeconfig in provider workspace")
 	return subroutines.OK(), nil
@@ -236,7 +240,7 @@ func (r *ScopedKubeconfigSubroutine) Finalize(ctx context.Context, obj client.Ob
 	inst := obj.(*providersv1alpha1.Provider)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseDeleting
 
 	wsPath := providerWorkspacePath(inst)
 

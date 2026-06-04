@@ -270,16 +270,16 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 		Name:      managedProvider.Status.ProviderKubeconfigSecretRef.Name,
 	}, "PM")
 
-	// Check that ManagedProvider reaches Deployed phase and that the Deployment exists.
+	// Check that ManagedProvider reaches Ready phase and that the Deployment exists.
 
-	s.logger.Info().Msgf("Waiting until ManagedProvider reaches Phase=Deployed")
+	s.logger.Info().Msgf("Waiting until ManagedProvider reaches Phase=Ready")
 	s.Require().Eventually(func() bool {
 		err = s.client.Get(ctx, managedProviderName, &managedProvider)
 		if err != nil {
 			return false
 		}
-		return managedProvider.Status.Phase == "Deployed"
-	}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to reach Phase=Deployed, but has err=%q Phase=%q", err, managedProvider.Status.Phase)
+		return managedProvider.Status.Phase == "Ready"
+	}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to reach Phase=Ready, but has err=%s Phase=%q", err, managedProvider.Status.Phase)
 
 	s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator appears")
 	s.Require().Eventually(func() bool {

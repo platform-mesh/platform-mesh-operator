@@ -123,6 +123,7 @@ func (s *WorkspaceTestSuite) TestProcess() {
 		setup           func()
 		wantErrContains string
 		wantRequeue     bool
+		wantPhase       string
 	}{
 		{
 			name: "build kcp admin config fails",
@@ -201,6 +202,7 @@ func (s *WorkspaceTestSuite) TestProcess() {
 					})
 			},
 			wantRequeue: true,
+			wantPhase:   providersv1alpha1.ProviderPhaseProvisioningWorkspace,
 		},
 		{
 			name: "happy path workspace ready",
@@ -224,6 +226,7 @@ func (s *WorkspaceTestSuite) TestProcess() {
 						return nil
 					})
 			},
+			wantPhase: providersv1alpha1.ProviderPhasePending,
 		},
 	}
 
@@ -248,6 +251,9 @@ func (s *WorkspaceTestSuite) TestProcess() {
 			} else {
 				s.Require().NoError(err)
 				s.Assert().True(result.IsContinue())
+			}
+			if tc.wantPhase != "" {
+				s.Assert().Equal(tc.wantPhase, inst.Status.Phase)
 			}
 		})
 	}

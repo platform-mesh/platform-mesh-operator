@@ -22,6 +22,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ManagedProviderPhasePending                 = "Pending"
+	ManagedProviderPhaseWaitingForPlatformMesh  = "WaitingForPlatformMesh"
+	ManagedProviderPhaseWaitingForProvider      = "WaitingForProvider"
+	ManagedProviderPhaseCopyingKubeconfig       = "CopyingKubeconfig"
+	ManagedProviderPhaseCopyingKubeconfigFailed = "CopyingKubeconfigFailed"
+	ManagedProviderPhaseDeploying               = "Deploying"
+	ManagedProviderPhaseReady                   = "Ready"
+	ManagedProviderPhaseDeleting                = "Deleting"
+)
+
 // ManagedProviderSpec defines the desired state of ManagedProvider.
 // ManagedProvider is a runtime-cluster resource that orchestrates the full
 // provider lifecycle: workspace creation, Provider bootstrap, secret copy,

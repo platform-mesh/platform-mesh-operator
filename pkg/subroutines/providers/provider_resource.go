@@ -118,7 +118,7 @@ func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Ob
 		return subroutines.OK(), nil
 	}
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeleting
 
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	wsPath := providerRefPath(inst)

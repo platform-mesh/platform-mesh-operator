@@ -97,6 +97,7 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotFound() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
 }
 
 func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotReady() {
@@ -116,6 +117,7 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
 }
 
 func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNoConditions() {
@@ -133,6 +135,7 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNoConditions() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
 }
 
 func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshReady() {
@@ -152,4 +155,5 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsContinue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhasePending, inst.Status.Phase)
 }

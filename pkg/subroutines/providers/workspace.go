@@ -88,6 +88,10 @@ func (r *ProviderWorkspaceSubroutine) Process(ctx context.Context, obj client.Ob
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	inst := obj.(*providersv1alpha1.Provider)
 
+	if inst.Status.Phase == "" {
+		inst.Status.Phase = providersv1alpha1.ProviderPhasePending
+	}
+
 	providerWsName := providerWorkspaceName(inst)
 	providerWsPath := providerWorkspacePath(inst)
 
@@ -125,6 +129,7 @@ func (r *ProviderWorkspaceSubroutine) Process(ctx context.Context, obj client.Ob
 	}
 	if ws.Status.Phase != "Ready" {
 		log.Info().Str("workspace", providerWsPath).Str("phase", string(ws.Status.Phase)).Msg("Workspace not Ready yet, requeuing")
+		inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningWorkspace
 		return subroutines.StopWithRequeue(r.limiter.When(&ws), "Waiting for workspace to become Ready"), nil
 	}
 
@@ -142,7 +147,7 @@ func (r *ProviderWorkspaceSubroutine) Finalize(ctx context.Context, obj client.O
 
 	log.Debug().Str("parentPath", defaultWorkspaceParent).Str("workspaceName", providerWsName).Msg("Deleting provider workspace")
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseDeleting
 
 	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.localClient, &r.kcpCfg, r.kcpUrl)
 	if err != nil {

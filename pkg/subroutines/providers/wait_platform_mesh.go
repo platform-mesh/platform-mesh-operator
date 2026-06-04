@@ -55,11 +55,16 @@ func (r *WaitPlatformMeshSubroutine) Process(ctx context.Context, obj client.Obj
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 
+	if inst.Status.Phase == "" {
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhasePending
+	}
+
 	pmName := inst.Spec.PlatformMeshReference.Name
 	pm := &corev1alpha1.PlatformMesh{}
 	if err := r.client.Get(ctx, types.NamespacedName{Name: pmName, Namespace: inst.Namespace}, pm); err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Str("platformmesh", pmName).Msg("PlatformMesh not found yet, requeuing")
+			inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh
 			return subroutines.StopWithRequeue(waitPlatformMeshRequeueDuration, "PlatformMesh not found yet"), nil
 		}
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to get PlatformMesh %s", pmName)
@@ -67,6 +72,7 @@ func (r *WaitPlatformMeshSubroutine) Process(ctx context.Context, obj client.Obj
 
 	if !apimeta.IsStatusConditionTrue(pm.Status.Conditions, "Ready") {
 		log.Info().Str("platformmesh", pmName).Msg("PlatformMesh not Ready yet, requeuing")
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh
 		return subroutines.StopWithRequeue(waitPlatformMeshRequeueDuration, "waiting for PlatformMesh to become Ready"), nil
 	}
 

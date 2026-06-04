@@ -133,7 +133,7 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	}
 	if provider.Status.ProviderKubeconfigSecretRef == nil {
 		log.Info().Str("workspace", wsPath).Str("provider", provider.Name).Msg("Provider providerKubeconfigSecretRef not set yet, requeuing")
-		inst.Status.Phase = "CopyingKubeconfig"
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseCopyingKubeconfig
 		return subroutines.StopWithRequeue(kubeconfigCopyRequeueDuration, "waiting for Provider to set providerKubeconfigSecretRef"), nil
 	}
 
@@ -141,7 +141,7 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	// It's a user error if these two are different. We'll let the user resolve.
 	if provider.Spec.ProviderKubeconfigSecret == nil || *provider.Spec.ProviderKubeconfigSecret != managedProviderKubeconfigSecretSpec {
 		log.Info().Str("workspace", wsPath).Str("provider", provider.Name).Msg("Provider providerKubeconfigSecretRef not set yet, requeuing")
-		inst.Status.Phase = "CopyingKubeconfigFailed"
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseCopyingKubeconfigFailed
 		return subroutines.StopWithRequeue(kubeconfigCopyRequeueDuration, fmt.Sprintf("providerKubeconfigSecretRef set on Provider %s:%s differs from the one set on ManagedProvider %s/%s", wsPath, provName, inst.Namespace, inst.Name)), nil
 	}
 
@@ -160,7 +160,7 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	}
 
 	if len(kcpKubeconfig) == 0 {
-		inst.Status.Phase = "CopyingKubeconfig"
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseCopyingKubeconfig
 		return subroutines.StopWithRequeue(kubeconfigCopyRequeueDuration, "waiting for Provider to set kubeconfig in secret"), nil
 	}
 
@@ -201,7 +201,7 @@ func (r *KubeconfigCopySubroutine) Finalize(ctx context.Context, obj client.Obje
 		return subroutines.OK(), nil
 	}
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeleting
 
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

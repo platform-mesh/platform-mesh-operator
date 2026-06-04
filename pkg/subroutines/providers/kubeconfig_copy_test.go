@@ -182,7 +182,7 @@ func (s *KubeconfigCopyTestSuite) TestProcess_KubeconfigSecretRefNotSetYet() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal("CopyingKubeconfig", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseCopyingKubeconfig, inst.Status.Phase)
 }
 
 func (s *KubeconfigCopyTestSuite) TestProcess_KubeconfigSecretGetFails() {

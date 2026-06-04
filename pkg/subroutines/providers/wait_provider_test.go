@@ -127,7 +127,7 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal("WaitingForProvider", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForProvider, inst.Status.Phase)
 }
 
 func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {

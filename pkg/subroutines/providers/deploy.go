@@ -93,11 +93,11 @@ func (r *DeploySubroutine) Process(ctx context.Context, obj client.Object) (subr
 		return subroutines.OK(), err
 	}
 	if !result.IsContinue() {
-		inst.Status.Phase = "Deploying"
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeploying
 		return result, nil
 	}
 
-	inst.Status.Phase = "Deployed"
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseReady
 	return subroutines.OK(), nil
 }
 
@@ -130,7 +130,7 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 	ociRepo.SetGroupVersionKind(deployOCIRepoGVK)
 	ociRepo.SetName(name)
 	ociRepo.SetNamespace(namespace)
-	if _, err := controllerutil.CreateOrUpdate(ctx, r.client, ociRepo, func() error {
+	ociResult, err := controllerutil.CreateOrUpdate(ctx, r.client, ociRepo, func() error {
 		if err := unstructured.SetNestedField(ociRepo.Object, ociURL, "spec", "url"); err != nil {
 			return err
 		}
@@ -150,7 +150,8 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 			"operation": "copy",
 		}, "spec", "layerSelector")
-	}); err != nil {
+	})
+	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to reconcile OCIRepository %s/%s", namespace, name)
 	}
 
@@ -165,7 +166,7 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 	helmRelease.SetGroupVersionKind(deployHelmReleaseGVK)
 	helmRelease.SetName(name)
 	helmRelease.SetNamespace(namespace)
-	if _, err := controllerutil.CreateOrUpdate(ctx, r.client, helmRelease, func() error {
+	hrResult, err := controllerutil.CreateOrUpdate(ctx, r.client, helmRelease, func() error {
 		if err := unstructured.SetNestedField(helmRelease.Object, "5m", "spec", "interval"); err != nil {
 			return err
 		}
@@ -191,8 +192,26 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 			return unstructured.SetNestedMap(helmRelease.Object, values, "spec", "values")
 		}
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to reconcile HelmRelease %s/%s", namespace, name)
+	}
+
+	// If either resource was just created or updated, skip condition checks — any existing
+	// Ready=True on the HelmRelease is stale with respect to the new spec.
+	if ociResult != controllerutil.OperationResultNone || hrResult != controllerutil.OperationResultNone {
+		log.Info().Str("ociResult", string(ociResult)).Str("hrResult", string(hrResult)).Msg("Resource modified, requeuing before checking conditions")
+		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("waiting for %s to be reconciled", name)), nil
+	}
+
+	// Verify Flux has fully processed the current OCIRepository spec generation before
+	// trusting HelmRelease conditions. A mismatch means Flux hasn't fetched the new
+	// artifact yet, so the HelmRelease conditions still reflect the previous version.
+	ociGeneration := ociRepo.GetGeneration()
+	ociObservedGeneration, _, _ := unstructured.NestedInt64(ociRepo.Object, "status", "observedGeneration")
+	if ociGeneration != ociObservedGeneration {
+		log.Info().Int64("generation", ociGeneration).Int64("observedGeneration", ociObservedGeneration).Msg("OCIRepository not yet reconciled, requeuing")
+		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("waiting for OCIRepository %s/%s to be reconciled", namespace, name)), nil
 	}
 
 	ready, err := r.helmReleaseReady(ctx, namespace, name)
@@ -233,7 +252,7 @@ func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (sub
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeleting
 
 	needsDeletion := false
 	for _, component := range inst.Spec.RuntimeDeployments {
