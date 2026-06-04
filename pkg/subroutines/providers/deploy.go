@@ -40,7 +40,7 @@ import (
 
 const (
 	DeploySubroutineName      = "DeploySubroutine"
-	deploySubroutineFinalizer = "providers.platform-mesh.io/deploy-finalizer"
+	deploySubroutineFinalizer = "providers.platform-mesh.io/runtime-deployments"
 	deployRequeueDuration     = 10 * time.Second
 )
 
