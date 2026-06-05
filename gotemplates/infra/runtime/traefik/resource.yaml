@@ -4,7 +4,7 @@ kind: Resource
 metadata:
   labels:
     artifact: chart
-    repo: helm
+    repo: oci
   name: {{ .traefik.name }}
   namespace: {{ .helmReleaseNamespace }}
 spec:

@@ -8,13 +8,9 @@ metadata:
   namespace: {{ $.releaseNamespace }}
   labels:
     artifact: chart
-    {{- if $config.helmRepo }}
-    repo: helm
-    {{- end }}
     {{- if $config.gitRepo }}
     repo: git
-    {{- end }}
-    {{- if not (or $config.gitRepo $config.helmRepo) }}
+    {{- else }}
     repo: oci
     {{- end }}
   {{- with ($config.chartResources).annotations }}
