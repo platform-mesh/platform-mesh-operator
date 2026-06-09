@@ -543,6 +543,10 @@ users:
 		NewKcpClient(mock.Anything, "root:orgs:default").
 		Return(mockKcpClient, nil)
 
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, "root:providers").
+		Return(mockKcpClient, nil)
+
 	// Mock APIExport lookups
 	apiexport := &kcpapiv1alpha.APIExport{
 		Status: kcpapiv1alpha.APIExportStatus{
