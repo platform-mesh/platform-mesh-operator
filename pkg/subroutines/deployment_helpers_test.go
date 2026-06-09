@@ -458,12 +458,11 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_not() {
 
 func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 	tests := []struct {
-		name                          string
-		existingApp                   *unstructured.Unstructured
-		objMap                        map[string]interface{}
-		expectedRepoURL               string
-		expectedRevPreserved          bool
-		expectedTargetRevisionDeleted bool
+		name                   string
+		existingApp            *unstructured.Unstructured
+		objMap                 map[string]interface{}
+		expectedRepoURL        string
+		expectedTargetRevision string
 	}{
 		{
 			name:        "app does not exist - nothing to preserve",
@@ -476,7 +475,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 					},
 				},
 			},
-			expectedRepoURL: "https://new-repo.git",
+			expectedRepoURL:        "https://new-repo.git",
+			expectedTargetRevision: "v1.0.0",
 		},
 		{
 			name: "existing app has placeholder values - should not preserve",
@@ -504,7 +504,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 					},
 				},
 			},
-			expectedRepoURL: "https://new-repo.git",
+			expectedRepoURL:        "https://new-repo.git",
+			expectedTargetRevision: "v1.0.0",
 		},
 		{
 			name: "existing app has real values different from new - should preserve",
@@ -532,8 +533,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 					},
 				},
 			},
-			expectedRepoURL:               "https://existing-repo.git",
-			expectedTargetRevisionDeleted: true,
+			expectedRepoURL:        "https://existing-repo.git",
+			expectedTargetRevision: "", // deleted so ResourceSubroutine's value is preserved
 		},
 		{
 			name: "existing app has same values as new - no preservation needed",
@@ -561,7 +562,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 					},
 				},
 			},
-			expectedRepoURL: "https://same-repo.git",
+			expectedRepoURL:        "https://same-repo.git",
+			expectedTargetRevision: "v1.0.0",
 		},
 		{
 			name: "existing app has empty repoURL - should not preserve",
@@ -589,7 +591,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 					},
 				},
 			},
-			expectedRepoURL: "https://new-repo.git",
+			expectedRepoURL:        "https://new-repo.git",
+			expectedTargetRevision: "v1.0.0",
 		},
 	}
 
@@ -622,17 +625,14 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 			spec := tt.objMap["spec"].(map[string]interface{})
 			source := spec["source"].(map[string]interface{})
 
-			if tt.expectedRevPreserved {
-				_, hasRepoURL := source["repoURL"]
-				_, hasTargetRevision := source["targetRevision"]
-				s.False(hasRepoURL, "repoURL should have been deleted to preserve existing")
+			s.Equal(tt.expectedRepoURL, source["repoURL"])
+
+			actualTargetRevision, hasTargetRevision := source["targetRevision"]
+			if tt.expectedTargetRevision == "" {
 				s.False(hasTargetRevision, "targetRevision should have been deleted to preserve existing")
-			} else if tt.expectedRepoURL != "" {
-				s.Equal(tt.expectedRepoURL, source["repoURL"])
-			}
-			if tt.expectedTargetRevisionDeleted {
-				_, hasTargetRevision := source["targetRevision"]
-				s.False(hasTargetRevision, "targetRevision should have been deleted to preserve existing")
+			} else {
+				s.True(hasTargetRevision, "targetRevision should be present")
+				s.Equal(tt.expectedTargetRevision, actualTargetRevision)
 			}
 		})
 	}
@@ -675,7 +675,7 @@ func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValue
 	tests := []struct {
 		name          string
 		isUnsuspended bool
-		specSuspend   *bool        // nil = field absent from template
+		specSuspend   *bool       // nil = field absent from template
 		expectSuspend interface{} // nil = key absent
 	}{
 		{

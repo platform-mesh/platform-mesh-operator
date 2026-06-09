@@ -2,7 +2,7 @@ module github.com/platform-mesh/platform-mesh-operator
 
 go 1.26.1
 
-replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.0.0-20260311125053-bd5709c8d5dd
+replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.8.0
 
 replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.1
 
@@ -24,7 +24,7 @@ require (
 	github.com/mandelsoft/goutils v0.0.0-20260507153918-c39bb4bb4b7b
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/platform-mesh/golang-commons v0.17.2
+	github.com/platform-mesh/golang-commons v0.17.5
 	github.com/platform-mesh/subroutines v0.4.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.35.1
