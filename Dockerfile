@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM --platform=$BUILDPLATFORM golang:1.26.1-trixie AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.3-trixie@sha256:0f6b034c99663ea8957e7dae99124e37374cbe7fcb5b5646f19b185f8f976279 AS builder
 ARG TARGETARCH
 
 WORKDIR /workspace
