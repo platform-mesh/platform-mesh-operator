@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
@@ -39,7 +40,7 @@ import (
 
 const (
 	DeploySubroutineName      = "DeploySubroutine"
-	deploySubroutineFinalizer = "providers.platform-mesh.io/deploy-finalizer"
+	deploySubroutineFinalizer = "providers.platform-mesh.io/runtime-deployments"
 	deployRequeueDuration     = 10 * time.Second
 )
 
@@ -56,10 +57,16 @@ var (
 	}
 )
 
+// ocmResourceName returns the last path segment of an OCM component name.
+// e.g. "github.com/platform-mesh/wildwest-controller" returns "wildwest-controller"
+func ocmResourceName(componentName string) string {
+	lastSlashIndex := strings.LastIndexByte(componentName, '/') + 1
+	return componentName[lastSlashIndex:]
+}
+
 // DeploySubroutine creates Flux OCIRepository and HelmRelease objects on the
-// runtime cluster for the OCM components referenced in spec.controller and
-// spec.portal. Subsequent reconciliations detect drift via the HelmRelease
-// Ready condition.
+// runtime cluster for the OCM components referenced in spec.runtimeDeployments.
+// Subsequent reconciliations detect drift via the HelmRelease Ready condition.
 type DeploySubroutine struct {
 	client  client.Client
 	limiter workqueue.TypedRateLimiter[*providersv1alpha1.ManagedProvider]
@@ -81,31 +88,40 @@ func (r *DeploySubroutine) GetName() string {
 func (r *DeploySubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 
-	result, err := r.deployComponent(ctx, inst.Namespace, inst.Name+"-controller", inst.Spec.Controller.OCM)
+	result, err := r.doRuntimeDeployments(ctx, inst)
 	if err != nil {
 		return subroutines.OK(), err
 	}
 	if !result.IsContinue() {
-		inst.Status.Phase = "Deploying"
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeploying
 		return result, nil
 	}
 
-	if inst.Spec.Portal != nil {
-		result, err = r.deployComponent(ctx, inst.Namespace, inst.Name+"-portal", inst.Spec.Portal.OCM)
-		if err != nil {
-			return subroutines.OK(), err
-		}
-		if !result.IsContinue() {
-			inst.Status.Phase = "Deploying"
-			return result, nil
-		}
-	}
-
-	inst.Status.Phase = "Deployed"
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseReady
 	return subroutines.OK(), nil
 }
 
-func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name string, ocm providersv1alpha1.OCMComponentSpec) (subroutines.Result, error) {
+func (r *DeploySubroutine) doRuntimeDeployments(ctx context.Context, managedProvider *providersv1alpha1.ManagedProvider) (subroutines.Result, error) {
+	runtimeKubeconfigSecretName := managedProvider.Spec.RuntimeKubeconfigSecretName
+
+	for _, component := range managedProvider.Spec.RuntimeDeployments {
+		if component.OCM != nil {
+			ocm := component.OCM
+			name := ocmResourceName(ocm.ComponentName)
+			result, err := r.deployOCMComponent(ctx, managedProvider.Namespace, name, ocm, runtimeKubeconfigSecretName)
+			if err != nil {
+				return subroutines.OK(), err
+			}
+			if !result.IsContinue() {
+				return result, nil
+			}
+		}
+	}
+
+	return subroutines.OK(), nil
+}
+
+func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, name string, ocm *providersv1alpha1.OCMComponentSpec, runtimeKubeconfigSecretName string) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", DeploySubroutineName).ChildLogger("component", name)
 
 	ociURL := fmt.Sprintf("oci://%s/%s", ocm.Registry, ocm.ComponentName)
@@ -114,7 +130,7 @@ func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name 
 	ociRepo.SetGroupVersionKind(deployOCIRepoGVK)
 	ociRepo.SetName(name)
 	ociRepo.SetNamespace(namespace)
-	if _, err := controllerutil.CreateOrUpdate(ctx, r.client, ociRepo, func() error {
+	ociResult, err := controllerutil.CreateOrUpdate(ctx, r.client, ociRepo, func() error {
 		if err := unstructured.SetNestedField(ociRepo.Object, ociURL, "spec", "url"); err != nil {
 			return err
 		}
@@ -127,11 +143,15 @@ func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name 
 		if err := unstructured.SetNestedField(ociRepo.Object, "1m0s", "spec", "interval"); err != nil {
 			return err
 		}
+		if err := unstructured.SetNestedField(ociRepo.Object, ocm.Insecure, "spec", "insecure"); err != nil {
+			return err
+		}
 		return unstructured.SetNestedMap(ociRepo.Object, map[string]interface{}{
 			"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 			"operation": "copy",
 		}, "spec", "layerSelector")
-	}); err != nil {
+	})
+	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to reconcile OCIRepository %s/%s", namespace, name)
 	}
 
@@ -146,7 +166,7 @@ func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name 
 	helmRelease.SetGroupVersionKind(deployHelmReleaseGVK)
 	helmRelease.SetName(name)
 	helmRelease.SetNamespace(namespace)
-	if _, err := controllerutil.CreateOrUpdate(ctx, r.client, helmRelease, func() error {
+	hrResult, err := controllerutil.CreateOrUpdate(ctx, r.client, helmRelease, func() error {
 		if err := unstructured.SetNestedField(helmRelease.Object, "5m", "spec", "interval"); err != nil {
 			return err
 		}
@@ -159,12 +179,39 @@ func (r *DeploySubroutine) deployComponent(ctx context.Context, namespace, name 
 		if err := unstructured.SetNestedField(helmRelease.Object, namespace, "spec", "chartRef", "namespace"); err != nil {
 			return err
 		}
+		if runtimeKubeconfigSecretName != "" {
+			// The user requests to deploy this in a different runtime cluster.
+			if err := unstructured.SetNestedMap(helmRelease.Object, map[string]interface{}{
+				"name": runtimeKubeconfigSecretName,
+				"key":  "kubeconfig",
+			}, "spec", "kubeConfig", "secretRef"); err != nil {
+				return err
+			}
+		}
 		if values != nil {
 			return unstructured.SetNestedMap(helmRelease.Object, values, "spec", "values")
 		}
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to reconcile HelmRelease %s/%s", namespace, name)
+	}
+
+	// If either resource was just created or updated, skip condition checks — any existing
+	// Ready=True on the HelmRelease is stale with respect to the new spec.
+	if ociResult != controllerutil.OperationResultNone || hrResult != controllerutil.OperationResultNone {
+		log.Info().Str("ociResult", string(ociResult)).Str("hrResult", string(hrResult)).Msg("Resource modified, requeuing before checking conditions")
+		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("waiting for %s to be reconciled", name)), nil
+	}
+
+	// Verify Flux has fully processed the current OCIRepository spec generation before
+	// trusting HelmRelease conditions. A mismatch means Flux hasn't fetched the new
+	// artifact yet, so the HelmRelease conditions still reflect the previous version.
+	ociGeneration := ociRepo.GetGeneration()
+	ociObservedGeneration, _, _ := unstructured.NestedInt64(ociRepo.Object, "status", "observedGeneration")
+	if ociGeneration != ociObservedGeneration {
+		log.Info().Int64("generation", ociGeneration).Int64("observedGeneration", ociObservedGeneration).Msg("OCIRepository not yet reconciled, requeuing")
+		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("waiting for OCIRepository %s/%s to be reconciled", namespace, name)), nil
 	}
 
 	ready, err := r.helmReleaseReady(ctx, namespace, name)
@@ -205,37 +252,37 @@ func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (sub
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	inst.Status.Phase = "Deleting"
-
-	names := []string{inst.Name + "-controller"}
-	if inst.Spec.Portal != nil {
-		names = append(names, inst.Name+"-portal")
-	}
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeleting
 
 	needsDeletion := false
-	for _, name := range names {
-		hr := &unstructured.Unstructured{}
-		hr.SetGroupVersionKind(deployHelmReleaseGVK)
-		hr.SetName(name)
-		hr.SetNamespace(inst.Namespace)
-		if err := r.client.Delete(ctx, hr); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return subroutines.OK(), gcerrors.Wrap(err, "failed to delete HelmRelease %s/%s", inst.Namespace, name)
-			}
-		} else {
-			needsDeletion = true
-		}
+	for _, component := range inst.Spec.RuntimeDeployments {
+		if component.OCM != nil {
+			ocm := component.OCM
+			name := ocmResourceName(ocm.ComponentName)
 
-		oci := &unstructured.Unstructured{}
-		oci.SetGroupVersionKind(deployOCIRepoGVK)
-		oci.SetName(name)
-		oci.SetNamespace(inst.Namespace)
-		if err := r.client.Delete(ctx, oci); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+			hr := &unstructured.Unstructured{}
+			hr.SetGroupVersionKind(deployHelmReleaseGVK)
+			hr.SetName(name)
+			hr.SetNamespace(inst.Namespace)
+			if err := r.client.Delete(ctx, hr); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return subroutines.OK(), gcerrors.Wrap(err, "failed to delete HelmRelease %s/%s", inst.Namespace, name)
+				}
+			} else {
+				needsDeletion = true
 			}
-		} else {
-			needsDeletion = true
+
+			oci := &unstructured.Unstructured{}
+			oci.SetGroupVersionKind(deployOCIRepoGVK)
+			oci.SetName(name)
+			oci.SetNamespace(inst.Namespace)
+			if err := r.client.Delete(ctx, oci); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+				}
+			} else {
+				needsDeletion = true
+			}
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,13 +85,6 @@ func NewManagedProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.Ope
 	var subs []subroutines.Subroutine
 	if operatorCfg.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled {
 		subs = append(subs, pmsubs.NewWaitPlatformMeshSubroutine(localCl))
-	}
-	if operatorCfg.Subroutines.ManagedProvider.Workspace.Enabled {
-		sub, err := pmsubs.NewWorkspaceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl)
-		if err != nil {
-			return nil, fmt.Errorf("error creating WorkspaceSubroutine: %v", err)
-		}
-		subs = append(subs, sub)
 	}
 	if operatorCfg.Subroutines.ManagedProvider.ProviderResource.Enabled {
 		sub, err := pmsubs.NewProviderResourceSubroutine(localCl, kcpHelper, operatorCfg, kcpUrl)

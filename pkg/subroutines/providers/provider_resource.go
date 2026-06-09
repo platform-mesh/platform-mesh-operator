@@ -25,10 +25,10 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -75,45 +75,41 @@ func (r *ProviderResourceSubroutine) Process(ctx context.Context, obj client.Obj
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 
-	wsPath := workspacePath(inst)
+	wsPath := providerRefPath(inst)
+	providerName := providerRefName(inst)
 
 	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}
 
-	scopedClient, err := r.kcpHelper.NewKcpClient(restCfg, wsPath)
+	scopedKcpClient, err := r.kcpHelper.NewKcpClient(restCfg, wsPath)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to create kcp client for provider workspace %s", wsPath)
 	}
 
-	if err := applyProvider(ctx, scopedClient, inst.Name, func(p *providersv1alpha1.Provider) {}); err != nil {
+	// Ensure Provider in user's workspace.
+	provider := providersv1alpha1.Provider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: providerName,
+		},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, scopedKcpClient, &provider, func() error {
+		providerKubeconfigSecret := providerKubeconfigSecretSpec(
+			inst.Name,
+			inst.Namespace,
+			inst.Spec.ProviderKubeconfigSecret,
+		)
+		provider.Spec.ProviderKubeconfigSecret = &providerKubeconfigSecret
+		provider.Spec.HostOverride = inst.Spec.ProviderHostOverride
+		return nil
+	}); err != nil {
+		log.Err(err).Msgf("failed to ensure Provider %q in workspace %q", providerName, wsPath)
 		return subroutines.Result{}, err
 	}
 
-	log.Info().Str("workspace", wsPath).Msg("Ensured provider workspace")
+	log.Info().Str("workspace", wsPath).Str("provider", providerName).Msg("Ensured provider resource")
 	return subroutines.OK(), nil
-}
-
-func applyProvider(ctx context.Context, scopedKubeClient client.Client, name string, patch func(*providersv1alpha1.Provider)) error {
-	provider := &providersv1alpha1.Provider{}
-	provider.APIVersion = providersv1alpha1.SchemeGroupVersion.String()
-	provider.Kind = "Provider"
-	provider.Name = name
-	patch(provider)
-
-	u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(provider)
-	if err != nil {
-		return gcerrors.Wrap(err, "failed to convert Provider to unstructured")
-	}
-	uObj := unstructured.Unstructured{Object: u}
-
-	err = scopedKubeClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&uObj),
-		client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
-	if err != nil {
-		return gcerrors.Wrap(err, "failed to apply provider %s", name)
-	}
-	return nil
 }
 
 func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Object) (subroutines.Result, error) {
@@ -122,26 +118,27 @@ func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Ob
 		return subroutines.OK(), nil
 	}
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeleting
 
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	wsPath := workspacePath(inst)
+	wsPath := providerRefPath(inst)
+	provName := providerRefName(inst)
 
 	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}
 
-	scopedKubeClient, err := r.kcpHelper.NewKcpClient(restCfg, wsPath)
+	scopedKcpClient, err := r.kcpHelper.NewKcpClient(restCfg, wsPath)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to create kcp client for provider workspace %s", wsPath)
 	}
 
 	provider := &providersv1alpha1.Provider{}
-	provider.Name = inst.Name
-	if err = scopedKubeClient.Delete(ctx, provider); err != nil {
+	provider.Name = provName
+	if err = scopedKcpClient.Delete(ctx, provider); err != nil {
 		if kerrors.IsNotFound(err) {
-			log.Info().Str("workspace", wsPath).Msg("Deleted provider")
+			log.Info().Str("workspace", wsPath).Str("provider", provName).Msg("Deleted provider")
 			r.limiter.Forget(inst)
 			return subroutines.OK(), nil
 		}
@@ -151,6 +148,40 @@ func (r *ProviderResourceSubroutine) Finalize(ctx context.Context, obj client.Ob
 	return subroutines.StopWithRequeue(r.limiter.When(inst), "Waiting for Provider to be deleted"), nil
 }
 
-func (r *ProviderResourceSubroutine) Finalizers(_ client.Object) []string {
+func (r *ProviderResourceSubroutine) Finalizers(obj client.Object) []string {
+	if !obj.(*providersv1alpha1.ManagedProvider).Spec.CleanupOnDelete {
+		return []string{}
+	}
 	return []string{providerResourceFinalizer}
+}
+
+func providerKubeconfigSecretSpec(name, namespace string, spec *providersv1alpha1.LocalKubeconfigSecretSpec) providersv1alpha1.KubeconfigSecretSpec {
+	if spec == nil {
+		return providersv1alpha1.KubeconfigSecretSpec{
+			Name:      providerKubeconfigSecretName(name),
+			Namespace: namespace,
+			Key:       "kubeconfig",
+		}
+	}
+	return providersv1alpha1.KubeconfigSecretSpec{
+		Name:      spec.Name,
+		Namespace: namespace,
+		Key:       spec.Key,
+	}
+}
+
+// providerRefPath returns the path where ManagedProvider should look for a Provider resource.
+func providerRefPath(inst *providersv1alpha1.ManagedProvider) string {
+	if inst.Spec.ProviderReference != nil && inst.Spec.ProviderReference.Path != "" {
+		return inst.Spec.ProviderReference.Path
+	}
+	return "root:providers:system"
+}
+
+// providerRefName returns the name of the Provider resource referenced by ManagedProvider.
+func providerRefName(inst *providersv1alpha1.ManagedProvider) string {
+	if inst.Spec.ProviderReference != nil && inst.Spec.ProviderReference.Name != "" {
+		return inst.Spec.ProviderReference.Name
+	}
+	return inst.Name
 }

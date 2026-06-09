@@ -21,6 +21,7 @@ import (
 	"errors"
 	"testing"
 
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/context/keys"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
@@ -40,12 +41,12 @@ import (
 
 type WorkspaceTestSuite struct {
 	suite.Suite
-	testObj       *WorkspaceSubroutine
+	testObj       *ProviderWorkspaceSubroutine
 	clientMock    *mocks.Client
 	kcpHelperMock *mocks.KcpHelper
 	kcpClientMock *mocks.Client
 	log           *logger.Logger
-	operatorCfg   config.OperatorConfig
+	providersCfg  config.ProvidersConfig
 }
 
 func TestWorkspaceTestSuite(t *testing.T) {
@@ -64,13 +65,14 @@ func (s *WorkspaceTestSuite) SetupTest() {
 	s.kcpClientMock = new(mocks.Client)
 
 	s.clientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
+	s.kcpClientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 
-	s.operatorCfg = config.OperatorConfig{}
-	s.operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin"
-	s.operatorCfg.KCP.Namespace = "platform-mesh-system"
+	s.providersCfg = config.NewProvidersConfig()
+	s.providersCfg.KCP.ClusterAdminSecretName = "kcp-admin"
+	s.providersCfg.KCP.Namespace = "platform-mesh-system"
 
 	var err error
-	s.testObj, err = NewWorkspaceSubroutine(s.clientMock, s.kcpHelperMock, &s.operatorCfg, "https://kcp.api.example.com")
+	s.testObj, err = NewProviderWorkspaceSubroutine(s.clientMock, s.kcpHelperMock, s.providersCfg.KCP, "https://kcp.api.example.com")
 	s.Require().NoError(err)
 }
 
@@ -85,11 +87,13 @@ func (s *WorkspaceTestSuite) newCtx() context.Context {
 	return context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 }
 
-func (s *WorkspaceTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvider {
-	return &providersv1alpha1.ManagedProvider{
+func (s *WorkspaceTestSuite) newProvider() *providersv1alpha1.Provider {
+	return &providersv1alpha1.Provider{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "cowboys",
-			Namespace: "providers-wildwest-ns",
+			Name: "wildwest",
+			Annotations: map[string]string{
+				"kcp.io/cluster": "abc123",
+			},
 		},
 	}
 }
@@ -111,17 +115,16 @@ func (s *WorkspaceTestSuite) mockAdminSecret() {
 // --- Process ---
 
 func (s *WorkspaceTestSuite) TestProcess() {
+	// wsName = "wildwest-abc123" (provider.Name + "-" + annotation["kcp.io/cluster"])
+	wsName := "wildwest-abc123"
+
 	cases := []struct {
 		name            string
-		mutate          func(*providersv1alpha1.ManagedProvider)
 		setup           func()
 		wantErrContains string
+		wantRequeue     bool
+		wantPhase       string
 	}{
-		{
-			name:            "invalid workspace path",
-			mutate:          func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.WorkspacePath = "nocolon" },
-			wantErrContains: "invalid workspace path",
-		},
 		{
 			name: "build kcp admin config fails",
 			setup: func() {
@@ -141,38 +144,89 @@ func (s *WorkspaceTestSuite) TestProcess() {
 			wantErrContains: "failed to create kcp client",
 		},
 		{
-			name: "apply workspace fails",
+			name: "ensure workspace fails",
 			setup: func() {
 				s.mockAdminSecret()
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				s.kcpClientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(errors.New("apply failed"))
+				// CreateOrUpdate: Get → NotFound → Create fails
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName))
+				s.kcpClientMock.EXPECT().
+					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
+					Return(errors.New("create failed"))
 			},
-			wantErrContains: "failed to apply workspace",
+			wantErrContains: "create failed",
 		},
 		{
-			name: "happy path default workspace path",
+			name: "readiness get fails",
 			setup: func() {
 				s.mockAdminSecret()
-				// root:providers:cowboys → parent root:providers
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				s.kcpClientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				// CreateOrUpdate: Get → NotFound → Create succeeds
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
+				s.kcpClientMock.EXPECT().
+					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
+				// Readiness Get fails
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					Return(errors.New("api server error"))
 			},
+			wantErrContains: "failed to get workspace",
 		},
 		{
-			name:   "happy path custom workspace path",
-			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.WorkspacePath = "root:custom:providers:cowboys" },
+			name: "workspace not ready - requeue",
 			setup: func() {
 				s.mockAdminSecret()
-				// root:custom:providers:cowboys → parent root:custom:providers
-				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:custom:providers").
+				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				s.kcpClientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				// CreateOrUpdate: Get → NotFound → Create succeeds
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
+				s.kcpClientMock.EXPECT().
+					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
+				// Readiness Get: workspace not ready
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+						ws := obj.(*kcptenancyv1alpha.Workspace)
+						ws.Status.Phase = ""
+						return nil
+					})
 			},
+			wantRequeue: true,
+			wantPhase:   providersv1alpha1.ProviderPhaseProvisioningWorkspace,
+		},
+		{
+			name: "happy path workspace ready",
+			setup: func() {
+				s.mockAdminSecret()
+				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
+					Return(s.kcpClientMock, nil)
+				// CreateOrUpdate: Get → NotFound → Create succeeds
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
+				s.kcpClientMock.EXPECT().
+					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
+					Return(nil)
+				// Readiness Get: workspace Ready
+				s.kcpClientMock.EXPECT().
+					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
+					RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+						ws := obj.(*kcptenancyv1alpha.Workspace)
+						ws.Status.Phase = "Ready"
+						return nil
+					})
+			},
+			wantPhase: providersv1alpha1.ProviderPhasePending,
 		},
 	}
 
@@ -180,10 +234,7 @@ func (s *WorkspaceTestSuite) TestProcess() {
 		tc := tc
 		s.Run(tc.name, func() {
 			s.SetupTest()
-			inst := s.newManagedProvider()
-			if tc.mutate != nil {
-				tc.mutate(inst)
-			}
+			inst := s.newProvider()
 			if tc.setup != nil {
 				tc.setup()
 			}
@@ -194,9 +245,15 @@ func (s *WorkspaceTestSuite) TestProcess() {
 				s.Require().Error(err)
 				s.Assert().Contains(err.Error(), tc.wantErrContains)
 				s.Assert().True(result.IsContinue())
+			} else if tc.wantRequeue {
+				s.Require().NoError(err)
+				s.Assert().True(result.IsStopWithRequeue())
 			} else {
 				s.Require().NoError(err)
 				s.Assert().True(result.IsContinue())
+			}
+			if tc.wantPhase != "" {
+				s.Assert().Equal(tc.wantPhase, inst.Status.Phase)
 			}
 		})
 	}
@@ -205,20 +262,16 @@ func (s *WorkspaceTestSuite) TestProcess() {
 // --- Finalize ---
 
 func (s *WorkspaceTestSuite) TestFinalize() {
+	wsName := "wildwest-abc123"
+
 	cases := []struct {
 		name            string
-		mutate          func(*providersv1alpha1.ManagedProvider)
 		setup           func()
 		wantErrContains string
 		wantRequeue     bool
 	}{
 		{
-			name: "cleanup on delete false",
-			// CleanupOnDelete defaults to false → early return, no mocks needed
-		},
-		{
-			name:   "build kcp admin config fails",
-			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
+			name: "build kcp admin config fails",
 			setup: func() {
 				s.clientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: "kcp-admin", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
@@ -227,8 +280,7 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 			wantErrContains: "failed to build kcp admin config",
 		},
 		{
-			name:   "new kcp client fails",
-			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
+			name: "new kcp client fails",
 			setup: func() {
 				s.mockAdminSecret()
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
@@ -237,37 +289,36 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 			wantErrContains: "failed to create kcp client",
 		},
 		{
-			name:   "delete fails",
-			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
+			name: "delete fails",
 			setup: func() {
 				s.mockAdminSecret()
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				s.kcpClientMock.EXPECT().Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
+				s.kcpClientMock.EXPECT().
+					Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(errors.New("delete failed"))
 			},
-			wantErrContains: "failed to delete workspace",
+			wantErrContains: "failed to delete provider workspace",
 		},
 		{
-			name:   "workspace already deleted (not found)",
-			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
+			name: "workspace already gone",
 			setup: func() {
 				s.mockAdminSecret()
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				s.kcpClientMock.EXPECT().Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
-					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, "cowboys"))
+				s.kcpClientMock.EXPECT().
+					Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
+					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName))
 			},
-			wantRequeue: false,
 		},
 		{
-			name:   "delete issued, requeue to wait for deletion",
-			mutate: func(inst *providersv1alpha1.ManagedProvider) { inst.Spec.CleanupOnDelete = true },
+			name: "delete accepted - wait for deletion",
 			setup: func() {
 				s.mockAdminSecret()
 				s.kcpHelperMock.EXPECT().NewKcpClient(mock.Anything, "root:providers").
 					Return(s.kcpClientMock, nil)
-				s.kcpClientMock.EXPECT().Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
+				s.kcpClientMock.EXPECT().
+					Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
 			},
 			wantRequeue: true,
@@ -278,10 +329,7 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 		tc := tc
 		s.Run(tc.name, func() {
 			s.SetupTest()
-			inst := s.newManagedProvider()
-			if tc.mutate != nil {
-				tc.mutate(inst)
-			}
+			inst := s.newProvider()
 			if tc.setup != nil {
 				tc.setup()
 			}
@@ -292,13 +340,12 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 				s.Require().Error(err)
 				s.Assert().Contains(err.Error(), tc.wantErrContains)
 				s.Assert().True(result.IsContinue())
+			} else if tc.wantRequeue {
+				s.Require().NoError(err)
+				s.Assert().True(result.IsStopWithRequeue())
 			} else {
 				s.Require().NoError(err)
-				if tc.wantRequeue {
-					s.Assert().True(result.IsStopWithRequeue())
-				} else {
-					s.Assert().True(result.IsContinue())
-				}
+				s.Assert().True(result.IsContinue())
 			}
 		})
 	}

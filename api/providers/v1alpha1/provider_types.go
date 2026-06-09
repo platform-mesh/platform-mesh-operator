@@ -21,15 +21,44 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ProviderPhasePending                = "Pending"
+	ProviderPhaseProvisioningWorkspace  = "ProvisioningWorkspace"
+	ProviderPhaseProvisioningKubeconfig = "ProvisioningKubeconfig"
+	ProviderPhaseReady                  = "Ready"
+	ProviderPhaseDeleting               = "Deleting"
+)
+
 // ProviderSpec defines the desired state of Provider.
 // Provider is a kcp-level resource that handles kcp-side bootstrap only
-// (ServiceAccount, RBAC, kubeconfig Secret). It has no runtime-side effects.
+// (Workspace, ServiceAccount, RBAC, kubeconfig Secret). It has no runtime-side effects.
 type ProviderSpec struct {
+	// providerKubeconfigSecret is a Secret specification used to store
+	// the provider's kubeconfig. This is the admin kubeconfig that provider controllers
+	// can use to access the workspace in :root:providers:<WS name>.
+	// If not provided, a default of Namespace:default, Name:<Provider.Name>-provider-kubeconfig,
+	// Key:kubeconfig is used.
+	//
+	// +optional
+	ProviderKubeconfigSecret *KubeconfigSecretSpec `json:"providerKubeconfigSecret,omitempty"`
+
 	// hostOverride overrides the kcp front-proxy host written into the
 	// generated kubeconfig Secret. Optional; defaults to the operator-configured
 	// front-proxy URL.
 	// +optional
 	HostOverride string `json:"hostOverride,omitempty"`
+}
+
+// KubeconfigSecretSpec describes a Secret and the key with kubeconfig YAML content.
+type KubeconfigSecretSpec struct {
+	// name is the name of the Secret.
+	Name string `json:"name"`
+
+	// namespace is the namespace of the Secret.
+	Namespace string `json:"namespace"`
+
+	// key is the key in data map where the kubeconfig YAML content is stored.
+	Key string `json:"key"`
 }
 
 // ProviderStatus defines the observed state of Provider.
@@ -38,10 +67,10 @@ type ProviderStatus struct {
 	// +optional
 	Phase string `json:"phase,omitempty"`
 
-	// kubeconfigSecretRef points to the Secret created in the provider workspace
-	// that contains the scoped kubeconfig.
+	// providerKubeconfigSecretRef points to the Secret that contains
+	// the scoped kubeconfig for the provider workspace.
 	// +optional
-	KubeconfigSecretRef *corev1.SecretReference `json:"kubeconfigSecretRef,omitempty"`
+	ProviderKubeconfigSecretRef *corev1.SecretReference `json:"providerKubeconfigSecretRef,omitempty"`
 
 	// conditions represent the current state of the Provider resource.
 	// +listType=map
