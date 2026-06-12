@@ -228,34 +228,7 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
-	// Wait for cert-manager to be ready before proceeding with component HelmReleases
-	rel, err := getDeploymentResource(ctx, r.clientInfra, "cert-manager", inst.Namespace, deploymentTech)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get cert-manager resource")
-		return subroutines.OK(), err
-	}
-	if deploymentTech == deploymentTechArgoCD {
-		// For ArgoCD Applications, check status.sync.status and status.health.status directly
-		// ArgoCD Applications may not have conditions initially, so check status fields directly
-		syncStatus, found, _ := unstructured.NestedString(rel.Object, "status", "sync", "status")
-		healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
-
-		if !found || syncStatus != "Synced" {
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Application is not synced"), nil
-		}
-		if !healthFound || healthStatus != "Healthy" {
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Application is not healthy"), nil
-		}
-	}
-
-	if deploymentTech == deploymentTechFluxCD {
-		// For FluxCD HelmReleases, check Ready condition
-		if !matchesConditionWithStatus(rel, "Ready", "True") {
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
-		}
-	}
-
-	// Render and apply components infra templates (HelmReleases for services) after cert-manager is ready
+	// Render and apply components infra templates (HelmReleases for services)
 	oErr = r.renderAndApplyComponentsInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
 		log.Error().Err(oErr).Msg("Failed to render and apply components infra templates")
