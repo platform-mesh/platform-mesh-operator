@@ -38,6 +38,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
+	"github.com/platform-mesh/platform-mesh-operator/internal/manager/aggregate"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
@@ -134,6 +135,12 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("PlatformMesh manager successfully created")
 
+	mgrs, err := aggregate.New(platformMeshMgr, platformMeshMgrOpts)
+	if err != nil {
+		setupLog.Error(err, "unable to create aggregating manager")
+		os.Exit(1)
+	}
+
 	restCfgInfra := ctrl.GetConfigOrDie()
 	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
@@ -192,9 +199,9 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	setupLog.Info("Starting PlatformMesh manager")
-	if err := platformMeshMgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Fatal().Err(err).Msg("problem running PlatformMesh manager")
+	setupLog.Info("starting aggregating manager")
+	if err := mgrs.Start(ctrl.SetupSignalHandler()); err != nil {
+		log.Fatal().Err(err).Msg("problem running aggregating manager")
 	}
 
 }

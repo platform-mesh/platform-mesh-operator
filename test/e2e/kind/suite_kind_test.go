@@ -45,6 +45,7 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
 	providerscontroller "github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
+	"github.com/platform-mesh/platform-mesh-operator/internal/manager/aggregate"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -56,6 +57,7 @@ type KindTestSuite struct {
 	config *rest.Config
 	scheme *runtime.Scheme
 	logger *logger.Logger
+	mgrs   *aggregate.AggregatingManager
 
 	containerRuntime string
 
@@ -630,6 +632,12 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 		return
 	}
 
+	s.mgrs, err = aggregate.New(platformMeshMgr, options)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("unable to create aggregating manager")
+		os.Exit(1)
+	}
+
 	imageVersionStore := subroutines.NewImageVersionStore()
 	pmReconciler, err := controller.NewPlatformMeshReconciler(platformMeshMgr, &appConfig, commonConfig, "../../../", platformMeshMgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
@@ -664,7 +672,7 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 	go func() {
 		var controllerContext context.Context
 		controllerContext, s.cancel = context.WithCancel(context.Background())
-		err := platformMeshMgr.Start(controllerContext)
+		err := s.mgrs.Start(controllerContext)
 		s.Nil(err)
 	}()
 	s.logger.Info().Msg("PlatformMesh operator started")
