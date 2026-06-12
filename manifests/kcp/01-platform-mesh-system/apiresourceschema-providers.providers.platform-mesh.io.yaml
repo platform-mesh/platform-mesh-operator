@@ -1,7 +1,7 @@
 apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
-  name: v260522-10dadab.providers.providers.platform-mesh.io
+  name: v260602-25fd501.providers.providers.platform-mesh.io
 spec:
   group: providers.platform-mesh.io
   names:
@@ -56,6 +56,29 @@ spec:
                 generated kubeconfig Secret. Optional; defaults to the operator-configured
                 front-proxy URL.
               type: string
+            providerKubeconfigSecret:
+              description: |-
+                providerKubeconfigSecret is a Secret specification used to store
+                the provider's kubeconfig. This is the admin kubeconfig that provider controllers
+                can use to access the workspace in :root:providers:<WS name>.
+                If not provided, a default of Namespace:default, Name:<Provider.Name>-provider-kubeconfig,
+                Key:kubeconfig is used.
+              properties:
+                key:
+                  description: key is the key in data map where the kubeconfig YAML
+                    content is stored.
+                  type: string
+                name:
+                  description: name is the name of the Secret.
+                  type: string
+                namespace:
+                  description: namespace is the namespace of the Secret.
+                  type: string
+              required:
+              - key
+              - name
+              - namespace
+              type: object
           type: object
         status:
           description: status defines the observed state of Provider
@@ -121,10 +144,19 @@ spec:
               x-kubernetes-list-map-keys:
               - type
               x-kubernetes-list-type: map
-            kubeconfigSecretRef:
+            observedGeneration:
+              description: observedGeneration is the last generation reconciled by
+                the controller.
+              format: int64
+              type: integer
+            phase:
+              description: phase summarises the bootstrap state of the Provider (e.g.
+                "Pending", "Ready").
+              type: string
+            providerKubeconfigSecretRef:
               description: |-
-                kubeconfigSecretRef points to the Secret created in the provider workspace
-                that contains the scoped kubeconfig.
+                providerKubeconfigSecretRef points to the Secret that contains
+                the scoped kubeconfig for the provider workspace.
               properties:
                 name:
                   description: name is unique within a namespace to reference a secret
@@ -136,15 +168,6 @@ spec:
                   type: string
               type: object
               x-kubernetes-map-type: atomic
-            observedGeneration:
-              description: observedGeneration is the last generation reconciled by
-                the controller.
-              format: int64
-              type: integer
-            phase:
-              description: phase summarises the bootstrap state of the Provider (e.g.
-                "Pending", "Ready").
-              type: string
           type: object
       required:
       - spec

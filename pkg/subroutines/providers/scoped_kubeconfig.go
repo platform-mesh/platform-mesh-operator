@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
@@ -27,13 +28,15 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
+	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 const (
@@ -43,33 +46,41 @@ const (
 	providerSANamespace = "default"
 )
 
-func providerKubeconfigSecretName(provider *providersv1alpha1.Provider) string {
-	return "platform-mesh-provider-kubeconfig-" + provider.Name
+func providerKubeconfigSecretName(providerName string) string {
+	return providerName + "-provider-kubeconfig"
 }
 
 func providerServiceAccountName(provider *providersv1alpha1.Provider) string {
-	return "platform-mesh-provider-" + provider.Name
+	return provider.Name + "-provider"
 }
 
 func providerServiceAccountTokenSecretName(provider *providersv1alpha1.Provider) string {
-	return "platform-mesh-provider-token-" + provider.Name
+	return provider.Name + "-provider-token"
 }
 
-func providerRoleName(provider *providersv1alpha1.Provider) string {
-	return "platform-mesh-provider-" + provider.Name
+func providerClusterRoleBindingName(provider *providersv1alpha1.Provider) string {
+	return provider.Name + "-provider"
 }
 
 // ScopedKubeconfigSubroutine creates the ServiceAccount, RBAC, static SA token
-// Secret, and kubeconfig Secret inside the provider workspace in a single
-// reconciliation step. Runs in the kcp workspace via the VW-aware client.
+// Secret, and kubeconfig Secret inside the dedicated provider workspace in
+// a single reconciliation step. The kubeconfig Secret is stored in the user
+// workspace (where Provider object is created)
+// via the cluster client.
 type ScopedKubeconfigSubroutine struct {
-	kcpUrl string
+	localClient client.Client
+	kcpHelper   pmsubs.KcpHelper
+	kcpCfg      config.KCPConfig
+	kcpUrl      string
 
 	getClusterClientFromContext func(context.Context) (client.Client, error)
 }
 
-func NewScopedKubeconfigSubroutine(kcpUrl string, getClusterClientFromContext func(context.Context) (client.Client, error)) *ScopedKubeconfigSubroutine {
+func NewScopedKubeconfigSubroutine(localClient client.Client, kcpHelper pmsubs.KcpHelper, kcpCfg config.KCPConfig, kcpUrl string, getClusterClientFromContext func(context.Context) (client.Client, error)) *ScopedKubeconfigSubroutine {
 	return &ScopedKubeconfigSubroutine{
+		localClient:                 localClient,
+		kcpHelper:                   kcpHelper,
+		kcpCfg:                      kcpCfg,
 		kcpUrl:                      kcpUrl,
 		getClusterClientFromContext: getClusterClientFromContext,
 	}
@@ -85,59 +96,79 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 
 	saName := providerServiceAccountName(inst)
 	tokenSecretName := providerServiceAccountTokenSecretName(inst)
-	kubeconfigSecretName := providerKubeconfigSecretName(inst)
-	roleName := providerRoleName(inst)
+	clusterRoleBindingName := providerClusterRoleBindingName(inst)
 
-	cl, err := r.getClusterClientFromContext(ctx)
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningKubeconfig
+
+	userWsClient, err := r.getClusterClientFromContext(ctx)
 	if err != nil {
 		return subroutines.OK(), err
 	}
-	clusterName, ok := mccontext.ClusterFrom(ctx)
-	if !ok {
-		return subroutines.OK(), fmt.Errorf("failed to get cluster from context")
+
+	wsName := providerWorkspaceName(inst)
+	wsPath := providerWorkspacePath(inst)
+
+	// Build admin rest config.
+	adminKcpRESTConfig, err := pmsubs.BuildKubeconfigFromConfig(r.localClient, &r.kcpCfg, r.kcpUrl)
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config")
 	}
 
-	// Ensure the default namespace exists in the workspace.
+	// Get a client scoped to the root:providers workspace to fetch the Workspace object.
+	providersClient, err := r.kcpHelper.NewKcpClient(adminKcpRESTConfig, "root:providers")
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to create kcp client for root:providers")
+	}
+
+	// Fetch the provider workspace to get its status.
+	ws := &kcptenancyv1alpha.Workspace{}
+	if err := providersClient.Get(ctx, types.NamespacedName{Name: wsName}, ws); err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info().Str("workspace", wsPath).Msg("Provider workspace not found yet, requeuing")
+			inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningWorkspace
+			return subroutines.StopWithRequeue(waitProviderRequeueDuration, "Waiting for provider workspace"), nil
+		}
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to get provider workspace %s", wsName)
+	}
+
+	if ws.Status.Phase != "Ready" {
+		log.Info().Str("workspace", wsPath).Str("phase", string(ws.Status.Phase)).Msg("Provider workspace not Ready yet, requeuing")
+		inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningWorkspace
+		return subroutines.StopWithRequeue(waitProviderRequeueDuration, "Waiting for provider workspace to become Ready"), nil
+	}
+
+	// Get a client scoped to the provider workspace itself.
+	providerWsClient, err := r.kcpHelper.NewKcpClient(adminKcpRESTConfig, wsPath)
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to create kcp client for provider workspace %s", wsPath)
+	}
+
+	// Ensure the default namespace exists in the provider workspace.
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: providerSANamespace}}
-	if err := cl.Create(ctx, ns); err != nil && !kerrors.IsAlreadyExists(err) {
+	if err := providerWsClient.Create(ctx, ns); err != nil && !kerrors.IsAlreadyExists(err) {
 		return subroutines.OK(), gcerrors.Wrap(err, "ensure namespace %s in provider workspace", providerSANamespace)
 	}
 
 	// Ensure ServiceAccount.
 	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: providerSANamespace}}
-	if err := cl.Create(ctx, sa); err != nil && !kerrors.IsAlreadyExists(err) {
+	if err := providerWsClient.Create(ctx, sa); err != nil && !kerrors.IsAlreadyExists(err) {
 		return subroutines.OK(), gcerrors.Wrap(err, "create ServiceAccount %s", saName)
 	}
 
-	// Ensure Role.
-	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: providerSANamespace}}
-	if _, err := controllerutil.CreateOrUpdate(ctx, cl, role, func() error {
-		role.Rules = []rbacv1.PolicyRule{
-			// TODO: define exact permission claims required by the provider. ManagedProvider.Spec.PermissionClaims?
-			{ // Until we figure this out. 🤩
-				APIGroups: []string{"*"},
-				Resources: []string{"*"},
-				Verbs:     []string{"*"},
-			},
-		}
+	// Ensure cluster-admin ClusterRoleBinding for this service account.
+	clusterAdminClusterRole := "cluster-admin"
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleBindingName}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, providerWsClient, clusterRoleBinding, func() error {
+		clusterRoleBinding.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: clusterAdminClusterRole}
+		clusterRoleBinding.Subjects = []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Namespace: providerSANamespace, Name: saName}}
 		return nil
 	}); err != nil {
-		return subroutines.OK(), gcerrors.Wrap(err, "create or update Role %s", roleName)
-	}
-
-	// Ensure RoleBinding for the provider role.
-	roleBinding := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: providerSANamespace}}
-	if _, err := controllerutil.CreateOrUpdate(ctx, cl, roleBinding, func() error {
-		roleBinding.RoleRef = rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: roleName}
-		roleBinding.Subjects = []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Namespace: providerSANamespace, Name: saName}}
-		return nil
-	}); err != nil {
-		return subroutines.OK(), gcerrors.Wrap(err, "create or update RoleBinding %s", roleName)
+		return subroutines.OK(), gcerrors.Wrap(err, "create or update ClusterRoleBinding %s", clusterRoleBindingName)
 	}
 
 	// Ensure a static long-lived SA token Secret.
 	tokenSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: tokenSecretName, Namespace: providerSANamespace}}
-	if _, err := controllerutil.CreateOrUpdate(ctx, cl, tokenSecret, func() error {
+	if _, err := controllerutil.CreateOrUpdate(ctx, providerWsClient, tokenSecret, func() error {
 		tokenSecret.Type = corev1.SecretTypeServiceAccountToken
 		if tokenSecret.Annotations == nil {
 			tokenSecret.Annotations = map[string]string{}
@@ -154,31 +185,52 @@ func (r *ScopedKubeconfigSubroutine) Process(ctx context.Context, obj client.Obj
 
 	token := string(tokenSecret.Data["token"])
 	caData := tokenSecret.Data["ca.crt"]
+
+	// Compute host URL: prefer HostOverride, else use workspace URL.
 	hostURL := inst.Spec.HostOverride
 	if hostURL == "" {
 		hostURL = r.kcpUrl
 	}
-	hostURL += fmt.Sprintf("/clusters/%s", clusterName)
+	hostURL += fmt.Sprintf("/clusters/%s", ws.Spec.Cluster)
 
-	kubeconfigBytes, err := clientcmd.Write(buildProviderScopedKubeconfig(hostURL, token, caData))
+	kubeconfigBytes, err := clientcmd.Write(buildProviderScopedKubeconfigForToken(hostURL, token, caData))
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "serialize kubeconfig")
 	}
 
-	kubeconfigSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: kubeconfigSecretName, Namespace: providerSANamespace}}
-	if _, err := controllerutil.CreateOrUpdate(ctx, cl, kubeconfigSecret, func() error {
-		kubeconfigSecret.Data = map[string][]byte{"kubeconfig": kubeconfigBytes}
+	// Determine kubeconfig Secret target.
+	var kubeconfigSecretName, kubeconfigSecretNamespace, kubeconfigSecretKey string
+	if inst.Spec.ProviderKubeconfigSecret != nil {
+		kubeconfigSecretName = inst.Spec.ProviderKubeconfigSecret.Name
+		kubeconfigSecretNamespace = inst.Spec.ProviderKubeconfigSecret.Namespace
+		kubeconfigSecretKey = inst.Spec.ProviderKubeconfigSecret.Key
+	} else {
+		kubeconfigSecretName = providerKubeconfigSecretName(inst.Name)
+		kubeconfigSecretNamespace = "default"
+		kubeconfigSecretKey = "kubeconfig"
+	}
+
+	// Ensure the default namespace exists in the provider workspace.
+	ns = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: kubeconfigSecretNamespace}}
+	if err := userWsClient.Create(ctx, ns); err != nil && !kerrors.IsAlreadyExists(err) {
+		return subroutines.OK(), gcerrors.Wrap(err, "ensure namespace %s in provider workspace", providerSANamespace)
+	}
+
+	// Write kubeconfig Secret into user's ws.
+	kubeconfigSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: kubeconfigSecretName, Namespace: kubeconfigSecretNamespace}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, userWsClient, kubeconfigSecret, func() error {
+		kubeconfigSecret.Data = map[string][]byte{kubeconfigSecretKey: kubeconfigBytes}
 		return nil
 	}); err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "write kubeconfig Secret %s", kubeconfigSecretName)
 	}
 
-	inst.Status.KubeconfigSecretRef = &corev1.SecretReference{
+	inst.Status.ProviderKubeconfigSecretRef = &corev1.SecretReference{
 		Name:      kubeconfigSecretName,
-		Namespace: providerSANamespace,
+		Namespace: kubeconfigSecretNamespace,
 	}
 
-	inst.Status.Phase = "Ready"
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseReady
 
 	log.Info().Str("provider", inst.Name).Str("secret", kubeconfigSecretName).Msg("Ensured scoped kubeconfig in provider workspace")
 	return subroutines.OK(), nil
@@ -188,27 +240,49 @@ func (r *ScopedKubeconfigSubroutine) Finalize(ctx context.Context, obj client.Ob
 	inst := obj.(*providersv1alpha1.Provider)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	inst.Status.Phase = "Deleting"
+	inst.Status.Phase = providersv1alpha1.ProviderPhaseDeleting
 
-	cl, err := r.getClusterClientFromContext(ctx)
+	wsPath := providerWorkspacePath(inst)
+
+	// Build admin rest config.
+	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.localClient, &r.kcpCfg, r.kcpUrl)
 	if err != nil {
-		return subroutines.OK(), err
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to build kcp admin config for finalize")
+	}
+
+	providerWsClient, err := r.kcpHelper.NewKcpClient(restCfg, wsPath)
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to create kcp client for provider workspace %s during finalize", wsPath)
 	}
 
 	saName := providerServiceAccountName(inst)
 	tokenSecretName := providerServiceAccountTokenSecretName(inst)
-	kubeconfigSecretName := providerKubeconfigSecretName(inst)
-	roleName := providerRoleName(inst)
+	clusterRoleBindingName := providerClusterRoleBindingName(inst)
 
 	for _, res := range []client.Object{
-		&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: providerSANamespace}},
-		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: providerSANamespace}},
+		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleBindingName}},
 		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: tokenSecretName, Namespace: providerSANamespace}},
 		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: providerSANamespace}},
-		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: kubeconfigSecretName, Namespace: providerSANamespace}},
 	} {
-		if err := client.IgnoreNotFound(cl.Delete(ctx, res)); err != nil {
+		if err := client.IgnoreNotFound(providerWsClient.Delete(ctx, res)); err != nil {
 			return subroutines.OK(), gcerrors.Wrap(err, "delete %T %s", res, res.GetName())
+		}
+	}
+
+	// Delete kubeconfig Secret in user's ws.
+	if inst.Status.ProviderKubeconfigSecretRef != nil {
+		userWsClient, err := r.getClusterClientFromContext(ctx)
+		if err != nil {
+			return subroutines.OK(), err
+		}
+		kubeconfigSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      inst.Status.ProviderKubeconfigSecretRef.Name,
+				Namespace: inst.Status.ProviderKubeconfigSecretRef.Namespace,
+			},
+		}
+		if err := client.IgnoreNotFound(userWsClient.Delete(ctx, kubeconfigSecret)); err != nil {
+			return subroutines.OK(), gcerrors.Wrap(err, "delete kubeconfig Secret %s", kubeconfigSecret.Name)
 		}
 	}
 
@@ -220,7 +294,7 @@ func (r *ScopedKubeconfigSubroutine) Finalizers(_ client.Object) []string {
 	return []string{scopedKubeconfigFinalizer}
 }
 
-func buildProviderScopedKubeconfig(hostURL, token string, caData []byte) clientcmdapi.Config {
+func buildProviderScopedKubeconfigForToken(hostURL, token string, caData []byte) clientcmdapi.Config {
 	return clientcmdapi.Config{
 		Clusters:       map[string]*clientcmdapi.Cluster{"default-cluster": {Server: hostURL, CertificateAuthorityData: caData}},
 		AuthInfos:      map[string]*clientcmdapi.AuthInfo{"default-auth": {Token: token}},

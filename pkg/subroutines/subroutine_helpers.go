@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -433,17 +432,7 @@ func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, s
 func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 
-	var secret corev1.Secret
-	err := cl.Get(ctx, client.ObjectKey{
-		Name:      "rebac-authz-webhook-cert",
-		Namespace: inst.Namespace,
-	}, &secret)
-	if err != nil && !kerrors.IsNotFound(err) {
-		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret rebac-authz-webhook-cert")
-	}
-
 	values := map[string]interface{}{
-		"iamWebhookCA":         base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"baseDomain":           baseDomain,
 		"protocol":             protocol,
 		"port":                 fmt.Sprintf("%d", port),

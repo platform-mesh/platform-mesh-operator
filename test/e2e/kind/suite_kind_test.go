@@ -602,7 +602,7 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 	appConfig.Subroutines.KcpSetup.Enabled = true
 	appConfig.Subroutines.ProviderSecret.Enabled = true
 	appConfig.Subroutines.FeatureToggles.Enabled = true
-	appConfig.Subroutines.ManagedProvider.Workspace.Enabled = true
+	appConfig.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled = true
 	appConfig.Subroutines.ManagedProvider.ProviderResource.Enabled = true
 	appConfig.Subroutines.ManagedProvider.WaitProvider.Enabled = true
 	appConfig.Subroutines.ManagedProvider.KubeconfigCopy.Enabled = true

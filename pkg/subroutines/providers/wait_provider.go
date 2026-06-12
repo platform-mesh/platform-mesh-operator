@@ -64,7 +64,8 @@ func (r *WaitProviderSubroutine) Process(ctx context.Context, obj client.Object)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	inst := obj.(*providersv1alpha1.ManagedProvider)
 
-	wsPath := workspacePath(inst)
+	wsPath := providerRefPath(inst)
+	provName := providerRefName(inst)
 
 	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.client, &r.cfg.KCP, r.kcpUrl)
 	if err != nil {
@@ -77,18 +78,18 @@ func (r *WaitProviderSubroutine) Process(ctx context.Context, obj client.Object)
 	}
 
 	provider := &providersv1alpha1.Provider{}
-	if err := scopedClient.Get(ctx, types.NamespacedName{Name: inst.Name}, provider); err != nil {
+	if err := scopedClient.Get(ctx, types.NamespacedName{Name: provName}, provider); err != nil {
 		if kerrors.IsNotFound(err) {
-			log.Info().Str("workspace", wsPath).Msg("Provider not found yet, requeuing")
-			inst.Status.Phase = "WaitingForProvider"
+			log.Info().Str("workspace", wsPath).Str("provider", provName).Msg("Provider not found yet, requeuing")
+			inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseWaitingForProvider
 			return subroutines.StopWithRequeue(waitProviderRequeueDuration, "Provider not found yet"), nil
 		}
-		return subroutines.OK(), gcerrors.Wrap(err, "failed to get Provider %s from workspace %s", inst.Name, wsPath)
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to get Provider %s from workspace %s", provName, wsPath)
 	}
 
-	if provider.Status.Phase != "Ready" {
+	if provider.Status.Phase != providersv1alpha1.ProviderPhaseReady {
 		log.Info().Str("workspace", wsPath).Str("phase", provider.Status.Phase).Msg("Provider not Ready yet, requeuing")
-		inst.Status.Phase = "WaitingForProvider"
+		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseWaitingForProvider
 		return subroutines.StopWithRequeue(waitProviderRequeueDuration, "waiting for Provider to become Ready"), nil
 	}
 

@@ -47,17 +47,13 @@ var providersCmd = &cobra.Command{
 	Run:   RunProviders,
 }
 
-func buildKcpAdminConfigForWorkspace(restCfg *rest.Config, wsPath string) (*rest.Config, error) {
-	c, err := client.New(restCfg, client.Options{})
-	if err != nil {
-		return nil, err
-	}
+func buildKcpAdminConfigForWorkspace(cl client.Client, wsPath string) (*rest.Config, error) {
 	kcpUrl := providersCfg.KCP.Url
 	if kcpUrl == "" {
 		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort)
 	}
 	kcpUrl += fmt.Sprintf("/clusters/%s", wsPath)
-	return pmsubs.BuildKubeconfigFromConfig(c, &providersCfg.KCP, kcpUrl)
+	return pmsubs.BuildKubeconfigFromConfig(cl, &providersCfg.KCP, kcpUrl)
 }
 
 func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
@@ -106,6 +102,11 @@ func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
+	localClient, err := client.New(restCfg, client.Options{Scheme: pmsubs.GetClientScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to create local client")
+		os.Exit(1)
+	}
 
 	var leaderCfg *rest.Config
 	if defaultCfg.LeaderElectionEnabled {
@@ -115,7 +116,7 @@ func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	providersEndpointSliceCfg, err := buildKcpAdminConfigForWorkspace(restCfg, providersCfg.ProvidersAPIExportEndpointSliceWorkspace)
+	providersEndpointSliceCfg, err := buildKcpAdminConfigForWorkspace(localClient, providersCfg.ProvidersAPIExportEndpointSliceWorkspace)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to create kcp admin client config")
 	}
@@ -150,7 +151,7 @@ func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
-	rec, err := providers.NewProviderReconciler(mgr, &providersCfg, defaultCfg)
+	rec, err := providers.NewProviderReconciler(mgr, &providersCfg, defaultCfg, localClient)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to create ProviderReconciler")
 	}

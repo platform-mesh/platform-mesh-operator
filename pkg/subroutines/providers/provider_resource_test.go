@@ -26,8 +26,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -62,6 +64,7 @@ func (s *ProviderResourceTestSuite) SetupTest() {
 	s.kcpClientMock = new(mocks.Client)
 
 	s.clientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
+	s.kcpClientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 
 	s.operatorCfg = config.OperatorConfig{}
 	s.operatorCfg.KCP.ClusterAdminSecretName = "kcp-admin"
@@ -134,8 +137,9 @@ func (s *ProviderResourceTestSuite) TestProcess_NewKcpClientFails() {
 	inst := s.newManagedProvider()
 
 	s.mockAdminSecret()
+	// default providerRefPath = "root:providers:system"
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(nil, errors.New("dial error"))
 
 	result, err := s.testObj.Process(ctx, inst)
@@ -151,17 +155,21 @@ func (s *ProviderResourceTestSuite) TestProcess_ApplyFails() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
+	// CreateOrUpdate: Get → NotFound → Create fails
 	s.kcpClientMock.EXPECT().
-		Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
+		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "cowboys"))
+	s.kcpClientMock.EXPECT().
+		Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
 		Return(errors.New("apply failed"))
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().Error(err)
 	s.Assert().True(result.IsContinue())
-	s.Assert().Contains(err.Error(), "failed to apply provider")
+	s.Assert().Contains(err.Error(), "apply failed")
 }
 
 func (s *ProviderResourceTestSuite) TestProcess_HappyPath() {
@@ -170,10 +178,14 @@ func (s *ProviderResourceTestSuite) TestProcess_HappyPath() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
+	// CreateOrUpdate: Get → NotFound → Create succeeds
 	s.kcpClientMock.EXPECT().
-		Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
+		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "cowboys"))
+	s.kcpClientMock.EXPECT().
+		Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
 		Return(nil)
 
 	result, err := s.testObj.Process(ctx, inst)
@@ -182,17 +194,24 @@ func (s *ProviderResourceTestSuite) TestProcess_HappyPath() {
 	s.Assert().True(result.IsContinue())
 }
 
-func (s *ProviderResourceTestSuite) TestProcess_CustomWorkspacePath() {
+func (s *ProviderResourceTestSuite) TestProcess_CustomProviderReference() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Spec.WorkspacePath = "root:custom:path"
+	inst.Spec.ProviderReference = &providersv1alpha1.ProviderReferenceSpec{
+		Path: "root:custom:path",
+		Name: "my-provider",
+	}
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
 		NewKcpClient(mock.Anything, "root:custom:path").
 		Return(s.kcpClientMock, nil)
+	// CreateOrUpdate: Get → NotFound → Create succeeds
 	s.kcpClientMock.EXPECT().
-		Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Get(mock.Anything, types.NamespacedName{Name: "my-provider"}, mock.AnythingOfType("*v1alpha1.Provider")).
+		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "my-provider"))
+	s.kcpClientMock.EXPECT().
+		Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
 		Return(nil)
 
 	result, err := s.testObj.Process(ctx, inst)
@@ -238,7 +257,7 @@ func (s *ProviderResourceTestSuite) TestFinalize_NewKcpClientFails() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(nil, errors.New("dial error"))
 
 	result, err := s.testObj.Finalize(ctx, inst)
@@ -255,7 +274,7 @@ func (s *ProviderResourceTestSuite) TestFinalize_DeleteFails() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
@@ -275,7 +294,7 @@ func (s *ProviderResourceTestSuite) TestFinalize_DeleteNotFound_Ignored() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
@@ -297,7 +316,7 @@ func (s *ProviderResourceTestSuite) TestFinalize_StillExists() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).

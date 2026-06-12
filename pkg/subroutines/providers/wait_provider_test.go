@@ -105,13 +105,16 @@ func (s *WaitProviderTestSuite) mockAdminSecret() {
 
 // --- Process ---
 
+// Default providerRefPath = "root:providers:system" (no ProviderReference set)
+// Default providerRefName = "cowboys" (inst.Name)
+
 func (s *WaitProviderTestSuite) TestProcess_ProviderNotReady() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
@@ -124,7 +127,7 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal("WaitingForProvider", inst.Status.Phase)
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForProvider, inst.Status.Phase)
 }
 
 func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {
@@ -133,7 +136,7 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
-		NewKcpClient(mock.Anything, "root:providers:cowboys").
+		NewKcpClient(mock.Anything, "root:providers:system").
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
@@ -148,17 +151,20 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {
 	s.Assert().True(result.IsContinue())
 }
 
-func (s *WaitProviderTestSuite) TestProcess_CustomWorkspacePath() {
+func (s *WaitProviderTestSuite) TestProcess_CustomProviderReference() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Spec.WorkspacePath = "root:custom:cowboys"
+	inst.Spec.ProviderReference = &providersv1alpha1.ProviderReferenceSpec{
+		Path: "root:custom:cowboys",
+		Name: "my-provider",
+	}
 
 	s.mockAdminSecret()
 	s.kcpHelperMock.EXPECT().
 		NewKcpClient(mock.Anything, "root:custom:cowboys").
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
+		Get(mock.Anything, types.NamespacedName{Name: "my-provider"}, mock.AnythingOfType("*v1alpha1.Provider")).
 		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
 			obj.(*providersv1alpha1.Provider).Status.Phase = "Ready"
 			return nil
