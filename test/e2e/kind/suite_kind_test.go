@@ -624,39 +624,39 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 			BindAddress: "0",
 		},
 	}
-	mgr, err := mcmanager.New(s.config, nil, options)
+	platformMeshMgr, err := mcmanager.New(s.config, nil, options)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create manager")
 		return
 	}
 
 	imageVersionStore := subroutines.NewImageVersionStore()
-	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &appConfig, commonConfig, "../../../", mgr.GetLocalManager().GetClient(), imageVersionStore)
+	pmReconciler, err := controller.NewPlatformMeshReconciler(platformMeshMgr, &appConfig, commonConfig, "../../../", platformMeshMgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create PlatformMesh reconciler")
 		return
 	}
-	if err := pmReconciler.SetupWithManager(mgr, commonConfig); err != nil {
+	if err := pmReconciler.SetupWithManager(platformMeshMgr, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to setup PlatformMesh reconciler with manager")
 		return
 	}
 
-	resourceReconciler, err := controller.NewResourceReconciler(mgr, &appConfig, mgr.GetLocalManager().GetClient(), imageVersionStore)
+	resourceReconciler, err := controller.NewResourceReconciler(platformMeshMgr, &appConfig, platformMeshMgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("unable to create Resource reconciler")
 		return
 	}
-	if err := resourceReconciler.SetupWithManager(mgr, commonConfig); err != nil {
+	if err := resourceReconciler.SetupWithManager(platformMeshMgr, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("unable to create resource controller")
 		return
 	}
 
-	managedProviderReconciler, err := providerscontroller.NewManagedProviderReconciler(mgr, &appConfig, commonConfig)
+	managedProviderReconciler, err := providerscontroller.NewManagedProviderReconciler(platformMeshMgr, &appConfig, commonConfig)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("unable to create ManagedProvider reconciler")
 		return
 	}
-	if err := managedProviderReconciler.SetupWithManager(mgr, commonConfig); err != nil {
+	if err := managedProviderReconciler.SetupWithManager(platformMeshMgr, commonConfig); err != nil {
 		s.logger.Error().Err(err).Msg("unable to setup ManagedProvider controller")
 		return
 	}
@@ -664,7 +664,7 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 	go func() {
 		var controllerContext context.Context
 		controllerContext, s.cancel = context.WithCancel(context.Background())
-		err := mgr.Start(controllerContext)
+		err := platformMeshMgr.Start(controllerContext)
 		s.Nil(err)
 	}()
 	s.logger.Info().Msg("PlatformMesh operator started")

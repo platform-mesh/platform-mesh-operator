@@ -87,7 +87,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}()
 
-	log.Info().Msg("Starting manager")
+	log.Info().Msg("Starting PlatformMesh manager")
 
 	restCfg := ctrl.GetConfigOrDie()
 	if operatorCfg.RemoteRuntime.IsEnabled() {
@@ -112,7 +112,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	mgr, err := mcmanager.New(restCfg, nil, mcmanager.Options{
+	platformMeshMgrOpts := mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -125,13 +125,14 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		LeaderElectionID:              "81924e50.platform-mesh.org",
 		LeaderElectionConfig:          leaderCfg,
 		LeaderElectionReleaseOnCancel: true,
-	})
+	}
+	platformMeshMgr, err := mcmanager.New(restCfg, nil, platformMeshMgrOpts)
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		setupLog.Error(err, "unable to start PlatformMesh manager")
 		os.Exit(1)
 	}
 
-	log.Info().Msg("Manager successfully created")
+	log.Info().Msg("PlatformMesh manager successfully created")
 
 	restCfgInfra := ctrl.GetConfigOrDie()
 	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
@@ -152,48 +153,48 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 	imageVersionStore := subroutines.NewImageVersionStore()
 
-	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
+	pmReconciler, err := controller.NewPlatformMeshReconciler(platformMeshMgr, &operatorCfg, defaultCfg, operatorCfg.WorkspaceDir, clientInfra, imageVersionStore)
 	if err != nil {
 		setupLog.Error(err, "unable to create PlatformMesh reconciler")
 		os.Exit(1)
 	}
-	if err := pmReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
+	if err := pmReconciler.SetupWithManager(platformMeshMgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PlatformMesh")
 		os.Exit(1)
 	}
 
-	resourceReconciler, err := controller.NewResourceReconciler(mgr, &operatorCfg, clientInfra, imageVersionStore)
+	resourceReconciler, err := controller.NewResourceReconciler(platformMeshMgr, &operatorCfg, clientInfra, imageVersionStore)
 	if err != nil {
 		setupLog.Error(err, "unable to create Resource reconciler")
 		os.Exit(1)
 	}
-	if err := resourceReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
+	if err := resourceReconciler.SetupWithManager(platformMeshMgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
 
-	managedProvidersReconciler, err := providers.NewManagedProviderReconciler(mgr, &operatorCfg, defaultCfg)
+	managedProvidersReconciler, err := providers.NewManagedProviderReconciler(platformMeshMgr, &operatorCfg, defaultCfg)
 	if err != nil {
 		setupLog.Error(err, "unable to create ManagedProvider reconciler")
 		os.Exit(1)
 	}
-	if err := managedProvidersReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
+	if err := managedProvidersReconciler.SetupWithManager(platformMeshMgr, defaultCfg); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedProvider")
 		os.Exit(1)
 	}
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err := platformMeshMgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := platformMeshMgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Fatal().Err(err).Msg("problem running manager")
+	setupLog.Info("Starting PlatformMesh manager")
+	if err := platformMeshMgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		log.Fatal().Err(err).Msg("problem running PlatformMesh manager")
 	}
 
 }
