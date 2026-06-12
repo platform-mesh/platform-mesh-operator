@@ -18,7 +18,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -28,17 +27,6 @@ import (
 
 func (s *KindTestSuite) TestManagedProvider01Bootstrap() {
 	ctx := context.Background()
-
-	// root:providers workspace must exist before WorkspaceSubroutine can create
-	// root:providers:my-managed-provider inside it. TestScoped01KubeconfigKcpPrereq
-	// also creates this workspace, but it runs after TestManagedProvider (M < S).
-	rootClient, err := s.kcpClientForWorkspace(ctx, "root")
-	s.Require().NoError(err, "kcp client for root")
-	s.Require().NoError(
-		ApplyManifestFromFile(ctx, e2eKcpProviderWorkspacesYAMLDir+"/workspace-providers.yaml", rootClient, make(map[string]string)),
-		"apply workspace-providers.yaml",
-	)
-	s.waitWorkspaceReady(ctx, rootClient, "providers")
 
 	// Run the Providers operator
 	s.logger.Info().Msg("starting Providers operator...")
@@ -327,13 +315,14 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 	})
 	s.Require().NoError(err, "failed to create APIExport mc provider")
 
-	mgr, err := mcmanager.New(s.config, providersVW, ctrl.Options{
+	mgr, err := s.mgrs.AddSecondary("apiexport-providers", s.config, providersVW, ctrl.Options{
 		Scheme:      s.scheme,
 		BaseContext: func() context.Context { return ctx },
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
 	})
+
 	s.Require().NoError(err, "failed to create manager for providers operator")
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create manager")
@@ -341,12 +330,8 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 	}
 
 	rec, err := providerscontroller.NewProviderReconciler(mgr, &appConfig, commonConfig, runtimeClient)
-	s.Require().NoError(err, "failed to ProviderReconciler controller")
+	s.Require().NoError(err, "failed to create ProviderReconciler controller")
 	s.Require().NoError(rec.SetupWithManager(mgr, commonConfig), "failed to setup ProviderReconciler with manager")
 
-	go func() {
-		err := mgr.Start(ctx)
-		s.Require().NoError(err, "providers operator should Start")
-	}()
-	s.logger.Info().Msg("PlatformMesh operator started")
+	s.logger.Info().Msg("Providers operator started")
 }
