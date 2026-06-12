@@ -2,7 +2,6 @@ package subroutines
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -11,9 +10,6 @@ import (
 	gcerrors "github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -146,22 +142,6 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 	// Implement the logic to enable the getting started feature
 	log.Info().Str("Directory", kcpDir).Msg("Applying KCP manifests for feature toggle")
 
-	// Ensure the KCP admin secret exists before building kubeconfig
-	secret := &corev1.Secret{}
-	if err := r.client.Get(ctx, types.NamespacedName{
-		Name:      operatorCfg.KCP.ClusterAdminSecretName,
-		Namespace: operatorCfg.KCP.Namespace,
-	}, secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info().
-				Str("secret", operatorCfg.KCP.ClusterAdminSecretName).
-				Str("namespace", operatorCfg.KCP.Namespace).
-				Msg("KCP admin secret not found yet..")
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "KCP admin secret not found yet"), nil
-		}
-		return subroutines.OK(), gcerrors.Wrap(err, "Failed to get secret")
-	}
-
 	// Build kcp kubeconfig
 	cfg, err := buildKubeconfig(ctx, r.client, r.kcpUrl)
 	if err != nil {
@@ -173,7 +153,6 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 	tplValues := map[string]any{
-		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
 		"baseDomain":     baseDomain,
 		"protocol":       protocol,
 		"port":           fmt.Sprintf("%d", port),
