@@ -3,7 +3,6 @@ data:
   profile.yaml: |
     components:
       deploymentTechnology: fluxcd
-      iamWebhookCA: null
       ocm:
         component:
           create: true
