@@ -19,12 +19,11 @@ import (
 )
 
 var (
-	scheme       = runtime.NewScheme()
-	setupLog     logr.Logger
-	operatorCfg  config.OperatorConfig
-	providersCfg config.ProvidersConfig
-	defaultCfg   *pmconfig.CommonServiceConfig
-	log          *logger.Logger
+	scheme      = runtime.NewScheme()
+	setupLog    logr.Logger
+	operatorCfg config.OperatorConfig
+	defaultCfg  *pmconfig.CommonServiceConfig
+	log         *logger.Logger
 )
 
 var rootCmd = &cobra.Command{
@@ -44,14 +43,11 @@ func init() {
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme))
 
 	rootCmd.AddCommand(operatorCmd)
-	rootCmd.AddCommand(providersCmd)
 
 	defaultCfg = pmconfig.NewDefaultConfig()
 	operatorCfg = config.NewOperatorConfig()
-	providersCfg = config.NewProvidersConfig()
 	defaultCfg.AddFlags(rootCmd.PersistentFlags())
 	operatorCfg.AddFlags(operatorCmd.Flags())
-	providersCfg.AddFlags(providersCmd.Flags())
 
 	cobra.OnInitialize(initLog)
 }

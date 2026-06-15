@@ -607,6 +607,8 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 	appConfig.Subroutines.ManagedProvider.WaitProvider.Enabled = true
 	appConfig.Subroutines.ManagedProvider.KubeconfigCopy.Enabled = true
 	appConfig.Subroutines.ManagedProvider.Deploy.Enabled = true
+	appConfig.Subroutines.Provider.Workspace.Enabled = true
+	appConfig.Subroutines.Provider.Kubeconfig.Enabled = true
 	appConfig.WorkspaceDir = "../../../"
 	appConfig.KCP = defaultKcpOperatorConfig
 

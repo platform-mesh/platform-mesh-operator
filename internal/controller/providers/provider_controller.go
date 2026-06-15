@@ -71,10 +71,10 @@ func (r *ProviderReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconf
 		Complete(r)
 }
 
-func NewProviderReconciler(mgr mcmanager.Manager, providersCfg *config.ProvidersConfig, commonCfg *pmconfig.CommonServiceConfig, localClient client.Client) (*ProviderReconciler, error) {
-	kcpUrl := providersCfg.KCP.Url
+func NewProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, localClient client.Client) (*ProviderReconciler, error) {
+	kcpUrl := operatorCfg.KCP.Url
 	if kcpUrl == "" {
-		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort)
+		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	}
 
 	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
@@ -86,19 +86,19 @@ func NewProviderReconciler(mgr mcmanager.Manager, providersCfg *config.Providers
 
 	var subs []subroutines.Subroutine
 
-	if providersCfg.Subroutines.Providers.Workspace.Enabled {
-		sub, err := pmsubs.NewProviderWorkspaceSubroutine(localClient, kcpHelper, providersCfg.KCP, kcpUrl)
+	if operatorCfg.Subroutines.Provider.Workspace.Enabled {
+		sub, err := pmsubs.NewProviderWorkspaceSubroutine(localClient, kcpHelper, operatorCfg.KCP, kcpUrl)
 		if err != nil {
 			return nil, fmt.Errorf("error creating ProviderWorkspaceSubroutine: %v", err)
 		}
 		subs = append(subs, sub)
 	}
 
-	if providersCfg.Subroutines.Providers.Kubeconfig.Enabled {
+	if operatorCfg.Subroutines.Provider.Kubeconfig.Enabled {
 		subs = append(subs, pmsubs.NewScopedKubeconfigSubroutine(
 			localClient,
 			kcpHelper,
-			providersCfg.KCP,
+			operatorCfg.KCP,
 			kcpUrl,
 			func(ctx context.Context) (client.Client, error) {
 				cluster, err := mgr.ClusterFromContext(ctx)

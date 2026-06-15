@@ -49,8 +49,8 @@ type ScopedKubeconfigTestSuite struct {
 	kcpHelperMock   *mocks.KcpHelper
 	kcpClientMock   *mocks.Client  // root:providers scoped client
 	wsClientMock    *mocks.Client  // provider workspace scoped client
-	log             *logger.Logger
-	providersCfg    config.ProvidersConfig
+	log      *logger.Logger
+	kcpCfg   config.KCPConfig
 }
 
 func TestScopedKubeconfigTestSuite(t *testing.T) {
@@ -75,14 +75,15 @@ func (s *ScopedKubeconfigTestSuite) SetupTest() {
 	s.kcpClientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 	s.wsClientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 
-	s.providersCfg = config.NewProvidersConfig()
-	s.providersCfg.KCP.ClusterAdminSecretName = "kcp-admin"
-	s.providersCfg.KCP.Namespace = "platform-mesh-system"
+	s.kcpCfg = config.KCPConfig{
+		ClusterAdminSecretName: "kcp-admin",
+		Namespace:              "platform-mesh-system",
+	}
 
 	s.testObj = NewScopedKubeconfigSubroutine(
 		s.localClientMock,
 		s.kcpHelperMock,
-		s.providersCfg.KCP,
+		s.kcpCfg,
 		"https://kcp.api.example.com",
 		func(_ context.Context) (client.Client, error) {
 			return s.clMock, nil
