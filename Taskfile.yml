@@ -129,6 +129,13 @@ tasks:
             fi
         ignore_error: false
 
+  fuzz:
+    desc: "Run fuzz tests with a configurable duration (default 30s per target)"
+    vars:
+      FUZZTIME: '{{.FUZZTIME | default "30s"}}'
+    cmds:
+      - go test ./pkg/ocm/ -run=^$ -fuzz=FuzzParseRef -fuzztime={{.FUZZTIME}} -count=1
+
   manifests:
     deps: [setup:controller-gen]
     cmds:
