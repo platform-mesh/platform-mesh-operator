@@ -16,6 +16,11 @@ spec:
   targetNamespace: {{ .etcdDruid.targetNamespace }}
   install:
     createNamespace: true
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
   timeout: 15m
   values:
     {{- toYaml .etcdDruid.values | nindent 4 }}
