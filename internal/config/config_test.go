@@ -29,6 +29,11 @@ func TestNewOperatorConfig(t *testing.T) {
 	assert.True(t, cfg.Subroutines.ProviderSecret.Enabled)
 	assert.False(t, cfg.Subroutines.FeatureToggles.Enabled)
 	assert.True(t, cfg.Subroutines.Wait.Enabled)
+
+	assert.Equal(t, "providers.platform-mesh.io", cfg.Providers.ProvidersAPIExportEndpointSliceName)
+	assert.Equal(t, "root:platform-mesh-system", cfg.Providers.ProvidersAPIExportEndpointSliceWorkspace)
+	assert.True(t, cfg.Subroutines.Provider.Workspace.Enabled)
+	assert.True(t, cfg.Subroutines.Provider.Kubeconfig.Enabled)
 }
 
 func TestOperatorConfigAddFlags(t *testing.T) {
@@ -79,4 +84,19 @@ func TestOperatorConfigAddFlags(t *testing.T) {
 	assert.False(t, cfg.Subroutines.ProviderSecret.Enabled)
 	assert.True(t, cfg.Subroutines.FeatureToggles.Enabled)
 	assert.False(t, cfg.Subroutines.Wait.Enabled)
+}
+
+func TestOperatorConfigAddFlagsProviders(t *testing.T) {
+	cfg := NewOperatorConfig()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	cfg.AddFlags(fs)
+
+	err := fs.Parse([]string{
+		"--providers-apiexport-endpointslice-name=custom.providers.io",
+		"--providers-apiexport-endpointslice-workspace=root:custom-ws",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "custom.providers.io", cfg.Providers.ProvidersAPIExportEndpointSliceName)
+	assert.Equal(t, "root:custom-ws", cfg.Providers.ProvidersAPIExportEndpointSliceWorkspace)
 }

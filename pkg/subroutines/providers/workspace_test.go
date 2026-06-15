@@ -45,8 +45,8 @@ type WorkspaceTestSuite struct {
 	clientMock    *mocks.Client
 	kcpHelperMock *mocks.KcpHelper
 	kcpClientMock *mocks.Client
-	log           *logger.Logger
-	providersCfg  config.ProvidersConfig
+	log    *logger.Logger
+	kcpCfg config.KCPConfig
 }
 
 func TestWorkspaceTestSuite(t *testing.T) {
@@ -67,12 +67,13 @@ func (s *WorkspaceTestSuite) SetupTest() {
 	s.clientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 	s.kcpClientMock.EXPECT().Scheme().Return(runtime.NewScheme()).Maybe()
 
-	s.providersCfg = config.NewProvidersConfig()
-	s.providersCfg.KCP.ClusterAdminSecretName = "kcp-admin"
-	s.providersCfg.KCP.Namespace = "platform-mesh-system"
+	s.kcpCfg = config.KCPConfig{
+		ClusterAdminSecretName: "kcp-admin",
+		Namespace:              "platform-mesh-system",
+	}
 
 	var err error
-	s.testObj, err = NewProviderWorkspaceSubroutine(s.clientMock, s.kcpHelperMock, s.providersCfg.KCP, "https://kcp.api.example.com")
+	s.testObj, err = NewProviderWorkspaceSubroutine(s.clientMock, s.kcpHelperMock, s.kcpCfg, "https://kcp.api.example.com")
 	s.Require().NoError(err)
 }
 

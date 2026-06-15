@@ -292,16 +292,16 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 }
 
 func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
-	appConfig := config.NewProvidersConfig()
+	appConfig := config.NewOperatorConfig()
 	if err := defaults.Set(&appConfig); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to set default Provider operator config")
 		return
 	}
 
-	appConfig.ProvidersAPIExportEndpointSliceName = "providers.platform-mesh.io"
-	appConfig.ProvidersAPIExportEndpointSliceWorkspace = "root:platform-mesh-system"
-	appConfig.Subroutines.Providers.Workspace.Enabled = true
-	appConfig.Subroutines.Providers.Kubeconfig.Enabled = true
+	appConfig.Providers.ProvidersAPIExportEndpointSliceName = "providers.platform-mesh.io"
+	appConfig.Providers.ProvidersAPIExportEndpointSliceWorkspace = "root:platform-mesh-system"
+	appConfig.Subroutines.Provider.Kubeconfig.Enabled = true
+	appConfig.Subroutines.Provider.Workspace.Enabled = true
 	appConfig.KCP = defaultKcpOperatorConfig
 
 	commonConfig := &pmconfig.CommonServiceConfig{
@@ -320,9 +320,9 @@ func (s *KindTestSuite) runProviderOperator(ctx context.Context) {
 	}, 240*time.Second, 5*time.Second, "waiting for kcp REST config")
 
 	scopedKcpAdminCfg := rest.CopyConfig(kcpAdminCfg)
-	scopedKcpAdminCfg.Host += "/clusters/" + appConfig.ProvidersAPIExportEndpointSliceWorkspace
+	scopedKcpAdminCfg.Host += "/clusters/" + appConfig.Providers.ProvidersAPIExportEndpointSliceWorkspace
 
-	providersVW, err := apiexport.New(scopedKcpAdminCfg, appConfig.ProvidersAPIExportEndpointSliceName, apiexport.Options{
+	providersVW, err := apiexport.New(scopedKcpAdminCfg, appConfig.Providers.ProvidersAPIExportEndpointSliceName, apiexport.Options{
 		Scheme: s.scheme,
 	})
 	s.Require().NoError(err, "failed to create APIExport mc provider")

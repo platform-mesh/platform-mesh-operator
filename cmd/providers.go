@@ -48,12 +48,12 @@ var providersCmd = &cobra.Command{
 }
 
 func buildKcpAdminConfigForWorkspace(cl client.Client, wsPath string) (*rest.Config, error) {
-	kcpUrl := providersCfg.KCP.Url
+	kcpUrl := operatorCfg.KCP.Url
 	if kcpUrl == "" {
-		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", providersCfg.KCP.FrontProxyName, providersCfg.KCP.Namespace, providersCfg.KCP.FrontProxyPort)
+		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	}
 	kcpUrl += fmt.Sprintf("/clusters/%s", wsPath)
-	return pmsubs.BuildKubeconfigFromConfig(cl, &providersCfg.KCP, kcpUrl)
+	return pmsubs.BuildKubeconfigFromConfig(cl, &operatorCfg.KCP, kcpUrl)
 }
 
 func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
@@ -116,14 +116,14 @@ func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	providersEndpointSliceCfg, err := buildKcpAdminConfigForWorkspace(localClient, providersCfg.ProvidersAPIExportEndpointSliceWorkspace)
+	providersEndpointSliceCfg, err := buildKcpAdminConfigForWorkspace(localClient, operatorCfg.Providers.ProvidersAPIExportEndpointSliceWorkspace)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to create kcp admin client config")
 	}
 
 	log.Info().Msgf("Created client config for %q", providersEndpointSliceCfg.Host)
 
-	providersVW, err := apiexport.New(providersEndpointSliceCfg, providersCfg.ProvidersAPIExportEndpointSliceName, apiexport.Options{
+	providersVW, err := apiexport.New(providersEndpointSliceCfg, operatorCfg.Providers.ProvidersAPIExportEndpointSliceName, apiexport.Options{
 		Scheme: scheme,
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ func RunProviders(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	log.Info().Msg("Manager successfully started")
 
-	rec, err := providers.NewProviderReconciler(mgr, &providersCfg, defaultCfg, localClient)
+	rec, err := providers.NewProviderReconciler(mgr, &operatorCfg, defaultCfg, localClient)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to create ProviderReconciler")
 	}
