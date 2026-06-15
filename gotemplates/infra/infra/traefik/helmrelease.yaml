@@ -27,6 +27,12 @@ spec:
   releaseName: {{ .traefik.name }}
   targetNamespace: {{ .traefik.targetNamespace }}
   timeout: 15m
+  install:
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
   values:
 {{ toYaml .traefik.values | nindent 4 }}
 {{- end }}

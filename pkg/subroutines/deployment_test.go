@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
@@ -243,6 +244,22 @@ func (s *DeploymentProcessTestSuite) newReadyFrontProxy(namespace string) *unstr
 	return obj
 }
 
+func (s *DeploymentProcessTestSuite) newEstablishedCRD(name string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"})
+	obj.SetName(name)
+	_ = unstructured.SetNestedSlice(obj.Object, []interface{}{
+		map[string]interface{}{"type": "Established", "status": "True"},
+	}, "status", "conditions")
+	return obj
+}
+
+func (s *DeploymentProcessTestSuite) seedCertManagerCRDs(ctx context.Context, cl client.Client) {
+	s.Require().NoError(cl.Create(ctx, s.newEstablishedCRD("issuers.cert-manager.io")))
+	s.Require().NoError(cl.Create(ctx, s.newEstablishedCRD("certificates.cert-manager.io")))
+}
+
+
 func (s *DeploymentProcessTestSuite) Test_Process_FluxCD_HappyPath() {
 	ns := "platform-mesh-system"
 	operatorCfg := s.newOperatorConfig()
@@ -274,6 +291,7 @@ func (s *DeploymentProcessTestSuite) Test_Process_FluxCD_HappyPath() {
 	s.Require().NoError(cl.Create(ctx, s.newFluxCDReadyCertManager(ns)))
 	s.Require().NoError(cl.Create(ctx, s.newReadyRootShard(ns)))
 	s.Require().NoError(cl.Create(ctx, s.newReadyFrontProxy(ns)))
+	s.seedCertManagerCRDs(ctx, cl)
 
 	sub := &DeploymentSubroutine{
 		clientRuntime:            cl,
@@ -321,6 +339,7 @@ func (s *DeploymentProcessTestSuite) Test_Process_ArgoCD_HappyPath() {
 	s.Require().NoError(cl.Create(ctx, s.newArgoCDReadyCertManager(ns)))
 	s.Require().NoError(cl.Create(ctx, s.newReadyRootShard(ns)))
 	s.Require().NoError(cl.Create(ctx, s.newReadyFrontProxy(ns)))
+	s.seedCertManagerCRDs(ctx, cl)
 
 	sub := &DeploymentSubroutine{
 		clientRuntime:            cl,
@@ -338,7 +357,7 @@ func (s *DeploymentProcessTestSuite) Test_Process_ArgoCD_HappyPath() {
 	s.True(result.IsContinue(), "expected OK/continue result, got stop")
 }
 
-func (s *DeploymentProcessTestSuite) Test_Process_CertManagerNotReady_FluxCD() {
+func (s *DeploymentProcessTestSuite) Test_Process_CertManagerCRDsNotEstablished_FluxCD() {
 	ns := "platform-mesh-system"
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
@@ -355,21 +374,15 @@ func (s *DeploymentProcessTestSuite) Test_Process_CertManagerNotReady_FluxCD() {
 		Data:       map[string]string{profileConfigMapKey: testProfileFluxCD},
 	}
 
-	// cert-manager exists but is NOT ready
-	certMgr := &unstructured.Unstructured{}
-	certMgr.SetGroupVersionKind(schema.GroupVersionKind{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"})
-	certMgr.SetName("cert-manager")
-	certMgr.SetNamespace(ns)
-	_ = unstructured.SetNestedSlice(certMgr.Object, []interface{}{
-		map[string]interface{}{"type": "Ready", "status": "False"},
-	}, "status", "conditions")
-
 	cl := fake.NewClientBuilder().
 		WithScheme(s.scheme).
 		WithObjects(inst, profileCM).
 		WithStatusSubresource(inst).
 		Build()
-	s.Require().NoError(cl.Create(ctx, certMgr))
+	s.Require().NoError(cl.Create(ctx, s.newFluxCDReadyCertManager(ns)))
+	s.Require().NoError(cl.Create(ctx, s.newReadyRootShard(ns)))
+	s.Require().NoError(cl.Create(ctx, s.newReadyFrontProxy(ns)))
+	// cert-manager CRDs are NOT seeded — Process must stop and requeue.
 
 	sub := &DeploymentSubroutine{
 		clientRuntime:            cl,
@@ -384,7 +397,7 @@ func (s *DeploymentProcessTestSuite) Test_Process_CertManagerNotReady_FluxCD() {
 	result, err := sub.Process(ctx, inst)
 
 	s.NoError(err)
-	s.False(result.IsContinue(), "expected StopWithRequeue when cert-manager not ready")
+	s.False(result.IsContinue(), "expected StopWithRequeue when cert-manager CRDs are not established")
 }
 
 func (s *DeploymentProcessTestSuite) Test_Process_MissingProfile() {

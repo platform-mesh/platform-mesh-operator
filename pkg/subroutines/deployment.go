@@ -236,6 +236,17 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	log.Debug().Msg("Successfully rendered and applied components infra templates")
 
+	for _, crd := range []string{"issuers.cert-manager.io", "certificates.cert-manager.io"} {
+		established, err := isCRDEstablished(ctx, r.clientRuntime, crd)
+		if err != nil {
+			log.Error().Err(err).Str("crd", crd).Msg("Failed to check cert-manager CRD")
+			return subroutines.OK(), err
+		}
+		if !established {
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("cert-manager CRD %s is not established", crd)), nil
+		}
+	}
+
 	_, oErr = r.manageAuthorizationWebhookSecrets(ctx, inst)
 	if oErr != nil {
 		log.Info().Msg("Failed to manage authorization webhook secrets")
@@ -1295,6 +1306,22 @@ func getDeploymentResource(ctx context.Context, client client.Client, resourceNa
 		return nil, err
 	}
 	return obj, nil
+}
+
+func isCRDEstablished(ctx context.Context, c client.Client, name string) (bool, error) {
+	crd := &unstructured.Unstructured{}
+	crd.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "apiextensions.k8s.io",
+		Version: "v1",
+		Kind:    "CustomResourceDefinition",
+	})
+	if err := c.Get(ctx, types.NamespacedName{Name: name}, crd); err != nil {
+		if kerrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return matchesConditionWithStatus(crd, "Established", "True"), nil
 }
 
 func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelSelector, namespace string) (bool, *unstructured.Unstructured, error) {

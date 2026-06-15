@@ -23,6 +23,12 @@ spec:
   releaseName: {{ .opentelemetryOperator.name }}
   targetNamespace: {{ .opentelemetryOperator.targetNamespace }}
   timeout: 15m
+  install:
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
 {{- if .opentelemetryOperator.values }}
   values:
 {{ toYaml .opentelemetryOperator.values | nindent 4 }}
