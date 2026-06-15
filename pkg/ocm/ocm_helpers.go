@@ -169,8 +169,6 @@ func ParseRef(ref string) (RefSpec, error) {
 		spec.SetType(string(match[1]))
 		spec.Info = string(match[2])
 		spec.Repository = string(match[3])
-		spec.Tag = pointer(match[4])
-		spec.Digest = dig(match[5])
 		return spec, nil
 	}
 
