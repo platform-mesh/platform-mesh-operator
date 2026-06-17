@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
@@ -56,6 +57,7 @@ type KindTestSuite struct {
 	config *rest.Config
 	scheme *runtime.Scheme
 	logger *logger.Logger
+	mgr    mcmanager.Manager
 
 	containerRuntime string
 
@@ -624,7 +626,7 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 			BindAddress: "0",
 		},
 	}
-	mgr, err := mcmanager.New(s.config, nil, options)
+	mgr, err := mcmanager.New(s.config, mcmultiprovider.New(mcmultiprovider.Options{}), options)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create manager")
 		return
@@ -668,4 +670,6 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 		s.Nil(err)
 	}()
 	s.logger.Info().Msg("PlatformMesh operator started")
+
+	s.mgr = mgr
 }
