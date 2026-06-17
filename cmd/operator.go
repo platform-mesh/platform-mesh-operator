@@ -118,6 +118,10 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
+	// NOTE: We are using MC multi provider. When adding new controllers, remember to
+	// set your WithEngageWithLocalCluster and/or WithEngageWithProviderClusters ForOption
+	// in For() [mcbuilder.TypedBuilder] appropriately, so that your reconciler receives
+	// only events for the cluster(s) it is supposed to.
 	mgr, err := mcmanager.New(restCfg, mcmultiprovider.New(mcmultiprovider.Options{}), mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
