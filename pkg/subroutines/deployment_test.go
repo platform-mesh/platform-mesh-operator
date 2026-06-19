@@ -172,7 +172,7 @@ func (s *DeploymentProcessTestSuite) newOperatorConfig() config.OperatorConfig {
 		},
 		Subroutines: config.SubroutinesConfig{
 			Deployment: config.DeploymentSubroutineConfig{
-				Enabled:    true,
+				Enabled:     true,
 				EnableIstio: false,
 			},
 		},

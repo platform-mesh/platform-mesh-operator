@@ -118,7 +118,7 @@ func (suite *ProvidersecretTestSuite) SetupTest() {
 
 	suite.clientMock.EXPECT().Scheme().Return(suite.scheme).Maybe()
 
-	suite.testObj = NewProviderSecretSubroutine(suite.clientMock, &Helper{}, fakeHelm{ready: true}, "")
+	suite.testObj = NewProviderSecretSubroutine(suite.clientMock, &Helper{}, fakeHelm{ready: true}, "", nil)
 }
 
 func (suite *ProvidersecretTestSuite) TearDownTest() {
@@ -290,7 +290,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -386,7 +386,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	).Once()
 
 	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = NewProviderSecretSubroutine(mockK8sClient, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(mockK8sClient, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
@@ -549,7 +549,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	).Once()
 
 	// Run
-	s.testObj = NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
+	s.testObj = NewProviderSecretSubroutine(mockClient, mockedKcpHelper, fakeHelm{ready: true}, "example.com", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -659,7 +659,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	).Once()
 
 	// s.testObj.kcpHelper = mockedKcpHelper
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -777,7 +777,7 @@ func (s *ProvidersecretTestSuite) TestGetName() {
 
 func (suite *ProvidersecretTestSuite) TestConstructor() {
 	helper := &Helper{}
-	suite.testObj = NewProviderSecretSubroutine(suite.clientMock, helper, fakeHelm{ready: true}, "")
+	suite.testObj = NewProviderSecretSubroutine(suite.clientMock, helper, fakeHelm{ready: true}, "", nil)
 }
 
 func (s *ProvidersecretTestSuite) TestFinalize() {
@@ -861,7 +861,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1049,7 +1049,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1146,7 +1146,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1252,7 +1252,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1359,7 +1359,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1480,7 +1480,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1620,7 +1620,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 		},
 	).Once()
 
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "", nil)
 
 	// Add the missing operator config context
 	operatorCfg := config.OperatorConfig{
@@ -1868,7 +1868,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	}
 
 	// Run test
-	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, mockedKcpHelper, fakeHelm{ready: true}, "example.com", nil)
 
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 	ctx = context.WithValue(ctx, keys.ConfigCtxKey, opCfg)

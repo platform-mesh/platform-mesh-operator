@@ -42,6 +42,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/rbacpresets"
 	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
@@ -127,7 +128,11 @@ func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context,
 	return requests
 }
 
-func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client, imageVersionStore *pmsubs.ImageVersionStore) (*PlatformMeshReconciler, error) {
+func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client, imageVersionStore *pmsubs.ImageVersionStore, presetLoader *rbacpresets.Loader,
+) (*PlatformMeshReconciler, error) {
+	if presetLoader == nil {
+		presetLoader = rbacpresets.NewLoader(rbacpresets.EmbeddedProvidersFS())
+	}
 	kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	if cfg.KCP.Url != "" {
 		kcpUrl = cfg.KCP.Url
@@ -145,7 +150,7 @@ func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig
 		subs = append(subs, pmsubs.NewKcpsetupSubroutine(localCl, &pmsubs.Helper{}, cfg, dir+"/manifests/kcp", kcpUrl))
 	}
 	if cfg.Subroutines.ProviderSecret.Enabled {
-		subs = append(subs, pmsubs.NewProviderSecretSubroutine(localCl, &pmsubs.Helper{}, pmsubs.DefaultHelmGetter{}, kcpUrl))
+		subs = append(subs, pmsubs.NewProviderSecretSubroutine(localCl, &pmsubs.Helper{}, pmsubs.DefaultHelmGetter{}, kcpUrl, presetLoader))
 	}
 	if cfg.Subroutines.FeatureToggles.Enabled {
 		subs = append(subs, pmsubs.NewFeatureToggleSubroutine(localCl, &pmsubs.Helper{}, cfg, kcpUrl))

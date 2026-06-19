@@ -37,11 +37,13 @@ import (
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
+	"github.com/platform-mesh/platform-mesh-operator/pkg/rbacpresets"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
@@ -60,7 +62,7 @@ type KindTestSuite struct {
 	mgr    mcmanager.Manager
 
 	containerRuntime string
-
+	presetLoader *rbacpresets.Loader
 	cancel context.CancelFunc
 }
 
@@ -510,9 +512,42 @@ func (s *KindTestSuite) SetupSuite() {
 		s.T().FailNow()
 	}
 
+	if err := s.stripStaleE2EPresetProviderConnections(ctx); err != nil {
+		s.FailNow("Failed to strip stale e2e preset provider connections from PlatformMesh", err)
+	}
+
 	// Run the PlatformMesh operator
 	s.logger.Info().Msg("starting PlatformMesh operator...")
 	s.runPlatformMeshOperator(ctx)
+}
+
+// stripStaleE2EPresetProviderConnections removes extraProviderConnections left on a reused Kind cluster from prior suite runs.
+// Server-side apply of platform-mesh.yaml does not clear fields patched by tests (different field managers).
+func (s *KindTestSuite) stripStaleE2EPresetProviderConnections(ctx context.Context) error {
+	pm := &v1alpha1.PlatformMesh{}
+	if err := s.client.Get(ctx, client.ObjectKey{
+		Name:      "platform-mesh",
+		Namespace: "platform-mesh-system",
+	}, pm); err != nil {
+		return err
+	}
+	orig := pm.Spec.Kcp.ExtraProviderConnections
+	filtered := make([]v1alpha1.ProviderConnection, 0, len(orig))
+	var removed int
+	for _, pc := range orig {
+		preset := strings.TrimSpace(ptr.Deref(pc.ProviderRBACPreset, ""))
+		if preset != "" && strings.HasPrefix(preset, "e2e-") {
+			removed++
+			continue
+		}
+		filtered = append(filtered, pc)
+	}
+	if removed == 0 {
+		return nil
+	}
+	pm.Spec.Kcp.ExtraProviderConnections = filtered
+	s.logger.Info().Int("removed", removed).Msg("stripped stale e2e preset extraProviderConnections from PlatformMesh")
+	return s.client.Update(ctx, pm)
 }
 
 func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {
@@ -633,6 +668,14 @@ func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
 	}
 
 	imageVersionStore := subroutines.NewImageVersionStore()
+
+	e2eOverlay, err := buildE2EPresetOverlayFS()
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to load Kind e2e preset fixtures")
+		return
+	}
+	s.presetLoader = rbacpresets.NewLoader(rbacpresets.MergePresetFS(rbacpresets.EmbeddedProvidersFS(), e2eOverlay))
+
 	pmReconciler, err := controller.NewPlatformMeshReconciler(mgr, &appConfig, commonConfig, "../../../", mgr.GetLocalManager().GetClient(), imageVersionStore)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create PlatformMesh reconciler")

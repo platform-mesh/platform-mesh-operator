@@ -1,0 +1,56 @@
+# Minimal reference preset: workspace-cluster server URL, SA + ClusterRole + ClusterRoleBinding.
+# Copy and extend for operator-specific presets
+kind: ProviderRBACPreset
+metadata:
+  name: sample
+spec:
+  serverTarget:
+    type: workspaceCluster
+  serviceAccountWorkspace: "{{ .ProviderPath }}"
+  serviceAccountName: "platform-mesh-provider-{{ .Suffix }}"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "{{ .SAName }}"
+  namespace: default
+  annotations:
+    rbacpresets.platform-mesh.io/workspace: "{{ .ProviderPath }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: "{{ .SAName }}"
+  annotations:
+    rbacpresets.platform-mesh.io/workspace: "{{ .ProviderPath }}"
+rules:
+  - apiGroups: ["core.platform-mesh.io"]
+    resources: ["contentconfigurations"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apis.kcp.io"]
+    resources: ["apiexportendpointslices"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs:
+      - "/api"
+      - "/api/*"
+      - "/apis"
+      - "/apis/*"
+      - "/clusters/*"
+      - "/services"
+      - "/services/*"
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: "{{ .SAName }}"
+  annotations:
+    rbacpresets.platform-mesh.io/workspace: "{{ .ProviderPath }}"
+subjects:
+  - kind: ServiceAccount
+    name: "{{ .SAName }}"
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: "{{ .SAName }}"

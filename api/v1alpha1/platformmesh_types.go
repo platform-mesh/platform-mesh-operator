@@ -148,6 +148,12 @@ type ProviderConnection struct {
 	// Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
 	// +optional
 	AdminAuth *bool `json:"adminAuth,omitempty"`
+	// ProviderRBACPreset selects an in-tree preset shipped with the operator.
+	// When set, PMO writes a scoped kubeconfig whose server URL shape and RBAC
+	// come from the preset instead of being derived from an APIExport. Mutually
+	// exclusive with APIExportName and EndpointSliceName.
+	// +optional
+	ProviderRBACPreset *string `json:"providerRBACPreset,omitempty"`
 }
 
 // PlatformMeshStatus defines the observed state of PlatformMesh
