@@ -24,6 +24,8 @@ jobs:
       - name: Export tokens
         run: |
           echo "WORKFLOW_GITHUB_PAT=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+      - name: Map kcp front-proxy hostname for e2e tests
+        run: echo "127.0.0.1 root.kcp.localhost" | sudo tee -a /etc/hosts
       - name: Run tests
         run: |
           GITHUB_WORKFLOW=ci task test ADDITIONAL_COMMAND_ARGS="-covermode=atomic -coverpkg=./..."
