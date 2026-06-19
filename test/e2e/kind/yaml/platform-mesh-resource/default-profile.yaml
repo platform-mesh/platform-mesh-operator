@@ -196,6 +196,29 @@ data:
                 - "kcp.api.{{ .baseDomain }}"
                 - "nereus.kcp.localhost"
                 - "triton.kcp.localhost"
+            keycloak:
+              enabled: true
+              operator:
+                hostname: https://portal.localhost:8443/keycloak/
+                enabled: true
+                health:
+                  port: 9000
+                  periodSeconds: 10
+                  liveness:
+                    path: /keycloak/health/live
+                    failureThreshold: 3
+                  readiness:
+                    path: /keycloak/health/ready
+                    initialDelaySeconds: 0
+                    periodSeconds: 10
+                  startup:
+                    path: /keycloak/health
+                    failureThreshold: 600
+              service:
+                name: keycloak-service
+                port: 8080
+              keycloakConfig:
+                url: http://keycloak-service.platform-mesh-system.svc.cluster.local:8080/keycloak
             kcp:
               external:
                 hostname: kcp.api.{{ .baseDomain }}
