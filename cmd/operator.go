@@ -37,6 +37,7 @@ import (
 	"github.com/platform-mesh/golang-commons/traces"
 
 	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
+	"github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
@@ -170,6 +171,17 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
+
+	managedProvidersReconciler, err := providers.NewManagedProviderReconciler(mgr, &operatorCfg, defaultCfg)
+	if err != nil {
+		setupLog.Error(err, "unable to create ManagedProvider reconciler")
+		os.Exit(1)
+	}
+	if err := managedProvidersReconciler.SetupWithManager(mgr, defaultCfg); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ManagedProvider")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

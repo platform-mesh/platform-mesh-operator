@@ -50,12 +50,34 @@ func (r *RemoteClusterConfig) IsEnabled() bool {
 	return r.Kubeconfig != ""
 }
 
+type ManagedProviderSubroutineConfig struct {
+	Enabled bool
+}
+
+type ProviderSubroutineConfig struct {
+	Enabled bool
+}
+
+type ManagedProviderSubroutinesConfig struct {
+	WaitPlatformMesh ManagedProviderSubroutineConfig
+	ProviderResource ManagedProviderSubroutineConfig
+	WaitProvider     ManagedProviderSubroutineConfig
+	KubeconfigCopy   ManagedProviderSubroutineConfig
+	Deploy           ManagedProviderSubroutineConfig
+}
+
+type ProvidersSubroutinesConfig struct {
+	Workspace  ProviderSubroutineConfig
+	Kubeconfig ProviderSubroutineConfig
+}
+
 type SubroutinesConfig struct {
-	Deployment     DeploymentSubroutineConfig
-	KcpSetup       KcpSetupSubroutineConfig
-	ProviderSecret ProviderSecretSubroutineConfig
-	FeatureToggles FeatureTogglesSubroutineConfig
-	Wait           WaitSubroutineConfig
+	Deployment      DeploymentSubroutineConfig
+	KcpSetup        KcpSetupSubroutineConfig
+	ProviderSecret  ProviderSecretSubroutineConfig
+	FeatureToggles  FeatureTogglesSubroutineConfig
+	Wait            WaitSubroutineConfig
+	ManagedProvider ManagedProviderSubroutinesConfig
 }
 
 // OperatorConfig struct to hold the app config
@@ -99,6 +121,13 @@ func NewOperatorConfig() OperatorConfig {
 			Wait: WaitSubroutineConfig{
 				Enabled: true,
 			},
+			ManagedProvider: ManagedProviderSubroutinesConfig{
+				WaitPlatformMesh: ManagedProviderSubroutineConfig{Enabled: true},
+				ProviderResource: ManagedProviderSubroutineConfig{Enabled: true},
+				WaitProvider:     ManagedProviderSubroutineConfig{Enabled: true},
+				KubeconfigCopy:   ManagedProviderSubroutineConfig{Enabled: true},
+				Deploy:           ManagedProviderSubroutineConfig{Enabled: true},
+			},
 		},
 	}
 }
@@ -127,10 +156,61 @@ func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.Subroutines.ProviderSecret.Enabled, "subroutines-provider-secret-enabled", c.Subroutines.ProviderSecret.Enabled, "Enable provider secret subroutine")
 	fs.BoolVar(&c.Subroutines.FeatureToggles.Enabled, "subroutines-feature-toggles-enabled", c.Subroutines.FeatureToggles.Enabled, "Enable feature toggles subroutine")
 	fs.BoolVar(&c.Subroutines.Wait.Enabled, "subroutines-wait-enabled", c.Subroutines.Wait.Enabled, "Enable wait subroutine")
+	fs.BoolVar(&c.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled, "subroutines-managed-provider-wait-platform-mesh-enabled", c.Subroutines.ManagedProvider.WaitPlatformMesh.Enabled, "Enable ManagedProvider wait-platform-mesh subroutine")
+	fs.BoolVar(&c.Subroutines.ManagedProvider.ProviderResource.Enabled, "subroutines-managed-provider-resource-enabled", c.Subroutines.ManagedProvider.ProviderResource.Enabled, "Enable ManagedProvider provider-resource subroutine")
+	fs.BoolVar(&c.Subroutines.ManagedProvider.WaitProvider.Enabled, "subroutines-managed-provider-wait-enabled", c.Subroutines.ManagedProvider.WaitProvider.Enabled, "Enable ManagedProvider wait-provider subroutine")
+	fs.BoolVar(&c.Subroutines.ManagedProvider.KubeconfigCopy.Enabled, "subroutines-managed-provider-kubeconfig-enabled", c.Subroutines.ManagedProvider.KubeconfigCopy.Enabled, "Enable ManagedProvider kubeconfig-copy subroutine")
+	fs.BoolVar(&c.Subroutines.ManagedProvider.Deploy.Enabled, "subroutines-managed-provider-deploy-enabled", c.Subroutines.ManagedProvider.Deploy.Enabled, "Enable ManagedProvider deploy subroutine")
 
 	fs.StringVar(&c.RemoteRuntime.Kubeconfig, "remote-runtime-kubeconfig", c.RemoteRuntime.Kubeconfig, "Kubeconfig for remote runtime cluster")
 	fs.StringVar(&c.RemoteRuntime.InfraSecretName, "remote-runtime-infra-secret-name", c.RemoteRuntime.InfraSecretName, "Secret name for remote runtime infra kubeconfig")
 	fs.StringVar(&c.RemoteRuntime.InfraSecretKey, "remote-runtime-infra-secret-key", c.RemoteRuntime.InfraSecretKey, "Secret key for remote runtime infra kubeconfig")
 
 	fs.StringVar(&c.RemoteInfra.Kubeconfig, "remote-infra-kubeconfig", c.RemoteInfra.Kubeconfig, "Kubeconfig for remote infra cluster")
+}
+
+type ProvidersOperatorSubroutinesConfig struct {
+	Providers ProvidersSubroutinesConfig
+}
+
+type ProvidersConfig struct {
+	ProvidersAPIExportEndpointSliceName      string
+	ProvidersAPIExportEndpointSliceWorkspace string
+	Subroutines                              ProvidersOperatorSubroutinesConfig
+	KCP                                      KCPConfig
+}
+
+func NewProvidersConfig() ProvidersConfig {
+	return ProvidersConfig{
+		KCP: KCPConfig{
+			Namespace:              "platform-mesh-system",
+			RootShardName:          "root",
+			FrontProxyName:         "frontproxy",
+			FrontProxyPort:         "8443",
+			ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
+		},
+		ProvidersAPIExportEndpointSliceName:      "providers.platform-mesh.io",
+		ProvidersAPIExportEndpointSliceWorkspace: "root:platform-mesh-system",
+		Subroutines: ProvidersOperatorSubroutinesConfig{
+			Providers: ProvidersSubroutinesConfig{
+				Workspace:  ProviderSubroutineConfig{Enabled: true},
+				Kubeconfig: ProviderSubroutineConfig{Enabled: true},
+			},
+		},
+	}
+}
+
+func (c *ProvidersConfig) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&c.ProvidersAPIExportEndpointSliceName, "providers-apiexport-endpointslice-name", c.ProvidersAPIExportEndpointSliceName, "Set name of the Providers APIExport endpoint slice to use")
+	fs.StringVar(&c.ProvidersAPIExportEndpointSliceWorkspace, "providers-apiexport-endpointslice-workspace", c.ProvidersAPIExportEndpointSliceWorkspace, "Set workspace of the Providers APIExport endpoint slice to use")
+
+	fs.StringVar(&c.KCP.Url, "kcp-url", c.KCP.Url, "Set KCP URL")
+	fs.StringVar(&c.KCP.Namespace, "kcp-namespace", c.KCP.Namespace, "Set KCP namespace")
+	fs.StringVar(&c.KCP.RootShardName, "kcp-root-shard-name", c.KCP.RootShardName, "Set KCP root shard name")
+	fs.StringVar(&c.KCP.FrontProxyName, "kcp-front-proxy-name", c.KCP.FrontProxyName, "Set KCP front-proxy name")
+	fs.StringVar(&c.KCP.FrontProxyPort, "kcp-front-proxy-port", c.KCP.FrontProxyPort, "Set KCP front-proxy port")
+	fs.StringVar(&c.KCP.ClusterAdminSecretName, "kcp-cluster-admin-secret-name", c.KCP.ClusterAdminSecretName, "Set cluster-admin secret name")
+
+	fs.BoolVar(&c.Subroutines.Providers.Workspace.Enabled, "subroutines-providers-workspace-enabled", c.Subroutines.Providers.Workspace.Enabled, "Enable Provider workspace subroutine")
+	fs.BoolVar(&c.Subroutines.Providers.Kubeconfig.Enabled, "subroutines-providers-kubeconfig-enabled", c.Subroutines.Providers.Kubeconfig.Enabled, "Enable Provider scoped-kubeconfig subroutine")
 }

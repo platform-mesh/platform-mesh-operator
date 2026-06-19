@@ -1,0 +1,53 @@
+{{- if .prometheusOperatorCRDs.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .prometheusOperatorCRDs.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ .prometheusOperatorCRDs.syncWave | default 0 }}"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  {{- if .prometheusOperatorCRDs.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml .prometheusOperatorCRDs.ignoreDifferences | nindent 4 }}
+  {{- end }}
+  source:
+    {{- if .prometheusOperatorCRDs.repoURL }}
+    repoURL: {{ .prometheusOperatorCRDs.repoURL }}
+    {{- else }}
+    repoURL: https://prometheus-community.github.io/helm-charts
+    {{- end }}
+    chart: prometheus-operator-crds
+    {{- if .prometheusOperatorCRDs.targetRevision }}
+    targetRevision: "{{ .prometheusOperatorCRDs.targetRevision }}"
+    {{- else }}
+    targetRevision: "*"
+    {{- end }}
+    {{- if .prometheusOperatorCRDs.values }}
+    helm:
+      values: |
+{{ toYaml .prometheusOperatorCRDs.values | nindent 8 }}
+    {{- end }}
+  destination:
+    server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ .prometheusOperatorCRDs.targetNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    {{- if .prometheusOperatorCRDs.syncOptions }}
+    syncOptions:
+{{ toYaml .prometheusOperatorCRDs.syncOptions | nindent 4 }}
+    {{- else }}
+    syncOptions:
+    - CreateNamespace=true
+    {{- if .prometheusOperatorCRDs.ignoreDifferences }}
+    - RespectIgnoreDifferences=true
+    {{- end }}
+    {{- end }}
+{{- end }}

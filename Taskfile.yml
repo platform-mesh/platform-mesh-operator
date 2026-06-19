@@ -7,10 +7,12 @@ vars:
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
   TEST_SETUP_DIRECTORY: setup/01-platform-mesh-system
+  KCP_APIGEN_VERSION: v0.30.1
   GOMPLATE_VERSION: v4.3.0
   KUSTOMIZE_VERSION: v5.4.3
   OCM_VERSION: 0.24.0
   KIND_VERSION: v0.29.0
+  YAML_PATCH_VERSION: v0.0.11
   KUBECTL: kubectl
   GOARCH:
     sh: go env GOARCH
@@ -57,6 +59,14 @@ tasks:
     cmds:
       - test -s {{.LOCAL_BIN}}/kind || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/kind@{{ .KIND_VERSION }}
       - export PATH=$(pwd)/{{.LOCAL_BIN}}:$PATH
+  setup:kcp-api-gen:
+    internal: true
+    cmds:
+      - test -s {{.LOCAL_BIN}}/apigen || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/kcp-dev/sdk/cmd/apigen@{{.KCP_APIGEN_VERSION}}
+  setup:yaml-patch:
+    internal: true
+    cmds:
+      - test -s {{.LOCAL_BIN}}/apigen || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install github.com/pivotal-cf/yaml-patch/cmd/yaml-patch@{{.YAML_PATCH_VERSION}}
 
   ## Development
   mockery:
@@ -119,16 +129,67 @@ tasks:
             fi
         ignore_error: false
 
+  fuzz:
+    desc: "Run fuzz tests with a configurable duration (default 30s per target)"
+    vars:
+      FUZZTIME: '{{.FUZZTIME | default "30s"}}'
+    cmds:
+      - go test ./pkg/ocm/ -run=^$ -fuzz=FuzzParseRef -fuzztime={{.FUZZTIME}} -count=1
+
   manifests:
     deps: [setup:controller-gen]
     cmds:
       - "{{.LOCAL_BIN}}/controller-gen rbac:roleName=manager-role crd paths=./... output:crd:artifacts:config={{.CRD_DIRECTORY}}"
+  apigen:
+    deps: [setup:kcp-api-gen, setup:yaml-patch]
+    cmds:
+      - task: manifests
+      - cmd: |
+            apigen_crds=(
+                # Add your apigen input CRDs below.
+                {{.CRD_DIRECTORY}}/providers.platform-mesh.io_providers.yaml
+            )
+            apigen_dest=(
+                # Add your apigen output paths below.
+                ./manifests/kcp/01-platform-mesh-system/apiexport-providers.platform-mesh.io.yaml
+                ./manifests/kcp/01-platform-mesh-system/apiresourceschema-providers.providers.platform-mesh.io.yaml
+            )
+
+            # NOTE: this script also applies yaml-patch files from {{.CRD_DIRECTORY}}/apigen/patches onto {{.CRD_DIRECTORY}}/apigen/out.
+            # Please put your patch files there if needed.
+            # Each patch file    {{.CRD_DIRECTORY}}/apigen/patches/<NAME>.yaml-patch
+            # is applied against {{.CRD_DIRECTORY}}/apigen/out/    <NAME>.yaml
+
+            # Prepare dir structure for apigen.
+            mkdir -p {{.CRD_DIRECTORY}}/apigen/{crds,out}
+            for manifest in "${apigen_crds[@]}"; do
+                cp "${manifest}" {{.CRD_DIRECTORY}}/apigen/crds
+            done
+
+            {{.LOCAL_BIN}}/apigen \
+                --input-dir {{.CRD_DIRECTORY}}/apigen/crds \
+                --output-dir {{.CRD_DIRECTORY}}/apigen/out
+
+            # Apply patches.
+            for patch in ./config/crd/apigen/patches/*.yaml-patch; do
+                [[ -f "${patch}" ]] || continue
+                out="$(basename ${patch} | sed 's/-patch$//')"
+                {{.LOCAL_BIN}}/yaml-patch -o "${patch}" < "{{.CRD_DIRECTORY}}/apigen/out/${out}" > "{{.CRD_DIRECTORY}}/apigen/out/${out}.patched"
+                mv "{{.CRD_DIRECTORY}}/apigen/out/${out}.patched" "{{.CRD_DIRECTORY}}/apigen/out/${out}"
+            done
+
+            # Move files from apigen/out into whereever apigen_dest points to.
+            for dest in "${apigen_dest[@]}"; do
+                manifest="$(basename ${dest})"
+                mv "{{.CRD_DIRECTORY}}/apigen/out/${manifest}" "${dest}"
+            done
+        ignore_error: false
   generate:
     cmds:
       - task: manifests
       - "{{.LOCAL_BIN}}/controller-gen object:headerFile=hack/boilerplate.go.txt paths=./..."
-      # - "{{.LOCAL_BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources"
-      # - "{{.LOCAL_BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir {{ .TEST_SETUP_DIRECTORY }}"
+      - task: apigen
+        ignore_error: false
   build:
     cmds:
       - go build -o bin/manager main.go

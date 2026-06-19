@@ -3,7 +3,6 @@ data:
   profile.yaml: |
     components:
       deploymentTechnology: fluxcd
-      iamWebhookCA: null
       ocm:
         component:
           create: true
@@ -468,6 +467,22 @@ data:
         targetNamespace: default
         values:
           gatewayAPI: false
+      prometheusOperatorCRDs:
+        enabled: true
+        interval: 1m
+        name: prometheus-operator-crds
+        ocmComponentName: prometheus-operator-crds
+        ocmResourceName: chart
+        targetNamespace: default
+        values: {}
+      opentelemetryOperator:
+        enabled: true
+        interval: 1m
+        name: opentelemetry-operator
+        ocmComponentName: opentelemetry-operator
+        ocmResourceName: chart
+        targetNamespace: default
+        values: {}
 kind: ConfigMap
 metadata:
   name: platform-mesh-profile

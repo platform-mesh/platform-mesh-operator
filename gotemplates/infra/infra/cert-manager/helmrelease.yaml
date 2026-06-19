@@ -21,6 +21,12 @@ spec:
   releaseName: {{ .certManager.name }}
   targetNamespace: {{ .certManager.targetNamespace }}
   timeout: 15m
+  install:
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
   values:
 {{ toYaml .certManager.values | nindent 4 }}
 {{- end }}

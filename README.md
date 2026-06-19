@@ -14,8 +14,6 @@ metadata:
   namespace: platform-mesh-system
 spec:
   kcp:
-    adminSecretRef:
-      name: platform-mesh-kcp-internal-admin-kubeconfig
     providerConnections:
     - endpointSliceName: core.platform-mesh.io
       path: root:platform-mesh-system
@@ -611,7 +609,7 @@ The KcpSetup subroutine handles initialization of the KCP environment:
 
 The ProviderSecret subroutine manages kubeconfig secrets for provider connections:
 
-- **Admin auth mode** (`adminAuth: true`): Reads the admin kubeconfig from `kcp.adminSecretRef`, resolves the endpoint URL from the APIExportEndpointSlice, appends the root CA, and writes the kubeconfig secret
+- **Admin auth mode** (`adminAuth: true`): Reads the admin kubeconfig from the `kubeconfig-kcp-admin` secret in the configured KCP namespace, resolves the endpoint URL from the APIExportEndpointSlice, appends the root CA, and writes the kubeconfig secret
 - **Scoped auth mode** (`adminAuth: false`): Creates a ServiceAccount, ClusterRole, ClusterRoleBinding in the target workspace, generates a scoped kubeconfig with a bound token
 
 ### FeatureToggles
@@ -639,6 +637,108 @@ The Resource subroutine (in `pkg/subroutines/resource/`) manages OCM Resource ob
 - For FluxCD: creates OCIRepository → HelmRelease chain with chartRef
 - For ArgoCD: updates Application objects with resolved OCI repository URLs from OCM Resources
 - Manages image version extraction and stores versions in the ImageVersionStore
+
+## Provider Bootstrap
+
+Provider bootstrapping spans two controllers and two CRDs:
+
+- **`Provider`** (reconciled by the Provider controller) — provisions a dedicated kcp workspace and issues a scoped kubeconfig for it. Owned by the service provider. Kcp-level only.
+- **`ManagedProvider`** (reconciled by the platform-mesh controller) — a convenience API for the platform-mesh admin to onboard a platform-owned service end-to-end: creates the `Provider`, waits for it to be Ready, copies the kubeconfig into Platform Mesh's runtime cluster, and deploys the service operator there.
+
+### Provider Resource
+
+`Provider` is a kcp-level resource, watched by the Provider controller. Creating one provisions a dedicated workspace and a scoped kubeconfig. Once `status.phase` is `Ready`, it is the provider's responsibility to bootstrap their workspace resources (APIExports, schemas, etc.) using that kubeconfig, and to wire the kubeconfig into their service controllers. Afterwards, the provider can then watch their APIExport virtual workspace to reconcile consumers of the service.
+
+```yaml
+apiVersion: providers.platform-mesh.io/v1alpha1
+kind: Provider
+metadata:
+  name: my-service
+spec:
+  # Optional — overrides the name, namespace, and key of the kubeconfig Secret.
+  # Defaults to name: <Provider.Name>-provider-kubeconfig, namespace: default, key: kubeconfig.
+  providerKubeconfigSecret:
+    name: my-service-provider-kubeconfig
+    namespace: default
+    key: kubeconfig
+  # Optional — override the kcp front-proxy host written into the kubeconfig.
+  hostOverride: "https://frontproxy.example.com:8443"
+status:
+  phase: Ready
+  providerKubeconfigSecretRef:
+    name: my-service-provider-kubeconfig
+    namespace: default
+```
+
+#### Provider Controller Subroutine Chain
+
+| # | Subroutine | Action |
+|---|-----------|--------|
+| 1 | `ProviderWorkspaceSubroutine` | Creates a dedicated workspace under `root:providers` (e.g. `root:providers:wildwest-2cyb4oxml4sv8o3r`) |
+| 2 | `ScopedKubeconfigSubroutine` | Inside the provider workspace, creates a ServiceAccount, cluster-admin ClusterRoleBinding, and a static token Secret; generates a kubeconfig from those credentials and writes a kubeconfig Secret into the workspace where the Provider lives |
+
+### ManagedProvider Resource
+
+`ManagedProvider` is a resource created by the platform-mesh admin. It is a convenience API for onboarding a platform-owned service. On the kcp side, it creates a `Provider` object in `root:providers:system` (overridable via `spec.provider`) and waits for it to reach `Ready`. On the runtime side, it copies the kubeconfig into Platform Mesh's runtime cluster so that service operators can reach their provider workspace, and finally deploys those operators.
+
+```yaml
+apiVersion: providers.platform-mesh.io/v1alpha1
+kind: ManagedProvider
+metadata:
+  name: wildwest
+  namespace: platform-mesh-system
+spec:
+  # Which PlatformMesh instance this ManagedProvider belongs to.
+  platformMeshRef:
+    name: platform-mesh
+
+  # Service operators to deploy in Platform Mesh's runtime cluster.
+  # Each OCM component is resolved and deployed as a Helm chart via FluxCD.
+  runtimeDeployments:
+  - ocm:
+      componentName: wildwest-controller
+      registry: ghcr.io/platform-mesh/helm-charts
+      version: "0.1.0"
+      values:
+        kubeconfig:
+          secretName: wildwest-provider-kubeconfig  # scoped kubeconfig copied by KubeconfigCopySubroutine
+  - ocm:
+      componentName: wildwest-portal
+      registry: ghcr.io/platform-mesh/helm-charts
+      version: "0.1.0"
+
+  # If true, also deletes the Provider on the kcp side when ManagedProvider is deleted,
+  # which cascades to delete the provider workspace and generated kubeconfig.
+  cleanupOnDelete: false
+
+  # Optional — where to store the provider kubeconfig Secret in Platform Mesh's runtime cluster.
+  # Defaults to name: <ManagedProvider.Name>-provider-kubeconfig, key: kubeconfig.
+  # providerKubeconfigSecret:
+  #   name: wildwest-provider-kubeconfig
+  #   key: kubeconfig
+
+  # Optional — target a specific Platform Mesh runtime cluster. Defaults to the hosting cluster.
+  # runtimeKubeconfigSecretName: platform-runtime-wildwest-kubeconfig
+
+  # Optional — override the kcp front-proxy host in the generated kubeconfig.
+  # providerHostOverride: https://root.kcp.localhost:31000
+
+  # Optional — create the Provider in a different workspace (default: root:providers:system),
+  # or adopt an already-existing Provider at the given path and name.
+  # provider:
+  #   path: root:orgs:org-a:demo-acc
+  #   name: wildwest-platform
+```
+
+#### ManagedProvider Controller Subroutine Chain
+
+| # | Subroutine | Action |
+|---|-----------|--------|
+| 1 | `WaitPlatformMeshSubroutine` | Waits for the referenced `PlatformMesh` to have its `Ready` condition `True` |
+| 2 | `ProviderResourceSubroutine` | Creates (or adopts) the `Provider` resource at the specified kcp path (default: `root:providers:system`) |
+| 3 | `WaitProviderSubroutine` | Polls the `Provider` until `status.phase == "Ready"` |
+| 4 | `KubeconfigCopySubroutine` | Copies the kubeconfig Secret from the Provider's kcp workspace into Platform Mesh's runtime cluster; sets `status.providerKubeconfigSecretRef` |
+| 5 | `DeploySubroutine` | Deploys each `spec.runtimeDeployments` entry into the target cluster (OCM components resolved and installed via FluxCD) |
 
 ## Releasing
 

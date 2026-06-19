@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/merge"
 )
 
@@ -167,7 +169,16 @@ func (r *DeploymentSubroutine) Finalizers(instance client.Object) []string { // 
 	return []string{}
 }
 
-func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Object) (subroutines.Result, error) {
+func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutines.Result, err error) {
+	start := time.Now()
+	defer func() {
+		labelResult := "success"
+		if err != nil {
+			labelResult = "error"
+		}
+		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
+		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
+	}()
 	inst := runtimeObj.(*v1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -217,40 +228,24 @@ func (r *DeploymentSubroutine) Process(ctx context.Context, runtimeObj client.Ob
 	}
 	deploymentTech = strings.ToLower(deploymentTech)
 
-	// Wait for cert-manager to be ready before proceeding with component HelmReleases
-	rel, err := getDeploymentResource(ctx, r.clientInfra, "cert-manager", inst.Namespace, deploymentTech)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get cert-manager resource")
-		return subroutines.OK(), err
-	}
-	if deploymentTech == deploymentTechArgoCD {
-		// For ArgoCD Applications, check status.sync.status and status.health.status directly
-		// ArgoCD Applications may not have conditions initially, so check status fields directly
-		syncStatus, found, _ := unstructured.NestedString(rel.Object, "status", "sync", "status")
-		healthStatus, healthFound, _ := unstructured.NestedString(rel.Object, "status", "health", "status")
-
-		if !found || syncStatus != "Synced" {
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Application is not synced"), nil
-		}
-		if !healthFound || healthStatus != "Healthy" {
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Application is not healthy"), nil
-		}
-	}
-
-	if deploymentTech == deploymentTechFluxCD {
-		// For FluxCD HelmReleases, check Ready condition
-		if !matchesConditionWithStatus(rel, "Ready", "True") {
-			return subroutines.StopWithRequeue(DefaultRequeueInterval, "cert-manager Release is not ready"), nil
-		}
-	}
-
-	// Render and apply components infra templates (HelmReleases for services) after cert-manager is ready
+	// Render and apply components infra templates (HelmReleases for services)
 	oErr = r.renderAndApplyComponentsInfraTemplates(ctx, inst, templateVars)
 	if oErr != nil {
 		log.Error().Err(oErr).Msg("Failed to render and apply components infra templates")
 		return subroutines.OK(), oErr
 	}
 	log.Debug().Msg("Successfully rendered and applied components infra templates")
+
+	for _, crd := range []string{"issuers.cert-manager.io", "certificates.cert-manager.io"} {
+		established, err := isCRDEstablished(ctx, r.clientRuntime, crd)
+		if err != nil {
+			log.Error().Err(err).Str("crd", crd).Msg("Failed to check cert-manager CRD")
+			return subroutines.OK(), err
+		}
+		if !established {
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("cert-manager CRD %s is not established", crd)), nil
+		}
+	}
 
 	_, oErr = r.manageAuthorizationWebhookSecrets(ctx, inst)
 	if oErr != nil {
@@ -1311,6 +1306,22 @@ func getDeploymentResource(ctx context.Context, client client.Client, resourceNa
 		return nil, err
 	}
 	return obj, nil
+}
+
+func isCRDEstablished(ctx context.Context, c client.Client, name string) (bool, error) {
+	crd := &unstructured.Unstructured{}
+	crd.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "apiextensions.k8s.io",
+		Version: "v1",
+		Kind:    "CustomResourceDefinition",
+	})
+	if err := c.Get(ctx, types.NamespacedName{Name: name}, crd); err != nil {
+		if kerrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return matchesConditionWithStatus(crd, "Established", "True"), nil
 }
 
 func (r *DeploymentSubroutine) hasIstioProxyInjected(ctx context.Context, labelSelector, namespace string) (bool, *unstructured.Unstructured, error) {

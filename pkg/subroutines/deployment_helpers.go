@@ -312,14 +312,14 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 		if source, ok := spec["source"].(map[string]interface{}); ok {
 			if newRepoURL == argoPlaceholderRepoURL {
 				// Never apply the placeholder — always strip it so ResourceSubroutine owns the field.
-				delete(source, "repoURL")
+				source["repoURL"] = existingRepoURL
 				if found && existingRepoURL != "" && existingRepoURL != argoPlaceholderRepoURL {
 					log.Debug().Str("app", name).Msg("Preserving existing repoURL from ResourceSubroutine")
 				}
 			} else if found && existingRepoURL != "" && existingRepoURL != argoPlaceholderRepoURL && existingRepoURL != newRepoURL {
 				// Preserve a real value already set by ResourceSubroutine even when the template
 				// provides a different (non-placeholder) value.
-				delete(source, "repoURL")
+				source["repoURL"] = existingRepoURL
 				log.Debug().Str("app", name).Msg("Preserving existing repoURL from ResourceSubroutine")
 			}
 
