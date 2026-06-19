@@ -67,7 +67,7 @@ func (r *ManagedProviderReconciler) SetupWithManager(mgr mcmanager.Manager, cfg 
 	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named(ManagedProviderControllerName).
-		For(&providersv1alpha1.ManagedProvider{}).
+		For(&providersv1alpha1.ManagedProvider{}, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)

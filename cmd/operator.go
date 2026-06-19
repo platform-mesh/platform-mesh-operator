@@ -22,10 +22,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
 	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"k8s.io/apimachinery/pkg/util/wait"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
 	"github.com/platform-mesh/golang-commons/traces"
 
@@ -46,6 +50,8 @@ var operatorCmd = &cobra.Command{
 	Short: "operator to setup platform-mesh",
 	Run:   RunController,
 }
+
+const defaultWaitForKcpAdminKubeconfigPeriod = time.Second * 15
 
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
@@ -112,7 +118,11 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	mgr, err := mcmanager.New(restCfg, nil, mcmanager.Options{
+	// NOTE: We are using MC multi provider. When adding new controllers, remember to
+	// set your WithEngageWithLocalCluster and/or WithEngageWithProviderClusters ForOption
+	// in For() [mcbuilder.TypedBuilder] appropriately, so that your reconciler receives
+	// only events for the cluster(s) it is supposed to.
+	mgr, err := mcmanager.New(restCfg, mcmultiprovider.New(mcmultiprovider.Options{}), mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -191,9 +201,83 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
+	go startProvidersOperator(ctx, clientInfra, mgr)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
+}
 
+func startProvidersOperator(ctx context.Context, runtimeCl client.Client, mgr mcmanager.Manager) {
+	multiProvider := mgr.GetProvider().(*mcmultiprovider.Provider)
+
+	// Wait until we have kcp up, with its kubeconfig available.
+	var err error
+	var kcpCfg *rest.Config
+	err = wait.PollUntilContextCancel(ctx, defaultWaitForKcpAdminKubeconfigPeriod, true, func(ctx context.Context) (bool, error) {
+		kcpCfg, err = buildKcpAdminConfigForWorkspace(runtimeCl, operatorCfg.Providers.ProvidersAPIExportEndpointSliceWorkspace)
+		if err != nil {
+			setupLog.Error(err, "trying to retrieve kcp admin kubeconfig")
+		}
+		return err == nil, nil
+	})
+	if err != nil {
+		setupLog.Error(err, "failed retrieve kcp admin config")
+		os.Exit(1)
+	}
+	kcpCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
+
+	// Set up the mgr with apiexport provider.
+
+	setupLog.Info("Starting apiexport-providers-platform-mesh provider")
+
+	var apiexportProvider *mcapiexportprovider.Provider
+	err = wait.PollUntilContextCancel(ctx, defaultWaitForKcpAdminKubeconfigPeriod, true, func(ctx context.Context) (bool, error) {
+		apiexportProvider, err = mcapiexportprovider.New(
+			kcpCfg,
+			operatorCfg.Providers.ProvidersAPIExportEndpointSliceName,
+			mcapiexportprovider.Options{
+				Scheme: scheme,
+			},
+		)
+		if err != nil {
+			setupLog.Error(err, "failed to create APIExport provider", "apiexportendpointslice", fmt.Sprintf("%s:%s", operatorCfg.Providers.ProvidersAPIExportEndpointSliceWorkspace, operatorCfg.Providers.ProvidersAPIExportEndpointSliceName))
+		}
+		return err == nil, nil
+	})
+	if err != nil {
+		setupLog.Error(err, "failed retrieve kcp admin config")
+		os.Exit(1)
+	}
+
+	setupLog.Info("Successfully started apiexport-providers-platform-mesh provider")
+
+	// Setup the reconciler against the mgr.
+	providersReconciler, err := providers.NewProviderReconciler(mgr, &operatorCfg, defaultCfg, runtimeCl)
+	if err != nil {
+		setupLog.Error(err, "failed to create Providers reconciler")
+		os.Exit(1)
+	}
+	err = providersReconciler.SetupWithManager(mgr, defaultCfg)
+	if err != nil {
+		setupLog.Error(err, "unable to setup ProviderReconciler with manager")
+		os.Exit(1)
+	}
+
+	if err := multiProvider.AddProvider("apiexport-providers-platform-mesh", apiexportProvider); err != nil {
+		setupLog.Error(err, "failed to add apiexport-providers-platform-mesh provider")
+		os.Exit(1)
+	}
+}
+
+func buildKcpAdminConfigForWorkspace(cl client.Client, wsPath string) (*rest.Config, error) {
+	kcpUrl := operatorCfg.KCP.Url
+	if kcpUrl == "" {
+		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
+	}
+	kcpUrl += fmt.Sprintf("/clusters/%s", wsPath)
+	return subroutines.BuildKubeconfigFromConfig(cl, &operatorCfg.KCP, kcpUrl)
 }

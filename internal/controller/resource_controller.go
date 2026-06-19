@@ -86,7 +86,7 @@ func (r *ResourceReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconf
 	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named(resourceReconcilerName).
-		For(u).
+		For(u, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)

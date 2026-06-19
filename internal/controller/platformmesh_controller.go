@@ -81,7 +81,7 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pm
 	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named(pmReconcilerName).
-		For(&corev1alpha1.PlatformMesh{}).
+		For(&corev1alpha1.PlatformMesh{}, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)
