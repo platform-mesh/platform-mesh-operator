@@ -1,12 +1,8 @@
 apiVersion: tenancy.kcp.io/v1alpha1
 kind: WorkspaceType
 metadata:
-  name: org
+  name: account
 spec:
-  extend:
-    with:
-    - name: security
-      path: root
   defaultAPIBindings:
     - export: core.platform-mesh.io
       path: root:platform-mesh-system
@@ -20,12 +16,20 @@ spec:
 {{- end }}
   defaultChildWorkspaceType:
     name: account
-    path: root
+    path: root:orgs
   limitAllowedChildren:
     types:
       - name: account
-        path: root
+        path: root:orgs
   limitAllowedParents:
     types:
-      - name: orgs
+      - name: org
+        path: root:orgs
+      - name: account
+        path: root:orgs
+  extend:
+    with:
+      - name: universal
         path: root
+      - name: security
+        path: root:orgs

@@ -24,9 +24,10 @@ var AccountOperatorWorkspace = "root:platform-mesh-system"
 
 var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
-		Path:      "root:platform-mesh-system",
-		Secret:    "account-operator-kubeconfig",
-		AdminAuth: ptr.To(true),
+		Path:          "root:platform-mesh-system",
+		Secret:        "account-operator-kubeconfig",
+		AdminAuth:     ptr.To(false),
+		APIExportName: ptr.To("core.platform-mesh.io"),
 	},
 	{
 		Path:      "root:platform-mesh-system",

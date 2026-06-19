@@ -10,7 +10,7 @@ spec:
       path: root:platform-mesh-system
   defaultChildWorkspaceType:
     name: org
-    path: root
+    path: root:orgs
   extend:
     with:
       - name: universal
@@ -18,6 +18,6 @@ spec:
   limitAllowedChildren:
     types:
       - name: org
-        path: root
+        path: root:orgs
   authenticationConfigurations:
   - name: orgs-authentication
