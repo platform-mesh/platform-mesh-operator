@@ -67,7 +67,7 @@ type KindTestSuite struct {
 var clusterName = "platform-mesh"
 
 var defaultKcpOperatorConfig = config.KCPConfig{
-	Url:                    "https://localhost:8443",
+	Url:                    "https://root.kcp.localhost:8443",
 	RootShardName:          "root",
 	Namespace:              "platform-mesh-system",
 	FrontProxyName:         "frontproxy",
