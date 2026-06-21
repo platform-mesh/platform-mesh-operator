@@ -1,0 +1,28 @@
+{{- if .etcdDruid.enabled }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: chart
+    repo: oci
+  name: {{ .etcdDruid.name }}
+  namespace: {{ .releaseNamespace }}
+spec:
+  componentRef:
+    name: {{ .ocm.component.name }}
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Repository
+      name: {{ .ocm.repo.name }}
+      namespace: {{ .releaseNamespace }}
+  resource:
+    byReference:
+      referencePath:
+      {{- range .ocm.referencePath }}
+        - name: {{ .name }}
+      {{- end }}
+        - name: {{ .etcdDruid.name }}
+      resource:
+        name: {{ .etcdDruid.ocmResourceName }}
+        type: helmChart
+{{- end }}

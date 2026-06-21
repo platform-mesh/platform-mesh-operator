@@ -6,6 +6,7 @@ exclude:
   paths:
     - ^pkg/subroutines/mocks # exclude generated mock files
     - api/v1alpha1 # skipping generated files and crd type definitions
+    - api/providers/v1alpha1
     - main\.go$ # skip covering main.go
     - ^cmd # skip covering cmd directory
     - ^pkg/testing # skip covering kcpenvtest

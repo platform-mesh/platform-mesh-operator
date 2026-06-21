@@ -1,0 +1,33 @@
+{{- if and .etcdDruid.enabled (eq .deploymentTechnology "argocd") }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .etcdDruid.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ .etcdDruid.syncWave | default 0 }}"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-mesh-runtime
+  source:
+    repoURL: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
+    chart: etcd-druid
+    targetRevision: PLACEHOLDER_TO_BE_SET_BY_RESOURCE_SUBROUTINE
+    {{- if .etcdDruid.values }}
+    helm:
+      values: |
+{{ toYaml .etcdDruid.values | nindent 8 }}
+    {{- end }}
+  destination:
+    server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
+    namespace: {{ .etcdDruid.targetNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+{{- end }}

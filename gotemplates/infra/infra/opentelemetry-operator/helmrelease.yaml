@@ -1,0 +1,36 @@
+{{- if .opentelemetryOperator.enabled }}
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: {{ .opentelemetryOperator.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+spec:
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
+  chartRef:
+    kind: OCIRepository
+    name: {{ .opentelemetryOperator.name }}
+    namespace: {{ .helmReleaseNamespace }}
+  dependsOn:
+    - name: {{ .certManager.name }}
+  interval: {{ .opentelemetryOperator.interval }}
+  releaseName: {{ .opentelemetryOperator.name }}
+  targetNamespace: {{ .opentelemetryOperator.targetNamespace }}
+  timeout: 15m
+  install:
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
+{{- if .opentelemetryOperator.values }}
+  values:
+{{ toYaml .opentelemetryOperator.values | nindent 4 }}
+{{- end }}
+{{- end }}

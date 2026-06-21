@@ -2,10 +2,8 @@ package subroutines
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
-	"strings"
 	"testing"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
@@ -437,6 +435,23 @@ func (s *KcpsetupTestSuite) TestProcess() {
 			}
 			return nil
 		})
+	fakeKubeconfig := []byte(`apiVersion: v1
+clusters:
+- cluster:
+    server: https://kcp.example.com
+  name: kcp
+contexts:
+- context:
+    cluster: kcp
+    user: admin
+  name: kcp
+current-context: kcp
+kind: Config
+users:
+- name: admin
+  user:
+    token: fake-token
+`)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{
 			Name:      "kcp-cluster-admin",
@@ -445,9 +460,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
-				"ca.crt":  []byte("test-ca-data"),
-				"tls.crt": []byte("test-tls-crt"),
-				"tls.key": []byte("test-tls-key"),
+				"kubeconfig": fakeKubeconfig,
 			}
 			return nil
 		})
@@ -528,6 +541,10 @@ func (s *KcpsetupTestSuite) TestProcess() {
 
 	s.helperMock.EXPECT().
 		NewKcpClient(mock.Anything, "root:orgs:default").
+		Return(mockKcpClient, nil)
+
+	s.helperMock.EXPECT().
+		NewKcpClient(mock.Anything, "root:providers").
 		Return(mockKcpClient, nil)
 
 	// Mock APIExport lookups
@@ -921,47 +938,6 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	s.Assert().Contains(err.Error(), "Failed to apply")
 }
 
-func (s *KcpsetupTestSuite) TestUnstructuredFromFile() {
-
-	logcfg := logger.DefaultConfig()
-	// logcfg.Level = defaultCfg.Log.Level
-	// logcfg.NoJSON = defaultCfg.Log.NoJson
-	var err error
-	log, err := logger.New(logcfg)
-	if err != nil {
-		panic(err)
-	}
-
-	// Resource
-	path := "../../manifests/k8s/platform-mesh-operator-components/resource.yaml"
-	templateData := map[string]any{
-		"componentName": "component1",
-		"repoName":      "repo1",
-		"referencePath": "\n        - ref1\n        - ref2",
-	}
-	obj, err := s.testObj.UnstructuredFromFile(path, templateData, log)
-	s.Assert().Nil(err)
-	s.Assert().Equal(obj.GetKind(), "Resource")
-	spec := obj.Object["spec"].(map[string]interface{})
-	content := spec["componentRef"].(map[string]interface{})
-	contentJSON, err := json.Marshal(content)
-	s.Assert().Nil(err)
-	s.Assert().Truef(strings.Contains(string(contentJSON), "component1"), "Content does not contain expected componentName")
-
-	resource := spec["resource"].(map[string]interface{})
-	byReference := resource["byReference"].(map[string]interface{})
-	referencePath := byReference["referencePath"].([]interface{})
-	contentJSON, err = json.Marshal(referencePath)
-	s.Assert().Nil(err)
-
-	s.Assert().Truef(strings.Contains(string(contentJSON), "ref1"), "Content does not contain expected referencePath")
-	s.Assert().Truef(strings.Contains(string(contentJSON), "ref2"), "Content does not contain expected referencePath")
-	s.Assert().Truef(strings.Contains(string(contentJSON), "platform-mesh-operator-components"), "Content does not contain expected referencePath")
-}
-
-// Tests for applyExtraWorkspaces (via assumed exported wrapper ApplyExtraWorkspaces).
-// If the wrapper name differs, adjust the method name accordingly.
-
 func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Success() {
 	// Arrange
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
@@ -976,7 +952,7 @@ func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Success() {
 
 	// Server-side apply - no Get needed
 	kcpClientMock.EXPECT().
-		Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 
 	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
@@ -1035,7 +1011,7 @@ func (s *KcpsetupTestSuite) Test_ApplyExtraWorkspaces_Apply_Error() {
 
 	// Server-side apply fails - no Get needed
 	kcpClientMock.EXPECT().
-		Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("apply failed")).Once()
 
 	inst := s.newPlatformMeshWithExtraWorkspaces([]extraWsDef{
@@ -1105,7 +1081,6 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 			featureToggles: []corev1alpha1.FeatureToggle{
 				{Name: "feature-enable-getting-started"},
 				{Name: "feature-disable-email-verification"},
-				{Name: "feature-enable-marketplace-account"},
 			},
 			toggleName: "feature-disable-email-verification",
 			expected:   "true",

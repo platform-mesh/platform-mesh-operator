@@ -8,8 +8,6 @@ metadata:
   namespace: platform-mesh-system
 spec:
   kcp:
-    adminSecretRef:
-      name: platform-mesh-kcp-internal-admin-kubeconfig
     providerConnections:
     - endpointSliceName: core.platform-mesh.io
       path: root:platform-mesh-system

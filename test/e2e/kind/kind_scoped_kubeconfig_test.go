@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -27,7 +28,6 @@ const (
 	e2ePlatformMeshNamespace = "platform-mesh-system"
 	e2ePlatformMeshName      = "platform-mesh"
 
-	// Infra chart Certificate secretName; may live in platform-mesh-system or kcp-system (.Values.kcp.namespace default).
 	e2eKcpClusterAdminClientCertSecretName = "kcp-cluster-admin-client-cert"
 
 	// Operator-written Secrets for extraProviderConnections in platform-mesh.yaml (provider1 vs provider2 scenario).
@@ -51,10 +51,7 @@ const (
 // scopedE2EKcpAdminCertSecretNamespace is set by waitForKcpClusterAdminClientCert in this file only.
 var scopedE2EKcpAdminCertSecretNamespace string
 
-var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{
-	e2ePlatformMeshNamespace,
-	"kcp-system",
-}
+var scopedE2EKcpClusterAdminCertSearchNamespaces = []string{e2ePlatformMeshNamespace}
 
 // TestScoped01KubeconfigKcpPrereq waits for kcp-cluster-admin-client-cert (TLS material for kcp clients) and seeds
 // root:providers:provider1|provider2 with APIExports/slices before TestScoped02/03KubeconfigProvider1/2.
@@ -363,7 +360,19 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
 }
 
-// waitForKcpClusterAdminClientCert polls until the infra TLS secret exists (platform-mesh-system or kcp-system).
+func (s *KindTestSuite) kcpClientForWorkspaceWithScheme(ctx context.Context, scheme *runtime.Scheme, workspacePath string) client.Client {
+	kcpAdminCfg, err := subroutines.BuildKubeconfigFromConfig(s.client, &defaultKcpOperatorConfig, defaultKcpOperatorConfig.Url)
+	s.Require().NoError(err, "getting kcp admin rest config should succeed")
+	kcpAdminCfg.Host += "/clusters/" + workspacePath
+
+	scopedKcpAdminClient, err := client.New(kcpAdminCfg, client.Options{
+		Scheme: scheme,
+	})
+	s.Require().NoError(err, "creating scoped kcp admin client should succeed")
+
+	return scopedKcpAdminClient
+}
+
 func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	sec := &corev1.Secret{}
 	s.Eventually(func() bool {
@@ -546,7 +555,7 @@ func normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes []byte) ([]byte,
 	server := cluster.Server
 
 	// provider2: in-cluster front-proxy DNS is not resolvable from host-run kubectl.
-	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:6443", "localhost:8443", 1)
+	server = strings.Replace(server, "frontproxy-front-proxy.platform-mesh-system:8443", "localhost:8443", 1)
 
 	// provider1: virtual workspace URL from endpoint slice is flaky for create/get in host-run kubectl.
 	// For this fixed fixture, use the concrete provider1 workspace cluster URL.

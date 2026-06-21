@@ -1,0 +1,33 @@
+{{- if .etcdDruid.enabled }}
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: {{ .etcdDruid.name }}
+  namespace: {{ .helmReleaseNamespace }}
+  labels:
+    core.platform-mesh.io/operator-created: "true"
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: {{ .etcdDruid.name }}
+    namespace: {{ .helmReleaseNamespace }}
+  interval: {{ .etcdDruid.interval }}
+  releaseName: {{ .etcdDruid.name }}
+  targetNamespace: {{ .etcdDruid.targetNamespace }}
+  install:
+    createNamespace: true
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
+  timeout: 15m
+  values:
+    {{- toYaml .etcdDruid.values | nindent 4 }}
+{{- if .kubeConfigEnabled }}
+  kubeConfig:
+    secretRef:
+      name: {{ .kubeConfigSecretName }}
+      key: {{ .kubeConfigSecretKey }}
+{{- end }}
+{{- end }}

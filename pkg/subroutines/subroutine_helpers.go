@@ -3,8 +3,9 @@ package subroutines
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +15,9 @@ import (
 	"text/template"
 	"time"
 
+	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
+	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
@@ -21,13 +25,16 @@ import (
 	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
-	v1 "k8s.io/api/apps/v1"
+	providers1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
+	"github.com/rs/zerolog/log"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -61,7 +68,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	}
 	config.Host = u.Scheme + "://" + u.Host + "/clusters/" + workspacePath
 	scheme := runtime.NewScheme()
-	utilruntime.Must(v1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(authenticationv1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
@@ -71,6 +78,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	utilruntime.Must(rbacv1.AddToScheme(scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme))
+	utilruntime.Must(providers1alpha1.AddToScheme(scheme))
 
 	cl, err := client.New(config, client.Options{
 		Scheme: scheme,
@@ -91,6 +99,157 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 		return nil, errors.Wrap(err, "Failed to get secret")
 	}
 	return &secret, nil
+}
+
+// AppendRootShardCAPEMIfMissing loads {RootShardName}-ca tls.crt and appends it to caData when the root cert is not already in the bundle.
+func AppendRootShardCAPEMIfMissing(ctx context.Context, k8sClient client.Client, operatorCfg *config.OperatorConfig, caData []byte) []byte {
+	log := logger.LoadLoggerFromContext(ctx)
+	if len(caData) == 0 {
+		log.Debug().Msg("Skip appending root-shard CA: empty CA data")
+		return caData
+	}
+	if operatorCfg == nil {
+		log.Debug().Msg("Skip appending root-shard CA: operator config is nil")
+		return caData
+	}
+	if operatorCfg.KCP.RootShardName == "" || operatorCfg.KCP.Namespace == "" {
+		log.Debug().
+			Str("rootShardName", operatorCfg.KCP.RootShardName).
+			Str("kcpNamespace", operatorCfg.KCP.Namespace).
+			Msg("Skip appending root-shard CA: empty KCP root shard name or namespace")
+		return caData
+	}
+	secretName := operatorCfg.KCP.RootShardName + "-ca"
+	ns := operatorCfg.KCP.Namespace
+	rootSecret, rootErr := GetSecret(k8sClient, secretName, ns)
+	if rootErr != nil {
+		if kerrors.IsNotFound(rootErr) {
+			log.Debug().
+				Str("secret", secretName).
+				Str("namespace", ns).
+				Msg("Root-shard CA secret not found, leaving CA bundle unchanged")
+		} else {
+			log.Warn().Err(rootErr).
+				Str("secret", secretName).
+				Str("namespace", ns).
+				Msg("Failed to get root-shard CA secret, leaving CA bundle unchanged")
+		}
+		return caData
+	}
+	if rootSecret == nil {
+		log.Debug().Str("secret", secretName).Str("namespace", ns).Msg("Root-shard CA secret is nil, leaving CA bundle unchanged")
+		return caData
+	}
+	rootPEM, ok := rootSecret.Data["tls.crt"]
+	if !ok || len(rootPEM) == 0 {
+		log.Debug().
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Root-shard CA secret has no tls.crt, leaving CA bundle unchanged")
+		return caData
+	}
+	merged, outcome, mergeErr := mergeRootCAPEMIfMissing(caData, rootPEM)
+	switch outcome {
+	case mergeRootCAAppended:
+		log.Info().
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Appended root-shard CA to PEM bundle")
+	case mergeRootCAUnchangedAlreadyPresent:
+		log.Debug().
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Root-shard CA already present in PEM bundle, not appended")
+	case mergeRootCAUnchangedInvalidRootPEM:
+		log.Warn().Err(mergeErr).
+			Str("secret", secretName).
+			Str("namespace", ns).
+			Msg("Root-shard CA tls.crt is not valid PEM certificate data, not appended")
+	}
+	return merged
+}
+
+func firstCertificateFromPEM(pemData []byte) (*x509.Certificate, error) {
+	for {
+		var block *pem.Block
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return nil, fmt.Errorf("no PEM certificate found")
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		return x509.ParseCertificate(block.Bytes)
+	}
+}
+
+func pemBundleContainsCertificate(pemData []byte, want *x509.Certificate) bool {
+	if want == nil {
+		return false
+	}
+	for {
+		var block *pem.Block
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return false
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		if bytes.Equal(block.Bytes, want.Raw) {
+			return true
+		}
+	}
+}
+
+// mergeRootCAOutcome describes why mergeRootCAPEMIfMissing did or did not change caData.
+type mergeRootCAOutcome int
+
+const (
+	mergeRootCAUnchangedNoMerge mergeRootCAOutcome = iota // empty caData or rootPEM (caller typically skips logging)
+	mergeRootCAUnchangedInvalidRootPEM
+	mergeRootCAUnchangedAlreadyPresent
+	mergeRootCAAppended
+)
+
+// mergeRootCAPEMIfMissing appends rootPEM to caData when the root cert is not already in the bundle.
+// mergeErr is set only when outcome is mergeRootCAUnchangedInvalidRootPEM.
+func mergeRootCAPEMIfMissing(caData, rootPEM []byte) (merged []byte, outcome mergeRootCAOutcome, mergeErr error) {
+	if len(caData) == 0 || len(rootPEM) == 0 {
+		return caData, mergeRootCAUnchangedNoMerge, nil
+	}
+	rootCert, err := firstCertificateFromPEM(rootPEM)
+	if err != nil {
+		return caData, mergeRootCAUnchangedInvalidRootPEM, err
+	}
+	if pemBundleContainsCertificate(caData, rootCert) {
+		return caData, mergeRootCAUnchangedAlreadyPresent, nil
+	}
+	return append(append(append([]byte(nil), caData...), '\n'), rootPEM...), mergeRootCAAppended, nil
+}
+
+// appendPEMCertsDedupe appends PEM CERTIFICATE blocks from extra to bundle when the cert is not already present.
+func appendPEMCertsDedupe(bundle, extra []byte) []byte {
+	rest := extra
+	for len(rest) > 0 {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+		if pemBundleContainsCertificate(bundle, cert) {
+			continue
+		}
+		bundle = append(bundle, pem.EncodeToMemory(block)...)
+	}
+	return bundle
 }
 
 func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte, error) {
@@ -154,10 +313,6 @@ func GetWorkspaceDirs(dir string) []string {
 			if IsWorkspace(d.Name()) {
 				workspaces = append(workspaces, d.Name())
 			}
-			if err != nil {
-				return workspaces
-			}
-			workspaces = append(workspaces, d.Name())
 		}
 	}
 	return workspaces
@@ -198,41 +353,7 @@ func ListFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-func MergeJSON(a, b apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	// Unmarshal 'a'
-	var mapA map[string]interface{}
-	if len(a.Raw) > 0 {
-		if err := json.Unmarshal(a.Raw, &mapA); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapA = map[string]interface{}{}
-	}
-
-	// Unmarshal 'b'
-	var mapB map[string]interface{}
-	if len(b.Raw) > 0 {
-		if err := json.Unmarshal(b.Raw, &mapB); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapB = map[string]interface{}{}
-	}
-
-	// Merge mapB into mapA (b overwrites a on conflict)
-	for k, v := range mapB {
-		mapA[k] = v
-	}
-
-	// Marshal back to apiextensionsv1.JSON
-	mergedRaw, err := json.Marshal(mapA)
-	if err != nil {
-		return apiextensionsv1.JSON{}, err
-	}
-	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-}
-
-func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
+func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
 	services := inst.Spec.Values
 	var mapValues map[string]interface{}
 	if len(templateVars.Raw) > 0 {
@@ -267,38 +388,10 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 
 	mergeOCMConfig(mapValues, inst)
 
-	// Marshal back to apiextensionsv1.JSON
-	mergedRaw, err := json.Marshal(mapValues)
-	if err != nil {
-		return apiextensionsv1.JSON{}, err
-	}
-	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-
-}
-
-func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (apiextensionsv1.JSON, error) {
-	valuesInfra := inst.Spec.InfraValues
-	var mapValues map[string]interface{}
-	if len(templateVars.Raw) > 0 {
-		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapValues = map[string]interface{}{}
-	}
-	// Unmarshal 'valuesInfra'
-	var mapValuesInfra map[string]interface{}
-	if len(valuesInfra.Raw) > 0 {
-		if err := json.Unmarshal(valuesInfra.Raw, &mapValuesInfra); err != nil {
-			return apiextensionsv1.JSON{}, err
-		}
-	} else {
-		mapValuesInfra = map[string]interface{}{}
-	}
-
-	// add 'valuesInfra' to mapValues
-	for k, v := range mapValuesInfra {
-		mapValues[k] = v
+	mapValues["kubeConfigEnabled"] = config.RemoteRuntime.IsEnabled()
+	if config.RemoteRuntime.IsEnabled() {
+		mapValues["kubeConfigSecretName"] = config.RemoteRuntime.InfraSecretName
+		mapValues["kubeConfigSecretKey"] = config.RemoteRuntime.InfraSecretKey
 	}
 
 	// Marshal back to apiextensionsv1.JSON
@@ -307,6 +400,7 @@ func MergeValuesAndInfraValues(inst *v1alpha1.PlatformMesh, templateVars apiexte
 		return apiextensionsv1.JSON{}, err
 	}
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
+
 }
 
 func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
@@ -338,67 +432,77 @@ func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, s
 func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 
-	var secret corev1.Secret
-	err := cl.Get(ctx, client.ObjectKey{
-		Name:      "rebac-authz-webhook-cert",
-		Namespace: inst.Namespace,
-	}, &secret)
-	if err != nil && !kerrors.IsNotFound(err) {
-		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to get secret rebac-authz-webhook-cert")
-	}
-
 	values := map[string]interface{}{
-		"iamWebhookCA":   base64.StdEncoding.EncodeToString(secret.Data["ca.crt"]),
-		"baseDomain":     baseDomain,
-		"protocol":       protocol,
-		"port":           fmt.Sprintf("%d", port),
-		"baseDomainPort": baseDomainPort,
+		"baseDomain":           baseDomain,
+		"protocol":             protocol,
+		"port":                 fmt.Sprintf("%d", port),
+		"baseDomainPort":       baseDomainPort,
+		"helmReleaseNamespace": inst.Namespace,
 	}
 
 	result := apiextensionsv1.JSON{}
 	result.Raw, _ = json.Marshal(values)
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return apiextensionsv1.JSON{}, errors.Wrap(err, "Failed to marshal template vars")
+	}
+	result.Raw = raw
 
 	return result, nil
 }
 
 func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
-	return buildKubeconfigFromConfig(client, &operatorCfg, kcpUrl)
+	return BuildKubeconfigFromConfig(client, &operatorCfg.KCP, kcpUrl)
 }
 
-func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.OperatorConfig, kcpUrl string) (*rest.Config, error) {
-	secretName := operatorCfg.KCP.ClusterAdminSecretName
-	secret, err := GetSecret(client, secretName, operatorCfg.KCP.Namespace)
+// BuildKubeconfigFromConfig builds a *rest.Config for the kcp admin from the cluster-admin
+// certificate Secret. It is the exported equivalent of buildKubeconfigFromConfig.
+func BuildKubeconfigFromConfig(client client.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
+	secretName := kcpConfig.ClusterAdminSecretName
+	secret, err := GetSecret(client, secretName, kcpConfig.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("getting secret %s/platform-mesh-system: %w", secretName, err)
+		return nil, fmt.Errorf("getting secret %s/%s: %w", kcpConfig.Namespace, secretName, err)
 	}
 	if secret == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system is nil", secretName)
+		return nil, fmt.Errorf("secret %s/%s is nil", kcpConfig.Namespace, secretName)
 	}
 	if secret.Data == nil {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system has no Data", secretName)
+		return nil, fmt.Errorf("secret %s/%s has no Data", kcpConfig.Namespace, secretName)
 	}
 
+	// Try kubeconfig key first (Opaque secret with pre-built kubeconfig)
+	if kubeconfigData, ok := secret.Data["kubeconfig"]; ok && len(kubeconfigData) > 0 {
+		cfg, err := clientcmd.Load(kubeconfigData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse kubeconfig from secret %s/%s: %w", kcpConfig.Namespace, secretName, err)
+		}
+		// Override the server URL in all clusters with the provided kcpUrl
+		for _, cluster := range cfg.Clusters {
+			cluster.Server = kcpUrl
+		}
+		return clientcmd.NewDefaultClientConfig(*cfg, nil).ClientConfig()
+	}
+
+	// Fall back to cert-based approach (kubernetes.io/tls secret with ca.crt, tls.crt, tls.key)
 	caData, ok := secret.Data["ca.crt"]
 	if !ok || len(caData) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"ca.crt\"", secretName)
+		return nil, fmt.Errorf("secret %s/%s missing both \"kubeconfig\" and \"ca.crt\" keys", kcpConfig.Namespace, secretName)
 	}
-
 	tlsCrt, ok := secret.Data["tls.crt"]
 	if !ok || len(tlsCrt) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.crt\"", secretName)
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.crt\"", kcpConfig.Namespace, secretName)
 	}
-
 	tlsKey, ok := secret.Data["tls.key"]
 	if !ok || len(tlsKey) == 0 {
-		return nil, fmt.Errorf("secret %s/platform-mesh-system missing or empty key \"tls.key\"", secretName)
+		return nil, fmt.Errorf("secret %s/%s missing or empty key \"tls.key\"", kcpConfig.Namespace, secretName)
 	}
 
 	cfg := clientcmdapi.NewConfig()
 	cfg.Clusters = map[string]*clientcmdapi.Cluster{
 		"kcp": {
 			Server:                   kcpUrl,
-			CertificateAuthorityData: secret.Data["ca.crt"],
+			CertificateAuthorityData: caData,
 		},
 	}
 	cfg.Contexts = map[string]*clientcmdapi.Context{
@@ -409,8 +513,8 @@ func buildKubeconfigFromConfig(client client.Client, operatorCfg *config.Operato
 	}
 	cfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
 		"admin": {
-			ClientCertificateData: secret.Data["tls.crt"],
-			ClientKeyData:         secret.Data["tls.key"],
+			ClientCertificateData: tlsCrt,
+			ClientKeyData:         tlsKey,
 		},
 	}
 	cfg.CurrentContext = "admin"
@@ -504,6 +608,11 @@ func ApplyManifestFromFile(
 	err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
 		client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
 	if err != nil {
+		if obj.GetKind() == "IdentityProviderConfiguration" && obj.GetAPIVersion() == "core.platform-mesh.io/v1alpha1" {
+			log.Warn().Err(err).Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
+				Msg("Failed to apply IdentityProviderConfiguration (webhook may not be ready yet), will retry on next reconciliation")
+			return nil
+		}
 		return errors.Wrap(err, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 	}
 	log.Info().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Msg("Applied manifest file")
@@ -574,7 +683,10 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 	}
 
 	for _, condition := range conditions {
-		c := condition.(map[string]interface{})
+		c, ok := condition.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if c["type"] == conditionType && c["status"] == conditionStatus {
 			return true
 		}
@@ -599,10 +711,124 @@ func unstructuredFromFile(path string, templateData map[string]any, log *logger.
 		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
 	}
 
-	log.Debug().Str("obj", fmt.Sprintf("%+v", objMap)).Msg("Unmarshalled object")
-
 	obj := unstructured.Unstructured{Object: objMap}
 
 	log.Debug().Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).Str("namespace", obj.GetNamespace()).Msg("Applying manifest")
 	return obj, err
+}
+
+func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, error) {
+	if kubeconfig == "" {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			log.Error().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
+			return nil, nil, err
+		}
+		deployClient, err := client.New(config, client.Options{Scheme: GetClientScheme()})
+		if err != nil {
+			log.Error().Err(err).Msg("unable to create in-cluster deployment client")
+			return nil, nil, err
+		}
+		return deployClient, config, nil
+	}
+
+	config, err := clientcmd.LoadFromFile(kubeconfig)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to build Config")
+		return nil, nil, err
+	}
+	cfgBytes, err := clientcmd.Write(*config)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to serialize config to bytes")
+		return nil, nil, err
+	}
+	restCfg, err := clientcmd.RESTConfigFromKubeConfig(cfgBytes)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to build rest config from kubeconfig")
+		return nil, nil, err
+	}
+	deployClient, err := client.New(restCfg, client.Options{Scheme: GetClientScheme()})
+	if err != nil {
+		log.Error().Err(err).Msg("unable to create client")
+		return nil, nil, err
+	}
+	return deployClient, restCfg, nil
+
+}
+
+func GetClientScheme() *runtime.Scheme {
+
+	var gvk = schema.GroupVersionKind{
+		Group:   "delivery.ocm.software",
+		Version: "v1alpha1",
+		Kind:    "Resource",
+	}
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
+	utilruntime.Must(certmanager.AddToScheme(scheme))
+	utilruntime.Must(fluxcdv1.AddToScheme(scheme))
+	utilruntime.Must(fluxcdv2.AddToScheme(scheme))
+
+	scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
+
+	return scheme
+}
+
+func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, inst *v1alpha1.PlatformMesh) (string, error) {
+	var configMapName, configMapNamespace string
+	if inst.Spec.ProfileConfigMap != nil {
+		configMapName = inst.Spec.ProfileConfigMap.Name
+		configMapNamespace = inst.Spec.ProfileConfigMap.Namespace
+		if configMapNamespace == "" {
+			configMapNamespace = inst.Namespace
+		}
+	} else {
+		configMapName = inst.Name + "-profile"
+		configMapNamespace = inst.Namespace
+	}
+
+	configMap := &corev1.ConfigMap{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: configMapNamespace}, configMap); err != nil {
+		return "", fmt.Errorf("failed to get profile ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
+	}
+
+	profileYAML, ok := configMap.Data["profile.yaml"]
+	if !ok {
+		return "", fmt.Errorf("profile ConfigMap %s/%s does not contain key 'profile.yaml'", configMapNamespace, configMapName)
+	}
+
+	var profile map[string]interface{}
+	if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
+		return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
+	}
+
+	if infra, ok := profile["infra"].(map[string]interface{}); ok {
+		if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
+			return strings.ToLower(dt), nil
+		}
+	}
+
+	if components, ok := profile["components"].(map[string]interface{}); ok {
+		if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
+			return strings.ToLower(dt), nil
+		}
+	}
+
+	return "fluxcd", nil
+}
+
+func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
+	// If kcp-url is explicitly configured, use it
+	if cfg.KCP.Url != "" {
+		return cfg.KCP.Url
+	}
+	if inst.Spec.Exposure == nil {
+		return fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
+	}
+	kcpUrl := inst.Spec.Exposure.Protocol + "://" + inst.Spec.Exposure.BaseDomain + ":" + fmt.Sprintf("%d", inst.Spec.Exposure.Port)
+	return kcpUrl
 }

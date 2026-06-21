@@ -3,6 +3,7 @@ package subroutines
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
@@ -14,27 +15,31 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 )
 
 func NewWaitSubroutine(
 	client client.Client,
-	kcpHelper KcpHelper,
+	clientRuntime client.Client,
 	cfg *config.OperatorConfig,
+	helper KcpHelper,
 	kcpUrl string,
 ) *WaitSubroutine {
 	return &WaitSubroutine{
-		client:    client,
-		kcpHelper: kcpHelper,
-		cfg:       cfg,
-		kcpUrl:    kcpUrl,
+		client:        client,
+		clientRuntime: clientRuntime,
+		cfg:           cfg,
+		kcpHelper:     helper,
+		kcpUrl:        kcpUrl,
 	}
 }
 
 type WaitSubroutine struct {
-	client    client.Client
-	kcpHelper KcpHelper
-	cfg       *config.OperatorConfig
-	kcpUrl    string
+	client        client.Client // infra cluster — resource readiness checks
+	clientRuntime client.Client // runtime cluster — KCP secret access
+	cfg           *config.OperatorConfig
+	kcpHelper     KcpHelper
+	kcpUrl        string
 }
 
 const (
@@ -42,14 +47,23 @@ const (
 )
 
 func (r *WaitSubroutine) Finalize(
-	ctx context.Context, runtimeObj client.Object,
+	_ context.Context, _ client.Object,
 ) (subroutines.Result, error) {
 	return subroutines.OK(), nil
 }
 
 func (r *WaitSubroutine) Process(
 	ctx context.Context, runtimeObj client.Object,
-) (subroutines.Result, error) {
+) (res subroutines.Result, err error) {
+	start := time.Now()
+	defer func() {
+		labelResult := "success"
+		if err != nil {
+			labelResult = "error"
+		}
+		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
+		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
+	}()
 	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
@@ -64,60 +78,67 @@ func (r *WaitSubroutine) Process(
 	for _, resourceType := range waitConfig.ResourceTypes {
 		log.Info().Msgf("Waiting for resource type: %s", resourceType)
 
-		for _, version := range resourceType.Versions {
-			waitList := &unstructured.UnstructuredList{}
-
-			waitList.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
-			if resourceType.Name != "" {
-				res := &unstructured.Unstructured{}
-				res.SetGroupVersionKind(schema.GroupVersionKind{Group: resourceType.Group, Version: version, Kind: resourceType.Kind})
-				err := r.client.Get(ctx, client.ObjectKey{Namespace: resourceType.Namespace, Name: resourceType.Name}, res)
-				if err != nil {
-					log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
-				}
-				if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
-				}
-				continue
-			}
-
-			// use LabelSelector if no Name is specified
-			ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
-			if err != nil {
-				log.Info().Msgf("Error converting label selector: %v", err)
-				return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
-			}
-			err = r.client.List(ctx, waitList, &client.ListOptions{
-				Namespace:     resourceType.Namespace,
-				LabelSelector: ls,
+		if resourceType.Name != "" {
+			res := &unstructured.Unstructured{}
+			res.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resourceType.Group,
+				Version: resourceType.Version,
+				Kind:    resourceType.Kind,
 			})
+			err := r.client.Get(ctx, client.ObjectKey{
+				Namespace: resourceType.Namespace,
+				Name:      resourceType.Name,
+			}, res)
 			if err != nil {
-				log.Info().Msgf("Error listing resources: %v", err)
-				return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources"), nil
+				log.Info().Msgf("Error getting resource %s/%s: %v", resourceType.Namespace, resourceType.Name, err)
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, "get resource"), nil
 			}
+			if !matchesConditionWithStatus(res, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				log.Info().Msgf("Resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", resourceType.Namespace, resourceType.Name, res.GetKind())), nil
+			}
+			continue
+		}
 
-			for _, item := range waitList.Items {
-				if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
-					log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
-					return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
-				}
+		// use LabelSelector if no Name is specified
+		waitList := &unstructured.UnstructuredList{}
+		waitList.SetGroupVersionKind(schema.GroupVersionKind{
+			Group:   resourceType.Group,
+			Version: resourceType.Version,
+			Kind:    resourceType.Kind,
+		})
+		ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
+		if err != nil {
+			log.Info().Msgf("Error converting label selector: %v", err)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
+		}
+		if err := r.client.List(ctx, waitList, &client.ListOptions{
+			Namespace:     resourceType.Namespace,
+			LabelSelector: ls,
+		}); err != nil {
+			log.Info().Msgf("Error listing resources: %v", err)
+			return subroutines.StopWithRequeue(DefaultRequeueInterval, "list resources"), nil
+		}
+
+		for _, item := range waitList.Items {
+			if !matchesConditionWithStatus(&item, string(resourceType.RowConditionType), string(resourceType.ConditionStatus)) {
+				log.Info().Msgf("Resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())
+				return subroutines.StopWithRequeue(DefaultRequeueInterval, fmt.Sprintf("resource %s/%s of type %s is not ready yet", item.GetNamespace(), item.GetName(), item.GetKind())), nil
 			}
 		}
 	}
 
 	// Check if WorkspaceAuthenticationConfiguration audience is still a placeholder
 	// If so, trigger a reconcile to ensure all logic is finished
-	if err := r.checkWorkspaceAuthConfigAudience(ctx, log); err != nil {
+	if err := r.checkWorkspaceAuthConfigAudience(ctx, log, instance); err != nil {
 		return subroutines.StopWithRequeue(DefaultRequeueInterval, err.Error()), nil
 	}
 
 	return subroutines.OK(), nil
 }
 
-func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger) error {
-	kubeCfg, err := buildKubeconfigFromConfig(r.client, r.cfg, r.kcpUrl)
+func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
+	kubeCfg, err := BuildKubeconfigFromConfig(r.clientRuntime, &r.cfg.KCP, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
 		return nil
@@ -163,10 +184,16 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 		return fmt.Errorf("WorkspaceAuthenticationConfiguration audience is not yet set")
 	}
 
+	if len(audiences) == 1 {
+		if audiences[0] == "<placeholder>" {
+			return fmt.Errorf("audiences is set to \"<placeholder>\"")
+		}
+	}
+
 	return nil
 }
 
-func (r *WaitSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
+func (r *WaitSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
 	return []string{}
 }
 

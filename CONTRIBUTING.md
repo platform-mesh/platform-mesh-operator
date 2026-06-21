@@ -9,7 +9,6 @@ Before contributing:
 1. Follow the project [Code of Conduct](https://github.com/platform-mesh/.github/blob/main/CODE_OF_CONDUCT.md).
 2. Be prepared to accept the Developer Certificate of Origin (DCO) during the pull request process.
 3. If you plan a larger feature or architectural change, open an issue first to confirm it fits the project direction.
-4. If you use generative AI while contributing, follow the org-wide [guideline for AI-generated code contributions](https://github.com/platform-mesh/.github/blob/main/CONTRIBUTING_USING_GENAI.md).
 
 ## How to Contribute
 
@@ -45,6 +44,14 @@ Key commands:
 - Make sure local verification passes before opening or updating the PR.
 - If you change API types, run `task generate` and include the generated output in the same PR.
 - Review manifest changes carefully; files under `manifests/` can affect full platform bootstrap behavior.
+
+## Generative AI
+
+If you use generative AI tools while preparing a contribution, you remain responsible for the correctness, safety, licensing, and maintainability of the submitted change.
+
+Follow the org-wide [guideline for AI-generated code contributions](https://github.com/platform-mesh/.github/blob/main/CONTRIBUTING_USING_GENAI.md).
+
+If you use Claude while contributing, do not assume it will automatically pick up this repository's `AGENTS.md`. Explicitly provide or reference `AGENTS.md` at the start of the session so Claude has the repository-specific instructions before it suggests or applies changes.
 
 ## License
 

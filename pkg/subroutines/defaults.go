@@ -49,14 +49,14 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:      "root:platform-mesh-system",
-		Secret:    "extension-manager-operator-kubeconfig",
-		AdminAuth: ptr.To(true),
+		Path:          "root:platform-mesh-system",
+		Secret:        "extension-manager-operator-kubeconfig",
+		AdminAuth:     ptr.To(true),
 	},
 	{
-		Path:      "root:platform-mesh-system",
-		Secret:    "iam-service-kubeconfig",
-		AdminAuth: ptr.To(true),
+		Path:          "root:platform-mesh-system",
+		Secret:        "iam-service-kubeconfig",
+		AdminAuth:     ptr.To(true),
 	},
 	{
 		Path:      "root:orgs",
@@ -131,41 +131,18 @@ var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.We
 var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
 	ResourceTypes: []corev1alpha1.ResourceType{
 		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
-				Group: "helm.toolkit.fluxcd.io",
-				Kind:  "HelmRelease",
+			GroupVersionKind: v1.GroupVersionKind{
+				Group:   "helm.toolkit.fluxcd.io",
+				Version: "v2",
+				Kind:    "HelmRelease",
 			},
 			Namespace: "default",
 			LabelSelector: v1.LabelSelector{
 				MatchExpressions: []v1.LabelSelectorRequirement{
 					{
-						Key:      "helm.toolkit.fluxcd.io/name",
+						Key:      "core.platform-mesh.io/operator-created",
 						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-components"},
-					},
-				},
-			},
-			ConditionStatus:  v1.ConditionTrue,
-			RowConditionType: "Ready",
-		},
-		{
-			APIVersions: v1.APIVersions{
-				Versions: []string{"v2"},
-			},
-			GroupKind: v1.GroupKind{
-				Group: "helm.toolkit.fluxcd.io",
-				Kind:  "HelmRelease",
-			},
-			Namespace: "default",
-			LabelSelector: v1.LabelSelector{
-				MatchExpressions: []v1.LabelSelectorRequirement{
-					{
-						Key:      "helm.toolkit.fluxcd.io/name",
-						Operator: v1.LabelSelectorOpIn,
-						Values:   []string{"platform-mesh-operator-infra-components"},
+						Values:   []string{"true"},
 					},
 				},
 			},

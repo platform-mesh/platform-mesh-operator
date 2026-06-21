@@ -23,13 +23,21 @@ import (
 
 // PlatformMeshSpec defines the desired state of PlatformMesh
 type PlatformMeshSpec struct {
-	Exposure       *ExposureConfig      `json:"exposure,omitempty"`
-	Kcp            Kcp                  `json:"kcp,omitempty"`
-	Values         apiextensionsv1.JSON `json:"values,omitempty"`
-	OCM            *OCMConfig           `json:"ocm,omitempty"`
-	FeatureToggles []FeatureToggle      `json:"featureToggles,omitempty"`
-	InfraValues    apiextensionsv1.JSON `json:"infraValues,omitempty"`
-	Wait           *WaitConfig          `json:"wait,omitempty"`
+	Exposure         *ExposureConfig      `json:"exposure,omitempty"`
+	Kcp              Kcp                  `json:"kcp,omitempty"`
+	Values           apiextensionsv1.JSON `json:"values,omitempty"`
+	OCM              *OCMConfig           `json:"ocm,omitempty"`
+	FeatureToggles   []FeatureToggle      `json:"featureToggles,omitempty"`
+	InfraValues      apiextensionsv1.JSON `json:"infraValues,omitempty"`
+	Wait             *WaitConfig          `json:"wait,omitempty"`
+	ProfileConfigMap *ConfigMapReference  `json:"profileConfigMap,omitempty"`
+}
+
+type ConfigMapReference struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 type WaitConfig struct {
@@ -37,8 +45,7 @@ type WaitConfig struct {
 }
 
 type ResourceType struct {
-	metav1.APIVersions      `json:",inline"`
-	metav1.GroupKind        `json:",inline"`
+	metav1.GroupVersionKind `json:",inline"`
 	Name                    string `json:"name,omitempty"`
 	Namespace               string `json:"namespace,omitempty"`
 	metav1.LabelSelector    `json:",inline,omitempty"`
@@ -80,24 +87,17 @@ type Kcp struct {
 	ProviderConnections      []ProviderConnection             `json:"providerConnections,omitempty"`
 	ExtraProviderConnections []ProviderConnection             `json:"extraProviderConnections,omitempty"`
 	ExtraDefaultAPIBindings  []DefaultAPIBindingConfiguration `json:"extraDefaultAPIBindings,omitempty"`
-	// ExtraWorkspaces allows declaring additional workspaces that the operator will create.
 	// +optional
 	ExtraWorkspaces []WorkspaceDeclaration `json:"extraWorkspaces,omitempty"`
 }
 
-// WorkspaceDeclaration defines a workspace to be created by the operator.
 type WorkspaceDeclaration struct {
-	// Path is the full logical path of the workspace to be created (e.g., "root:orgs:my-workspace").
-	Path string `json:"path"`
-	// Type defines the WorkspaceType for the new workspace.
+	Path string                 `json:"path"`
 	Type WorkspaceTypeReference `json:"type"`
 }
 
-// WorkspaceTypeReference specifies the type of a workspace.
 type WorkspaceTypeReference struct {
-	// Name is the name of the WorkspaceType.
 	Name string `json:"name"`
-	// Path is the logical cluster path where the WorkspaceType is defined.
 	Path string `json:"path"`
 }
 
@@ -128,10 +128,8 @@ type KCPAPIVersionKindRef struct {
 }
 
 type SecretReference struct {
-	// name is unique within a namespace to reference a secret resource.
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
-	// namespace defines the space within which the secret name must be unique.
 	// +optional
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
 }
