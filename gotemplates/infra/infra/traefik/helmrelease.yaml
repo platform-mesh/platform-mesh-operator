@@ -13,14 +13,10 @@ spec:
       name: {{ .kubeConfigSecretName }}
       key: {{ .kubeConfigSecretKey }}
 {{- end }}
-  chart:
-    spec:
-      chart: {{ .traefik.chart.name }}
-      reconcileStrategy: ChartVersion
-      sourceRef:
-        kind: HelmRepository
-        name: {{ .traefik.name }}
-        namespace: {{ .helmReleaseNamespace }}
+  chartRef:
+    kind: OCIRepository
+    name: {{ .traefik.name }}
+    namespace: {{ .helmReleaseNamespace }}
   dependsOn:
     - name: {{ .traefikCRDs.name }}
   interval: {{ .traefik.interval }}

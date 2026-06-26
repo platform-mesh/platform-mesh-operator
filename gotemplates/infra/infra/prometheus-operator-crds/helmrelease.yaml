@@ -13,14 +13,10 @@ spec:
       name: {{ .kubeConfigSecretName }}
       key: {{ .kubeConfigSecretKey }}
 {{- end }}
-  chart:
-    spec:
-      chart: prometheus-operator-crds
-      reconcileStrategy: ChartVersion
-      sourceRef:
-        kind: HelmRepository
-        name: {{ .prometheusOperatorCRDs.name }}
-        namespace: {{ .helmReleaseNamespace }}
+  chartRef:
+    kind: OCIRepository
+    name: {{ .prometheusOperatorCRDs.name }}
+    namespace: {{ .helmReleaseNamespace }}
   dependsOn: []
   interval: {{ .prometheusOperatorCRDs.interval }}
   releaseName: {{ .prometheusOperatorCRDs.name }}
