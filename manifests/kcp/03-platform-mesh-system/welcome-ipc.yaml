@@ -9,8 +9,14 @@ spec:
     clientName: welcome
     postLogoutRedirectUris:
     - https://{{ .baseDomainPort }}/logout*
+    {{- range .welcomeAdditionalPostLogoutRedirectUris }}
+    - {{ . }}
+    {{- end }}
     redirectUris:
     - https://{{ .baseDomainPort }}/callback*
+    {{- range .welcomeAdditionalRedirectUris }}
+    - {{ . }}
+    {{- end }}
     secretRef:
       name: portal-client-secret-welcome
       namespace: default

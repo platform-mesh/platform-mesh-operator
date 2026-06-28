@@ -12,7 +12,9 @@ type KCPConfig struct {
 }
 
 type IDPConfig struct {
-	RegistrationAllowed bool
+	RegistrationAllowed                     bool
+	WelcomeAdditionalRedirectUris           []string
+	WelcomeAdditionalPostLogoutRedirectUris []string
 }
 
 type DeploymentSubroutineConfig struct {
@@ -145,6 +147,8 @@ func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.KCP.ClusterAdminSecretName, "kcp-cluster-admin-secret-name", c.KCP.ClusterAdminSecretName, "Set cluster-admin secret name")
 
 	fs.BoolVar(&c.IDP.RegistrationAllowed, "idp-registration-allowed", c.IDP.RegistrationAllowed, "Allow IDP registration")
+	fs.StringSliceVar(&c.IDP.WelcomeAdditionalRedirectUris, "idp-welcome-additional-redirect-uris", c.IDP.WelcomeAdditionalRedirectUris, "Additional redirect URIs for the welcome client (comma-separated)")
+	fs.StringSliceVar(&c.IDP.WelcomeAdditionalPostLogoutRedirectUris, "idp-welcome-additional-post-logout-redirect-uris", c.IDP.WelcomeAdditionalPostLogoutRedirectUris, "Additional post-logout redirect URIs for the welcome client (comma-separated)")
 
 	fs.BoolVar(&c.Subroutines.Deployment.Enabled, "subroutines-deployment-enabled", c.Subroutines.Deployment.Enabled, "Enable deployment subroutine")
 	fs.StringVar(&c.Subroutines.Deployment.AuthorizationWebhookSecretName, "authorization-webhook-secret-name", c.Subroutines.Deployment.AuthorizationWebhookSecretName, "Authorization webhook secret name")
