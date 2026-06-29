@@ -50,6 +50,8 @@ func TestOperatorConfigAddFlags(t *testing.T) {
 		"--kcp-front-proxy-port=7443",
 		"--kcp-cluster-admin-secret-name=custom-admin-secret",
 		"--idp-registration-allowed=true",
+		"--idp-welcome-additional-redirect-uris=https://extra.example.com/callback,https://other.example.com/callback",
+		"--idp-welcome-additional-post-logout-redirect-uris=https://extra.example.com/logout",
 		"--subroutines-deployment-enabled=false",
 		"--authorization-webhook-secret-name=authz-secret",
 		"--authorization-webhook-secret-ca-name=authz-ca",
@@ -71,6 +73,8 @@ func TestOperatorConfigAddFlags(t *testing.T) {
 	assert.Equal(t, "7443", cfg.KCP.FrontProxyPort)
 	assert.Equal(t, "custom-admin-secret", cfg.KCP.ClusterAdminSecretName)
 	assert.True(t, cfg.IDP.RegistrationAllowed)
+	assert.Equal(t, []string{"https://extra.example.com/callback", "https://other.example.com/callback"}, cfg.IDP.WelcomeAdditionalRedirectUris)
+	assert.Equal(t, []string{"https://extra.example.com/logout"}, cfg.IDP.WelcomeAdditionalPostLogoutRedirectUris)
 
 	assert.False(t, cfg.Subroutines.Deployment.Enabled)
 	assert.Equal(t, "authz-secret", cfg.Subroutines.Deployment.AuthorizationWebhookSecretName)
