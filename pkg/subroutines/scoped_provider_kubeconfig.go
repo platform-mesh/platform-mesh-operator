@@ -145,7 +145,7 @@ func hasUpdatePatchVerbs(verbs []string) bool {
 	return false
 }
 
-func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, policyRules []rbacv1.PolicyRule, providerSuffix string) (saName string, err error) {
+func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, policyRules []rbacv1.PolicyRule, providerSuffix string, createExportRBAC bool) (saName string, err error) {
 	if providerSuffix == "" {
 		return "", fmt.Errorf("provider suffix for scoped RBAC is empty")
 	}
@@ -169,35 +169,37 @@ func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient cl
 		}
 	}
 
-	cr := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: crName},
-	}
-	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, cr, func() error {
-		cr.Rules = policyRules
-		return nil
-	}); err != nil {
-		return "", fmt.Errorf("create or update ClusterRole %s: %w", crName, err)
-	}
+	if createExportRBAC {
+		cr := &rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{Name: crName},
+		}
+		if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, cr, func() error {
+			cr.Rules = policyRules
+			return nil
+		}); err != nil {
+			return "", fmt.Errorf("create or update ClusterRole %s: %w", crName, err)
+		}
 
-	crb := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: crName},
-	}
-	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, crb, func() error {
-		crb.RoleRef = rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     crName,
+		crb := &rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: crName},
 		}
-		crb.Subjects = []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Namespace: saNamespace,
-				Name:      saName,
-			},
+		if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, crb, func() error {
+			crb.RoleRef = rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     "ClusterRole",
+				Name:     crName,
+			}
+			crb.Subjects = []rbacv1.Subject{
+				{
+					Kind:      rbacv1.ServiceAccountKind,
+					Namespace: saNamespace,
+					Name:      saName,
+				},
+			}
+			return nil
+		}); err != nil {
+			return "", fmt.Errorf("create or update ClusterRoleBinding %s: %w", crName, err)
 		}
-		return nil
-	}); err != nil {
-		return "", fmt.Errorf("create or update ClusterRoleBinding %s: %w", crName, err)
 	}
 
 	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{
@@ -337,15 +339,12 @@ func resolveAPIExportVirtualWorkspaceRawPath(ctx context.Context, kcpHelper KcpH
 	return virtualWorkspacePathFromSlice(&endpointSlice)
 }
 
-// parseScopedKubeconfigExportSource validates that exactly one of endpointSliceName or apiExportName is set (after trim).
+// parseScopedKubeconfigExportSource validates that at most one of endpointSliceName or apiExportName is set (after trim). When neither is set, the scoped kubeconfig is built without export-derived RBAC.
 func parseScopedKubeconfigExportSource(pc corev1alpha1.ProviderConnection) (endpointSliceName, apiExportName string, err error) {
 	endpointSliceName = strings.TrimSpace(ptr.Deref(pc.EndpointSliceName, ""))
 	apiExportName = strings.TrimSpace(ptr.Deref(pc.APIExportName, ""))
 	if endpointSliceName != "" && apiExportName != "" {
 		return "", "", fmt.Errorf("scoped kubeconfig: set only one of endpointSliceName or apiExportName")
-	}
-	if endpointSliceName == "" && apiExportName == "" {
-		return "", "", fmt.Errorf("scoped kubeconfig requires endpointSliceName or apiExportName")
 	}
 	return endpointSliceName, apiExportName, nil
 }
@@ -391,7 +390,7 @@ func rewriteScopedVirtualWorkspaceURLToFrontProxy(hostURL string, operatorCfg co
 	return out, nil
 }
 
-// writeScopedKubeconfigToSecret builds a scoped kubeconfig: ServiceAccount token in pc.Path, RBAC from APIExport; server is virtual workspace when endpointSliceName is set, else workspace cluster URL when apiExportName is set.
+// writeScopedKubeconfigToSecret builds a scoped kubeconfig: ServiceAccount token in pc.Path, RBAC from APIExport; server is virtual workspace when endpointSliceName is set, else workspace cluster URL when apiExportName is set. When neither is set, no export-derived RBAC is created and the server is the workspace cluster URL.
 func writeScopedKubeconfigToSecret(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -421,8 +420,10 @@ func writeScopedKubeconfigToSecret(
 	var hostURL string
 	var apiExportName string
 	var exportWorkspacePath string
+	hasExport := endpointSliceName != "" || apiExportNameField != ""
 
-	if endpointSliceName != "" {
+	switch {
+	case endpointSliceName != "":
 		var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
 		if err := kcpWorkspaceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
 			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, pcPath, err)
@@ -454,7 +455,7 @@ func writeScopedKubeconfigToSecret(
 			Str("apiExport", apiExportName).
 			Str("hostURL", hostURL).
 			Msg("Using scoped kubeconfig virtual workspace URL")
-	} else {
+	case apiExportNameField != "":
 		apiExportName = apiExportNameField
 		exportWorkspacePath = pcPath
 		hostURL, err = createScopedKubeconfigURLForAPIExportName(operatorCfg, instance, pcPath, pc.External)
@@ -467,15 +468,28 @@ func writeScopedKubeconfigToSecret(
 			Str("apiExport", apiExportName).
 			Str("hostURL", hostURL).
 			Msg("Using scoped kubeconfig workspace cluster URL")
+	default:
+		hostURL, err = createScopedKubeconfigURLForAPIExportName(operatorCfg, instance, pcPath, pc.External)
+		if err != nil {
+			return err
+		}
+		log.Info().
+			Str("secret", pc.Secret).
+			Str("path", pcPath).
+			Str("hostURL", hostURL).
+			Msg("Using scoped kubeconfig workspace cluster URL without export-derived RBAC")
 	}
 
-	export, err := resolveAPIExport(ctx, kcpHelper, cfg, apiExportName, exportWorkspacePath)
-	if err != nil {
-		return errors.Wrap(err, "resolve APIExport")
-	}
-	rules, err := getPolicyRulesFromAPIExport(export)
-	if err != nil {
-		return errors.Wrap(err, "build RBAC from APIExport")
+	var rules []rbacv1.PolicyRule
+	if hasExport {
+		export, err := resolveAPIExport(ctx, kcpHelper, cfg, apiExportName, exportWorkspacePath)
+		if err != nil {
+			return errors.Wrap(err, "resolve APIExport")
+		}
+		rules, err = getPolicyRulesFromAPIExport(export)
+		if err != nil {
+			return errors.Wrap(err, "build RBAC from APIExport")
+		}
 	}
 
 	caData := cfg.TLSClientConfig.CAData
@@ -484,7 +498,7 @@ func writeScopedKubeconfigToSecret(
 	}
 	caData = AppendRootShardCAPEMIfMissing(ctx, k8sClient, &operatorCfg, caData)
 
-	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret)
+	saName, err := ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret, hasExport)
 	if err != nil {
 		return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 	}

@@ -14,9 +14,15 @@ import (
 	"time"
 
 	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
@@ -589,16 +595,12 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			errContains: "only one",
 		},
 		{
-			name:        "neither set",
-			pc:          corev1alpha1.ProviderConnection{},
-			wantErr:     true,
-			errContains: "requires endpointSliceName or apiExportName",
+			name: "neither set",
+			pc:   corev1alpha1.ProviderConnection{},
 		},
 		{
-			name:        "both whitespace",
-			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("  "), APIExportName: ptr.To("\t")},
-			wantErr:     true,
-			errContains: "requires endpointSliceName or apiExportName",
+			name: "both whitespace",
+			pc:   corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("  "), APIExportName: ptr.To("\t")},
 		},
 	}
 	for _, tt := range tests {
@@ -622,6 +624,88 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnsureScopedProviderServiceAccountAndRBAC(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := rbacv1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	const suffix = "my-secret"
+	crName := scopedClusterRolePrefix + suffix
+	saName := scopedSAPrefix + suffix
+	workspaceAccessCRBName := scopedWorkspaceAccessCRBPrefix + suffix
+
+	objExists := func(t *testing.T, c client.Client, obj client.Object, key client.ObjectKey) bool {
+		t.Helper()
+		err := c.Get(context.Background(), key, obj)
+		if err == nil {
+			return true
+		}
+		if kerrors.IsNotFound(err) {
+			return false
+		}
+		t.Fatalf("unexpected get error for %v: %v", key, err)
+		return false
+	}
+	saKey := client.ObjectKey{Namespace: defaultScopedSANamespace, Name: saName}
+
+	t.Run("createExportRBAC true creates export ClusterRole and ClusterRoleBinding", func(t *testing.T) {
+		t.Parallel()
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		rules := []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}}}
+
+		got, err := ensureScopedProviderServiceAccountAndRBAC(context.Background(), c, rules, suffix, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != saName {
+			t.Fatalf("got saName %q want %q", got, saName)
+		}
+		if !objExists(t, c, &corev1.ServiceAccount{}, saKey) {
+			t.Fatal("expected ServiceAccount to exist")
+		}
+		if !objExists(t, c, &rbacv1.ClusterRole{}, client.ObjectKey{Name: crName}) {
+			t.Fatal("expected export ClusterRole to exist")
+		}
+		if !objExists(t, c, &rbacv1.ClusterRoleBinding{}, client.ObjectKey{Name: crName}) {
+			t.Fatal("expected export ClusterRoleBinding to exist")
+		}
+		if !objExists(t, c, &rbacv1.ClusterRoleBinding{}, client.ObjectKey{Name: workspaceAccessCRBName}) {
+			t.Fatal("expected workspace-access ClusterRoleBinding to exist")
+		}
+	})
+
+	t.Run("createExportRBAC false skips export ClusterRole and ClusterRoleBinding", func(t *testing.T) {
+		t.Parallel()
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		got, err := ensureScopedProviderServiceAccountAndRBAC(context.Background(), c, nil, suffix, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != saName {
+			t.Fatalf("got saName %q want %q", got, saName)
+		}
+		if !objExists(t, c, &corev1.ServiceAccount{}, saKey) {
+			t.Fatal("expected ServiceAccount to exist")
+		}
+		if objExists(t, c, &rbacv1.ClusterRole{}, client.ObjectKey{Name: crName}) {
+			t.Fatal("expected export ClusterRole to NOT exist")
+		}
+		if objExists(t, c, &rbacv1.ClusterRoleBinding{}, client.ObjectKey{Name: crName}) {
+			t.Fatal("expected export ClusterRoleBinding to NOT exist")
+		}
+		if !objExists(t, c, &rbacv1.ClusterRoleBinding{}, client.ObjectKey{Name: workspaceAccessCRBName}) {
+			t.Fatal("expected workspace-access ClusterRoleBinding to exist")
+		}
+	})
 }
 
 func TestMergeRootCAPEMIfMissing(t *testing.T) {

@@ -177,6 +177,12 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["featureEnableTerminalControllerManager"] = HasFeatureToggle(inst, "feature-enable-terminal-controller-manager")
 	templateData["registrationAllowed"] = r.cfg.IDP.RegistrationAllowed
 
+	rootClusterId, err := r.getRootClusterId(ctx, config)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to determine root logical cluster id; rootClusterId template variable will be empty")
+	}
+	templateData["rootClusterId"] = rootClusterId
+
 	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
 	if err != nil {
 		log.Err(err).Msg("Failed to create kcp client for platform-mesh-system workspace")
@@ -318,6 +324,28 @@ func (r *KcpsetupSubroutine) getCaBundle(
 
 	decodedCaData := caData
 	return decodedCaData, nil
+}
+
+// getRootClusterId returns the logical cluster id (name) of the root workspace,
+// read from the kcp.io/cluster annotation that kcp stamps on served objects.
+// It is used to build cross-workspace ServiceAccount subjects (the kcp
+// system:kcp:serviceaccount:<clusterId>:<ns>:<name> user form) in RBAC
+// manifests applied to other workspaces.
+func (r *KcpsetupSubroutine) getRootClusterId(ctx context.Context, config *rest.Config) (string, error) {
+	rootClient, err := r.kcpHelper.NewKcpClient(config, "root")
+	if err != nil {
+		return "", err
+	}
+	lc := &unstructured.Unstructured{}
+	lc.SetGroupVersionKind(schema.GroupVersionKind{Group: "core.kcp.io", Version: "v1alpha1", Kind: "LogicalCluster"})
+	if err := rootClient.Get(ctx, types.NamespacedName{Name: "cluster"}, lc); err != nil {
+		return "", gcerrors.Wrap(err, "Failed to get root LogicalCluster")
+	}
+	clusterId := lc.GetAnnotations()["kcp.io/cluster"]
+	if clusterId == "" {
+		return "", gcerrors.New("root LogicalCluster has no kcp.io/cluster annotation")
+	}
+	return clusterId, nil
 }
 
 func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, config *rest.Config) (map[string]string, error) {

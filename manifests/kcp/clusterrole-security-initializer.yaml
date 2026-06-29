@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: security-initializer
+rules:
+# initialize gates access to the initializingworkspaces virtual workspace.
+- apiGroups: ["tenancy.kcp.io"]
+  resources: ["workspacetypes"]
+  resourceNames: ["security"]
+  verbs: ["initialize", "get", "list", "watch"]
+# the provider reads the WorkspaceType status.virtualWorkspaces to find the VW URL.
+- apiGroups: ["tenancy.kcp.io"]
+  resources: ["workspacetypes/status"]
+  resourceNames: ["security"]
+  verbs: ["get"]
+- apiGroups: ["tenancy.kcp.io"]
+  resources: ["workspaces"]
+  verbs: ["get", "list", "watch"]
+# the multicluster provider builds a LogicalCluster informer on the VW.
+- apiGroups: ["core.kcp.io"]
+  resources: ["logicalclusters"]
+  verbs: ["get", "list", "watch"]
+# API discovery (RESTMapper/ServerGroups) and wildcard cache on the VW endpoints.
+- nonResourceURLs: ["/api", "/api/*", "/apis", "/apis/*", "/clusters/*", "/services", "/services/*"]
+  verbs: ["get"]

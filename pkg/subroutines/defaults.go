@@ -49,14 +49,14 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:          "root:platform-mesh-system",
-		Secret:        "extension-manager-operator-kubeconfig",
-		AdminAuth:     ptr.To(true),
+		Path:      "root:platform-mesh-system",
+		Secret:    "extension-manager-operator-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
-		Path:          "root:platform-mesh-system",
-		Secret:        "iam-service-kubeconfig",
-		AdminAuth:     ptr.To(true),
+		Path:      "root:platform-mesh-system",
+		Secret:    "iam-service-kubeconfig",
+		AdminAuth: ptr.To(true),
 	},
 	{
 		Path:      "root:orgs",
@@ -67,7 +67,7 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	{
 		Path:      "root",
 		Secret:    "security-initializer-kubeconfig",
-		AdminAuth: ptr.To(true),
+		AdminAuth: ptr.To(false),
 	},
 	{
 		Path:      "root",

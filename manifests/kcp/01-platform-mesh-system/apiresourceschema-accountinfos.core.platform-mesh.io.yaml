@@ -38,6 +38,10 @@ spec:
           properties:
             account:
               properties:
+                creator:
+                  description: The initial creator of the account resource that led
+                    to this workspace
+                  type: string
                 generatedClusterId:
                   description: The GeneratedClusterId represents the cluster id of
                     the workspace that was generated for a given account
@@ -101,6 +105,10 @@ spec:
               type: object
             organization:
               properties:
+                creator:
+                  description: The initial creator of the account resource that led
+                    to this workspace
+                  type: string
                 generatedClusterId:
                   description: The GeneratedClusterId represents the cluster id of
                     the workspace that was generated for a given account
@@ -128,6 +136,10 @@ spec:
               type: object
             parentAccount:
               properties:
+                creator:
+                  description: The initial creator of the account resource that led
+                    to this workspace
+                  type: string
                 generatedClusterId:
                   description: The GeneratedClusterId represents the cluster id of
                     the workspace that was generated for a given account

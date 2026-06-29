@@ -145,7 +145,7 @@ type ProviderConnection struct {
 	External      bool    `json:"external,omitempty"`
 	Namespace     *string `json:"namespace,omitempty"`
 	// AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport).
-	// Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+	// Scoped mode accepts at most one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path). When neither is set, the ServiceAccount kubeconfig is written without export-derived ClusterRole/ClusterRoleBinding.
 	// +optional
 	AdminAuth *bool `json:"adminAuth,omitempty"`
 }
