@@ -114,26 +114,55 @@ type LocalKubeconfigSecretSpec struct {
 	Key string `json:"key"`
 }
 
-// ProviderComponentSpec references an OCM component to deploy.
+// ProviderComponentSpec references a single component to deploy in the runtime cluster.
 type ProviderComponentSpec struct {
-	// ocm identifies the component in an OCM registry.
+	// flux deploys a Helm chart from an OCI registry directly via Flux
+	// (OCIRepository + HelmRelease). No OCM descriptor resolution is performed.
 	// +optional
-	OCM *OCMComponentSpec `json:"ocm,omitempty"`
+	Flux *FluxComponentSpec `json:"flux,omitempty"`
 }
 
-// OCMComponentSpec identifies a component in an OCM registry.
-type OCMComponentSpec struct {
-	// componentName is the fully-qualified OCM component name.
-	// +required
-	ComponentName string `json:"componentName"`
+// FluxSourceType selects how a FluxComponentSpec chart is fetched.
+const (
+	// FluxSourceTypeOCI fetches a chart packaged as an OCI artifact (oci://) via a
+	// Flux OCIRepository.
+	FluxSourceTypeOCI = "oci"
+	// FluxSourceTypeHelm fetches a chart from a classic HTTP(S) Helm repository via a
+	// Flux HelmRepository.
+	FluxSourceTypeHelm = "helm"
+)
 
-	// version is the component version to deploy.
-	// +required
-	Version string `json:"version"`
+// FluxComponentSpec identifies a Helm chart deployed via Flux, either from an OCI
+// registry or from a classic HTTP(S) Helm repository.
+type FluxComponentSpec struct {
+	// type selects how the chart is fetched:
+	//   - "oci" (default): the chart is packaged as an OCI artifact in an OCI registry,
+	//     deployed via a Flux OCIRepository.
+	//   - "helm": the chart is served from a classic HTTP(S) Helm repository,
+	//     deployed via a Flux HelmRepository.
+	// +kubebuilder:validation:Enum=oci;helm
+	// +kubebuilder:default=oci
+	// +optional
+	Type string `json:"type,omitempty"`
 
-	// registry is the OCM registry host (e.g. ghcr.io/platform-mesh/ocm).
+	// registry is the chart source location:
+	//   - for type=oci: the OCI registry host and base path that holds the chart
+	//     (e.g. ghcr.io/platform-mesh/provider-quickstart/charts).
+	//   - for type=helm: the Helm repository URL (e.g. https://charts.jetstack.io).
 	// +required
 	Registry string `json:"registry"`
+
+	// chart is the chart name:
+	//   - for type=oci: the chart's OCI repository path under the registry
+	//     (e.g. wildwest-armament-sync).
+	//   - for type=helm: the chart name within the Helm repository (e.g. cert-manager).
+	// +required
+	Chart string `json:"chart"`
+
+	// version is the chart version to deploy (the OCI tag for type=oci, or the chart
+	// version for type=helm).
+	// +required
+	Version string `json:"version"`
 
 	// values are Helm values passed to the deployed chart.
 	// +optional

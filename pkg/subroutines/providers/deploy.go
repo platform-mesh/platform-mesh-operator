@@ -50,6 +50,11 @@ var (
 		Version: "v1",
 		Kind:    "OCIRepository",
 	}
+	deployHelmRepoGVK = schema.GroupVersionKind{
+		Group:   "source.toolkit.fluxcd.io",
+		Version: "v1",
+		Kind:    "HelmRepository",
+	}
 	deployHelmReleaseGVK = schema.GroupVersionKind{
 		Group:   "helm.toolkit.fluxcd.io",
 		Version: "v2",
@@ -57,15 +62,35 @@ var (
 	}
 )
 
-// ocmResourceName returns the last path segment of an OCM component name.
+// fluxSourceGVK returns the Flux source object kind for a component's source type.
+func fluxSourceGVK(flux *providersv1alpha1.FluxComponentSpec) schema.GroupVersionKind {
+	if flux.Type == providersv1alpha1.FluxSourceTypeHelm {
+		return deployHelmRepoGVK
+	}
+	return deployOCIRepoGVK
+}
+
+// parseFluxValues unmarshals the component's Helm values, returning nil when none are set.
+func parseFluxValues(flux *providersv1alpha1.FluxComponentSpec) (map[string]interface{}, error) {
+	if len(flux.Values.Raw) == 0 {
+		return nil, nil
+	}
+	var values map[string]interface{}
+	if err := json.Unmarshal(flux.Values.Raw, &values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+// chartResourceName returns the last path segment of a chart's OCI repository path.
 // e.g. "github.com/platform-mesh/wildwest-controller" returns "wildwest-controller"
-func ocmResourceName(componentName string) string {
-	lastSlashIndex := strings.LastIndexByte(componentName, '/') + 1
-	return componentName[lastSlashIndex:]
+func chartResourceName(chart string) string {
+	lastSlashIndex := strings.LastIndexByte(chart, '/') + 1
+	return chart[lastSlashIndex:]
 }
 
 // DeploySubroutine creates Flux OCIRepository and HelmRelease objects on the
-// runtime cluster for the OCM components referenced in spec.runtimeDeployments.
+// runtime cluster for the Flux components referenced in spec.runtimeDeployments.
 // Subsequent reconciliations detect drift via the HelmRelease Ready condition.
 type DeploySubroutine struct {
 	client  client.Client
@@ -105,10 +130,10 @@ func (r *DeploySubroutine) doRuntimeDeployments(ctx context.Context, managedProv
 	runtimeKubeconfigSecretName := managedProvider.Spec.RuntimeKubeconfigSecretName
 
 	for _, component := range managedProvider.Spec.RuntimeDeployments {
-		if component.OCM != nil {
-			ocm := component.OCM
-			name := ocmResourceName(ocm.ComponentName)
-			result, err := r.deployOCMComponent(ctx, managedProvider.Namespace, name, ocm, runtimeKubeconfigSecretName)
+		if component.Flux != nil {
+			flux := component.Flux
+			name := chartResourceName(flux.Chart)
+			result, err := r.deployFluxComponent(ctx, managedProvider.Namespace, name, flux, runtimeKubeconfigSecretName)
 			if err != nil {
 				return subroutines.OK(), err
 			}
@@ -121,10 +146,21 @@ func (r *DeploySubroutine) doRuntimeDeployments(ctx context.Context, managedProv
 	return subroutines.OK(), nil
 }
 
-func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, name string, ocm *providersv1alpha1.OCMComponentSpec, runtimeKubeconfigSecretName string) (subroutines.Result, error) {
+// deployFluxComponent dispatches to the OCI or classic Helm-repository deploy path
+// based on the component source type (defaulting to OCI).
+func (r *DeploySubroutine) deployFluxComponent(ctx context.Context, namespace, name string, flux *providersv1alpha1.FluxComponentSpec, runtimeKubeconfigSecretName string) (subroutines.Result, error) {
+	if flux.Type == providersv1alpha1.FluxSourceTypeHelm {
+		return r.deployFluxHelmRepo(ctx, namespace, name, flux, runtimeKubeconfigSecretName)
+	}
+	return r.deployFluxOCI(ctx, namespace, name, flux, runtimeKubeconfigSecretName)
+}
+
+// deployFluxOCI deploys a chart packaged as an OCI artifact via a Flux OCIRepository
+// referenced by a HelmRelease through chartRef.
+func (r *DeploySubroutine) deployFluxOCI(ctx context.Context, namespace, name string, flux *providersv1alpha1.FluxComponentSpec, runtimeKubeconfigSecretName string) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", DeploySubroutineName).ChildLogger("component", name)
 
-	ociURL := fmt.Sprintf("oci://%s/%s", ocm.Registry, ocm.ComponentName)
+	ociURL := fmt.Sprintf("oci://%s/%s", flux.Registry, flux.Chart)
 
 	ociRepo := &unstructured.Unstructured{}
 	ociRepo.SetGroupVersionKind(deployOCIRepoGVK)
@@ -134,7 +170,7 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 		if err := unstructured.SetNestedField(ociRepo.Object, ociURL, "spec", "url"); err != nil {
 			return err
 		}
-		if err := unstructured.SetNestedField(ociRepo.Object, ocm.Version, "spec", "ref", "tag"); err != nil {
+		if err := unstructured.SetNestedField(ociRepo.Object, flux.Version, "spec", "ref", "tag"); err != nil {
 			return err
 		}
 		if err := unstructured.SetNestedField(ociRepo.Object, "generic", "spec", "provider"); err != nil {
@@ -143,7 +179,7 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 		if err := unstructured.SetNestedField(ociRepo.Object, "1m0s", "spec", "interval"); err != nil {
 			return err
 		}
-		if err := unstructured.SetNestedField(ociRepo.Object, ocm.Insecure, "spec", "insecure"); err != nil {
+		if err := unstructured.SetNestedField(ociRepo.Object, flux.Insecure, "spec", "insecure"); err != nil {
 			return err
 		}
 		return unstructured.SetNestedMap(ociRepo.Object, map[string]interface{}{
@@ -156,8 +192,8 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 	}
 
 	var values map[string]interface{}
-	if len(ocm.Values.Raw) > 0 {
-		if err := json.Unmarshal(ocm.Values.Raw, &values); err != nil {
+	if len(flux.Values.Raw) > 0 {
+		if err := json.Unmarshal(flux.Values.Raw, &values); err != nil {
 			return subroutines.OK(), gcerrors.Wrap(err, "failed to unmarshal values for %s", name)
 		}
 	}
@@ -226,6 +262,93 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 	return subroutines.OK(), nil
 }
 
+// deployFluxHelmRepo deploys a chart from a classic HTTP(S) Helm repository via a
+// Flux HelmRepository referenced by a HelmRelease through chart.spec.sourceRef.
+func (r *DeploySubroutine) deployFluxHelmRepo(ctx context.Context, namespace, name string, flux *providersv1alpha1.FluxComponentSpec, runtimeKubeconfigSecretName string) (subroutines.Result, error) {
+	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", DeploySubroutineName).ChildLogger("component", name)
+
+	helmRepo := &unstructured.Unstructured{}
+	helmRepo.SetGroupVersionKind(deployHelmRepoGVK)
+	helmRepo.SetName(name)
+	helmRepo.SetNamespace(namespace)
+	repoResult, err := controllerutil.CreateOrUpdate(ctx, r.client, helmRepo, func() error {
+		if err := unstructured.SetNestedField(helmRepo.Object, flux.Registry, "spec", "url"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(helmRepo.Object, "5m", "spec", "interval"); err != nil {
+			return err
+		}
+		return unstructured.SetNestedField(helmRepo.Object, flux.Insecure, "spec", "insecure")
+	})
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to reconcile HelmRepository %s/%s", namespace, name)
+	}
+
+	values, err := parseFluxValues(flux)
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to unmarshal values for %s", name)
+	}
+
+	helmRelease := &unstructured.Unstructured{}
+	helmRelease.SetGroupVersionKind(deployHelmReleaseGVK)
+	helmRelease.SetName(name)
+	helmRelease.SetNamespace(namespace)
+	hrResult, err := controllerutil.CreateOrUpdate(ctx, r.client, helmRelease, func() error {
+		if err := unstructured.SetNestedField(helmRelease.Object, "5m", "spec", "interval"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(helmRelease.Object, flux.Chart, "spec", "chart", "spec", "chart"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(helmRelease.Object, flux.Version, "spec", "chart", "spec", "version"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(helmRelease.Object, "HelmRepository", "spec", "chart", "spec", "sourceRef", "kind"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(helmRelease.Object, name, "spec", "chart", "spec", "sourceRef", "name"); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(helmRelease.Object, namespace, "spec", "chart", "spec", "sourceRef", "namespace"); err != nil {
+			return err
+		}
+		if runtimeKubeconfigSecretName != "" {
+			// The user requests to deploy this in a different runtime cluster.
+			if err := unstructured.SetNestedMap(helmRelease.Object, map[string]interface{}{
+				"name": runtimeKubeconfigSecretName,
+				"key":  "kubeconfig",
+			}, "spec", "kubeConfig", "secretRef"); err != nil {
+				return err
+			}
+		}
+		if values != nil {
+			return unstructured.SetNestedMap(helmRelease.Object, values, "spec", "values")
+		}
+		return nil
+	})
+	if err != nil {
+		return subroutines.OK(), gcerrors.Wrap(err, "failed to reconcile HelmRelease %s/%s", namespace, name)
+	}
+
+	// If either resource was just created or updated, skip condition checks — any existing
+	// Ready=True on the HelmRelease is stale with respect to the new spec.
+	if repoResult != controllerutil.OperationResultNone || hrResult != controllerutil.OperationResultNone {
+		log.Info().Str("repoResult", string(repoResult)).Str("hrResult", string(hrResult)).Msg("Resource modified, requeuing before checking conditions")
+		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("waiting for %s to be reconciled", name)), nil
+	}
+
+	ready, err := r.helmReleaseReady(ctx, namespace, name)
+	if err != nil {
+		return subroutines.OK(), err
+	}
+	if !ready {
+		log.Info().Msg("HelmRelease not ready yet, requeuing")
+		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("HelmRelease %s not ready", name)), nil
+	}
+
+	return subroutines.OK(), nil
+}
+
 func (r *DeploySubroutine) helmReleaseReady(ctx context.Context, namespace, name string) (bool, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(deployHelmReleaseGVK)
@@ -256,9 +379,9 @@ func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (sub
 
 	needsDeletion := false
 	for _, component := range inst.Spec.RuntimeDeployments {
-		if component.OCM != nil {
-			ocm := component.OCM
-			name := ocmResourceName(ocm.ComponentName)
+		if component.Flux != nil {
+			flux := component.Flux
+			name := chartResourceName(flux.Chart)
 
 			hr := &unstructured.Unstructured{}
 			hr.SetGroupVersionKind(deployHelmReleaseGVK)
@@ -272,13 +395,14 @@ func (r *DeploySubroutine) Finalize(ctx context.Context, obj client.Object) (sub
 				needsDeletion = true
 			}
 
-			oci := &unstructured.Unstructured{}
-			oci.SetGroupVersionKind(deployOCIRepoGVK)
-			oci.SetName(name)
-			oci.SetNamespace(inst.Namespace)
-			if err := r.client.Delete(ctx, oci); err != nil {
+			srcGVK := fluxSourceGVK(flux)
+			src := &unstructured.Unstructured{}
+			src.SetGroupVersionKind(srcGVK)
+			src.SetName(name)
+			src.SetNamespace(inst.Namespace)
+			if err := r.client.Delete(ctx, src); err != nil {
 				if !kerrors.IsNotFound(err) {
-					return subroutines.OK(), gcerrors.Wrap(err, "failed to delete OCIRepository %s/%s", inst.Namespace, name)
+					return subroutines.OK(), gcerrors.Wrap(err, "failed to delete %s %s/%s", srcGVK.Kind, inst.Namespace, name)
 				}
 			} else {
 				needsDeletion = true
