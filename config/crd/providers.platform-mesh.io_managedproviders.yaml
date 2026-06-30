@@ -114,13 +114,15 @@ spec:
                 description: runtimeDeployments is a list of components to be deployed
                   in the runtime cluster.
                 items:
-                  description: ProviderComponentSpec references a single component
-                    to deploy in the runtime cluster.
+                  description: |-
+                    ProviderComponentSpec references a single component to deploy in the runtime cluster.
+                    Exactly one of flux or ocm must be set.
                   properties:
                     flux:
                       description: |-
-                        flux deploys a Helm chart from an OCI registry directly via Flux
-                        (OCIRepository + HelmRelease). No OCM descriptor resolution is performed.
+                        flux deploys a Helm chart from an OCI registry or HTTP Helm repository directly
+                        via Flux (OCIRepository/HelmRepository + HelmRelease). No OCM descriptor
+                        resolution is performed.
                       properties:
                         chart:
                           description: |-
@@ -164,6 +166,71 @@ spec:
                           type: string
                       required:
                       - chart
+                      - registry
+                      - version
+                      type: object
+                    ocm:
+                      description: |-
+                        ocm deploys a chart resolved from an OCM component descriptor. The operator emits
+                        a delivery.ocm.software Resource that references an existing Repository and
+                        Component; the ocm-controller resolves the descriptor (signatures, references,
+                        relocation) and the resolved chart is then deployed via Flux.
+                      properties:
+                        component:
+                          description: |-
+                            component is the fully-qualified OCM component name
+                            (e.g. github.com/platform-mesh/provider-quickstart). The operator creates a
+                            delivery.ocm.software Component from it.
+                          type: string
+                        insecure:
+                          description: |-
+                            insecure allows HTTP (insecure) connection to the registry.
+                            Disabled by default.
+                          type: boolean
+                        name:
+                          description: |-
+                            name is the deployment name used for the generated Repository, Component,
+                            Resource, OCIRepository and HelmRelease. If empty it defaults to resourceName,
+                            then the last referencePath element, then the last segment of the component name.
+                            Set it explicitly when several components share the same component name (so the
+                            generated objects don't collide).
+                          type: string
+                        referencePath:
+                          description: |-
+                            referencePath navigates the component reference graph to reach the resource.
+                            Each element selects a nested component reference by name. Empty resolves a
+                            resource directly on the component.
+                          items:
+                            description: OCMReferencePathElement is a single element
+                              of an OCM component reference path.
+                            properties:
+                              name:
+                                description: name of the component reference to follow.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                        registry:
+                          description: |-
+                            registry is the OCM/OCI registry root that holds the component
+                            (e.g. ghcr.io/platform-mesh). The operator creates a delivery.ocm.software
+                            Repository from it (baseUrl = host, subPath = remaining path).
+                          type: string
+                        resourceName:
+                          description: |-
+                            resourceName is the OCM resource name within the component to deploy.
+                            Defaults to "chart".
+                          type: string
+                        values:
+                          description: values are Helm values passed to the resolved
+                            chart.
+                          x-kubernetes-preserve-unknown-fields: true
+                        version:
+                          description: version is the OCM component version (semver).
+                          type: string
+                      required:
+                      - component
                       - registry
                       - version
                       type: object
