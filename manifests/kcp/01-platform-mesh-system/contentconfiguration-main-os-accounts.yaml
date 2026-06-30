@@ -52,6 +52,10 @@ spec:
                                                   "label": "Description",
                                                   "property": "spec.description"
                                               }
+                                          ], 
+                                          "filters": [                                           
+                                             { "label": "My projects", "value": "{context.userId}", "property": "metadata.name", "default": "true" },
+                                             { "label": "Default namespace", "value": "default", "property": "metadata.namespace" }
                                           ]
                                       }
                                   }
