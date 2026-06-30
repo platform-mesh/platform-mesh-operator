@@ -109,7 +109,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 			return kerrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for Provider to be deleted, but has err=%v", err)
 
-		s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator is deleted")
+		s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator is deleted (type=oci component)")
 		var deployment appsv1.Deployment
 		s.Require().Eventually(func() bool {
 			err = s.client.Get(ctx, types.NamespacedName{
@@ -118,6 +118,16 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 			}, &deployment)
 			return kerrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for Deployment to be deleted, but has err=%v, Deployment=%#v", err, deployment)
+
+		s.logger.Info().Msgf("Waiting until Deployment podinfo is deleted (type=helm component)")
+		var podinfoDeployment appsv1.Deployment
+		s.Require().Eventually(func() bool {
+			err = s.client.Get(ctx, types.NamespacedName{
+				Namespace: "platform-mesh-system",
+				Name:      "podinfo",
+			}, &podinfoDeployment)
+			return kerrors.IsNotFound(err)
+		}, 240*time.Second, 5*time.Second, "waiting for podinfo Deployment to be deleted, but has err=%v, Deployment=%#v", err, podinfoDeployment)
 
 		s.logger.Info().Msgf("Waiting until ManagedProvider my-managed-provider is deleted")
 		s.Require().Eventually(func() bool {
@@ -141,13 +151,25 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 			Namespace: managedProviderName.Namespace,
 		},
 		Spec: providersv1alpha1.ManagedProviderSpec{
-			RuntimeDeployments: []providersv1alpha1.ProviderComponentSpec{{
-				OCM: &providersv1alpha1.OCMComponentSpec{
-					ComponentName: "example-httpbin-operator",
-					Registry:      "ghcr.io/platform-mesh/helm-charts",
-					Version:       "0.5.14",
+			RuntimeDeployments: []providersv1alpha1.ProviderComponentSpec{
+				{
+					// type=oci (default): chart packaged as an OCI artifact → Flux OCIRepository.
+					Flux: &providersv1alpha1.FluxComponentSpec{
+						Chart:    "example-httpbin-operator",
+						Registry: "ghcr.io/platform-mesh/helm-charts",
+						Version:  "0.5.14",
+					},
 				},
-			}},
+				{
+					// type=helm: chart from a classic HTTP Helm repository → Flux HelmRepository.
+					Flux: &providersv1alpha1.FluxComponentSpec{
+						Type:     providersv1alpha1.FluxSourceTypeHelm,
+						Chart:    "podinfo",
+						Registry: "https://stefanprodan.github.io/podinfo",
+						Version:  "6.7.1",
+					},
+				},
+			},
 			PlatformMeshReference: providersv1alpha1.PlatformMeshReferenceSpec{
 				Name: "platform-mesh",
 			},
@@ -265,7 +287,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 		return managedProvider.Status.Phase == "Ready"
 	}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to reach Phase=Ready, but has err=%s Phase=%q", err, managedProvider.Status.Phase)
 
-	s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator appears")
+	s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator appears (type=oci component)")
 	s.Require().Eventually(func() bool {
 		err = s.client.Get(ctx, types.NamespacedName{
 			Namespace: managedProviderName.Namespace,
@@ -273,6 +295,15 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 		}, &appsv1.Deployment{})
 		return err == nil
 	}, 240*time.Second, 5*time.Second, "waiting for Deployment example-httpbin-operator, but has err=%v", err)
+
+	s.logger.Info().Msgf("Waiting until Deployment podinfo appears (type=helm component)")
+	s.Require().Eventually(func() bool {
+		err = s.client.Get(ctx, types.NamespacedName{
+			Namespace: managedProviderName.Namespace,
+			Name:      "podinfo",
+		}, &appsv1.Deployment{})
+		return err == nil
+	}, 240*time.Second, 5*time.Second, "waiting for Deployment podinfo, but has err=%v", err)
 }
 
 func (s *KindTestSuite) runProviderOperator() {
