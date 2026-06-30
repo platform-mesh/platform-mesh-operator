@@ -114,15 +114,20 @@ spec:
                 description: runtimeDeployments is a list of components to be deployed
                   in the runtime cluster.
                 items:
-                  description: ProviderComponentSpec references an OCM component to
-                    deploy.
+                  description: ProviderComponentSpec references a single component
+                    to deploy in the runtime cluster.
                   properties:
-                    ocm:
-                      description: ocm identifies the component in an OCM registry.
+                    flux:
+                      description: |-
+                        flux deploys a Helm chart from an OCI registry directly via Flux
+                        (OCIRepository + HelmRelease). No OCM descriptor resolution is performed.
                       properties:
-                        componentName:
-                          description: componentName is the fully-qualified OCM component
-                            name.
+                        chart:
+                          description: |-
+                            chart is the chart name:
+                              - for type=oci: the chart's OCI repository path under the registry
+                                (e.g. wildwest-armament-sync).
+                              - for type=helm: the chart name within the Helm repository (e.g. cert-manager).
                           type: string
                         insecure:
                           description: |-
@@ -130,17 +135,35 @@ spec:
                             Disabled by default.
                           type: boolean
                         registry:
-                          description: registry is the OCM registry host (e.g. ghcr.io/platform-mesh/ocm).
+                          description: |-
+                            registry is the chart source location:
+                              - for type=oci: the OCI registry host and base path that holds the chart
+                                (e.g. ghcr.io/platform-mesh/provider-quickstart/charts).
+                              - for type=helm: the Helm repository URL (e.g. https://charts.jetstack.io).
+                          type: string
+                        type:
+                          default: oci
+                          description: |-
+                            type selects how the chart is fetched:
+                              - "oci" (default): the chart is packaged as an OCI artifact in an OCI registry,
+                                deployed via a Flux OCIRepository.
+                              - "helm": the chart is served from a classic HTTP(S) Helm repository,
+                                deployed via a Flux HelmRepository.
+                          enum:
+                          - oci
+                          - helm
                           type: string
                         values:
                           description: values are Helm values passed to the deployed
                             chart.
                           x-kubernetes-preserve-unknown-fields: true
                         version:
-                          description: version is the component version to deploy.
+                          description: |-
+                            version is the chart version to deploy (the OCI tag for type=oci, or the chart
+                            version for type=helm).
                           type: string
                       required:
-                      - componentName
+                      - chart
                       - registry
                       - version
                       type: object
