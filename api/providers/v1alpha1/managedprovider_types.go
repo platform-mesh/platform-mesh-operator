@@ -115,11 +115,20 @@ type LocalKubeconfigSecretSpec struct {
 }
 
 // ProviderComponentSpec references a single component to deploy in the runtime cluster.
+// Exactly one of flux or ocm must be set.
 type ProviderComponentSpec struct {
-	// flux deploys a Helm chart from an OCI registry directly via Flux
-	// (OCIRepository + HelmRelease). No OCM descriptor resolution is performed.
+	// flux deploys a Helm chart from an OCI registry or HTTP Helm repository directly
+	// via Flux (OCIRepository/HelmRepository + HelmRelease). No OCM descriptor
+	// resolution is performed.
 	// +optional
 	Flux *FluxComponentSpec `json:"flux,omitempty"`
+
+	// ocm deploys a chart resolved from an OCM component descriptor. The operator emits
+	// a delivery.ocm.software Resource that references an existing Repository and
+	// Component; the ocm-controller resolves the descriptor (signatures, references,
+	// relocation) and the resolved chart is then deployed via Flux.
+	// +optional
+	OCM *OCMComponentSpec `json:"ocm,omitempty"`
 }
 
 // FluxSourceType selects how a FluxComponentSpec chart is fetched.
@@ -172,6 +181,64 @@ type FluxComponentSpec struct {
 	// Disabled by default.
 	// +optional
 	Insecure bool `json:"insecure,omitempty"`
+}
+
+// OCMComponentSpec deploys a chart resolved from an OCM component descriptor. The OCM
+// coordinates are given inline; the operator creates the delivery.ocm.software
+// Repository, Component and Resource objects, the ocm-controller resolves the
+// descriptor and writes the resolved chart artifact into the Resource status, which is
+// then deployed via Flux.
+type OCMComponentSpec struct {
+	// name is the deployment name used for the generated Repository, Component,
+	// Resource, OCIRepository and HelmRelease. If empty it defaults to resourceName,
+	// then the last referencePath element, then the last segment of the component name.
+	// Set it explicitly when several components share the same component name (so the
+	// generated objects don't collide).
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// registry is the OCM/OCI registry root that holds the component
+	// (e.g. ghcr.io/platform-mesh). The operator creates a delivery.ocm.software
+	// Repository from it (baseUrl = host, subPath = remaining path).
+	// +required
+	Registry string `json:"registry"`
+
+	// component is the fully-qualified OCM component name
+	// (e.g. github.com/platform-mesh/provider-quickstart). The operator creates a
+	// delivery.ocm.software Component from it.
+	// +required
+	Component string `json:"component"`
+
+	// version is the OCM component version (semver).
+	// +required
+	Version string `json:"version"`
+
+	// resourceName is the OCM resource name within the component to deploy.
+	// Defaults to "chart".
+	// +optional
+	ResourceName string `json:"resourceName,omitempty"`
+
+	// referencePath navigates the component reference graph to reach the resource.
+	// Each element selects a nested component reference by name. Empty resolves a
+	// resource directly on the component.
+	// +optional
+	ReferencePath []OCMReferencePathElement `json:"referencePath,omitempty"`
+
+	// values are Helm values passed to the resolved chart.
+	// +optional
+	Values apiextensionsv1.JSON `json:"values,omitempty"`
+
+	// insecure allows HTTP (insecure) connection to the registry.
+	// Disabled by default.
+	// +optional
+	Insecure bool `json:"insecure,omitempty"`
+}
+
+// OCMReferencePathElement is a single element of an OCM component reference path.
+type OCMReferencePathElement struct {
+	// name of the component reference to follow.
+	// +required
+	Name string `json:"name"`
 }
 
 // ManagedProviderStatus defines the observed state of ManagedProvider.

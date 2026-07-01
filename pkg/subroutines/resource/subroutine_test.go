@@ -901,14 +901,14 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_AlreadyUpToDate() {
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
 			"metadata": map[string]interface{}{
-				"name":      "keycloak-chart",
-				"namespace": "platform-mesh-system",
+				"name":        "keycloak-chart",
+				"namespace":   "platform-mesh-system",
 				"annotations": map[string]interface{}{"artifact": "chart", "repo": "helm"},
 			},
 			"status": map[string]interface{}{
 				"resource": map[string]interface{}{
 					"version": "25.2.3",
-					"access": map[string]interface{}{"type": "helmChart", "helmRepository": "https://charts.bitnami.com/bitnami"},
+					"access":  map[string]interface{}{"type": "helmChart", "helmRepository": "https://charts.bitnami.com/bitnami"},
 				},
 			},
 			"spec": map[string]interface{}{},
@@ -948,8 +948,8 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplicationHelmValues() {
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
 			"metadata": map[string]interface{}{
-				"name":      "kcp-image",
-				"namespace": "platform-mesh-system",
+				"name":        "kcp-image",
+				"namespace":   "platform-mesh-system",
 				"annotations": map[string]interface{}{"artifact": "image", "repo": "oci", "path": "kcp.image.tag"},
 			},
 			"status": map[string]interface{}{
@@ -996,7 +996,7 @@ func (s *ResourceTestSuite) Test_resolveArgoCDSource_OCI() {
 			"status": map[string]interface{}{
 				"resource": map[string]interface{}{
 					"version": "1.2.3",
-					"access": map[string]interface{}{"imageReference": "oci://registry.example.com/charts/mychart:1.2.3@sha256:abc"},
+					"access":  map[string]interface{}{"imageReference": "oci://registry.example.com/charts/mychart:1.2.3@sha256:abc"},
 				},
 			},
 		},
