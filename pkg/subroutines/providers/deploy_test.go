@@ -751,7 +751,7 @@ func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
 	const ns = "providers-wildwest-ns"
 
 	repoRef := []interface{}{map[string]interface{}{
-		"apiVersion": "delivery.ocm.software/v1alpha1", "kind": "Repository", "name": "wildwest-controller", "namespace": ns,
+		"apiVersion": "delivery.ocm.software/v1alpha1", "kind": "Repository", "name": "wildwest-controller", "namespace": ns, "policy": "Propagate",
 	}}
 
 	// Repository, Component, Resource already exist with the desired spec
