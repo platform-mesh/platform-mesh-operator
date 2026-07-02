@@ -54,6 +54,7 @@ spec:
                                               }
                                           ], 
                                           "filters": [                                           
+                                             { "label": "All" },
                                              { "label": "My projects", "value": "{context.userId}", "property": "metadata.name", "default": "true" },
                                              { "label": "Default namespace", "value": "default", "property": "metadata.namespace" }
                                           ]
