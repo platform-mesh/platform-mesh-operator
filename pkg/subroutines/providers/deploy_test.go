@@ -627,3 +627,227 @@ func (s *DeployTestSuite) TestFinalize_HelmRepo_DeletesHelmRepository() {
 	s.Assert().Contains(deletedKinds, "HelmRelease")
 	s.Assert().Contains(deletedKinds, "HelmRepository")
 }
+
+// --- ocm (OCM descriptor resolution) tests ---
+
+func (s *DeployTestSuite) TestOCMResolvedOCIURL() {
+	const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	cases := []struct{ name, imageRef, version, want string }{
+		{"tag form", "oci://ghcr.io/platform-mesh/charts/wildwest:1.2.3", "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
+		{"no scheme", "ghcr.io/platform-mesh/charts/wildwest:1.2.3", "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
+		{"digest form", "oci://ghcr.io/platform-mesh/charts/wildwest@" + digest, "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
+	}
+	for _, tc := range cases {
+		got, err := ocmResolvedOCIURL(tc.imageRef, tc.version)
+		s.Require().NoError(err, tc.name)
+		s.Assert().Equal(tc.want, got, tc.name)
+	}
+}
+
+func (s *DeployTestSuite) TestOCMDeploymentName() {
+	s.Equal("explicit", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+		Name: "explicit", Component: "github.com/x/comp",
+	}))
+	s.Equal("controller-chart", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+		ResourceName: "controller-chart", Component: "github.com/x/comp",
+	}))
+	s.Equal("last-ref", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+		ReferencePath: []providersv1alpha1.OCMReferencePathElement{{Name: "first"}, {Name: "last-ref"}},
+		Component:     "github.com/x/comp",
+	}))
+	s.Equal("comp", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+		Component: "github.com/platform-mesh/comp",
+	}))
+}
+
+func (s *DeployTestSuite) TestSplitRegistry() {
+	base, sub := splitRegistry("ghcr.io/platform-mesh")
+	s.Equal("ghcr.io", base)
+	s.Equal("platform-mesh", sub)
+	base, sub = splitRegistry("ghcr.io/platform-mesh/provider-quickstart/charts")
+	s.Equal("ghcr.io", base)
+	s.Equal("platform-mesh/provider-quickstart/charts", sub)
+	base, sub = splitRegistry("ghcr.io")
+	s.Equal("ghcr.io", base)
+	s.Equal("", sub)
+}
+
+// newManagedProviderOCM returns a ManagedProvider with a single self-contained ocm
+// RuntimeDeployment; the deployment name is explicit ("wildwest-controller") and the
+// operator generates Repository + Component + Resource from the inline coordinates.
+func (s *DeployTestSuite) newManagedProviderOCM() *providersv1alpha1.ManagedProvider {
+	inst := s.newManagedProvider()
+	inst.Spec.RuntimeDeployments = []providersv1alpha1.ProviderComponentSpec{
+		{OCM: &providersv1alpha1.OCMComponentSpec{
+			Name:         "wildwest-controller",
+			Registry:     "ghcr.io/platform-mesh",
+			Component:    "github.com/platform-mesh/provider-quickstart",
+			Version:      "0.0.8",
+			ResourceName: "controller-chart",
+		}},
+	}
+	return inst
+}
+
+func (s *DeployTestSuite) TestProcess_OCM_CreatesOCMObjects() {
+	ctx := s.newCtx()
+	inst := s.newManagedProviderOCM()
+	const ns = "providers-wildwest-ns"
+
+	// Repository, Component and Resource all absent → Get NotFound then Create.
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Times(3)
+	created := map[string]*unstructured.Unstructured{}
+	s.clientMock.EXPECT().
+		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
+		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.CreateOption) error {
+			u := obj.(*unstructured.Unstructured).DeepCopy()
+			created[u.GetKind()] = u
+			return nil
+		}).
+		Times(3)
+
+	result, err := s.testObj.Process(ctx, inst)
+
+	// OCM objects just created → requeue for resolution; no Flux objects yet.
+	s.Require().NoError(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+
+	repo := created["Repository"]
+	s.Require().NotNil(repo, "operator must create the Repository")
+	baseURL, _, _ := unstructured.NestedString(repo.Object, "spec", "repositorySpec", "baseUrl")
+	subPath, _, _ := unstructured.NestedString(repo.Object, "spec", "repositorySpec", "subPath")
+	s.Assert().Equal("ghcr.io", baseURL)
+	s.Assert().Equal("platform-mesh", subPath)
+
+	comp := created["Component"]
+	s.Require().NotNil(comp, "operator must create the Component")
+	cname, _, _ := unstructured.NestedString(comp.Object, "spec", "component")
+	semver, _, _ := unstructured.NestedString(comp.Object, "spec", "semver")
+	repoRef, _, _ := unstructured.NestedString(comp.Object, "spec", "repositoryRef", "name")
+	s.Assert().Equal("github.com/platform-mesh/provider-quickstart", cname)
+	s.Assert().Equal("0.0.8", semver)
+	s.Assert().Equal("wildwest-controller", repoRef)
+
+	res := created["Resource"]
+	s.Require().NotNil(res, "operator must create the Resource")
+	s.Assert().Equal("chart", res.GetLabels()["artifact"])
+	s.Assert().Equal("oci", res.GetLabels()["repo"])
+	compRef, _, _ := unstructured.NestedString(res.Object, "spec", "componentRef", "name")
+	s.Assert().Equal("wildwest-controller", compRef)
+	resName, _, _ := unstructured.NestedString(res.Object, "spec", "resource", "byReference", "resource", "name")
+	s.Assert().Equal("controller-chart", resName)
+	ocmConfig, _, _ := unstructured.NestedSlice(res.Object, "spec", "ocmConfig")
+	s.Require().Len(ocmConfig, 1)
+	s.Assert().Equal("wildwest-controller", ocmConfig[0].(map[string]interface{})["name"])
+}
+
+func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
+	ctx := s.newCtx()
+	inst := s.newManagedProviderOCM()
+	const ns = "providers-wildwest-ns"
+
+	repoRef := []interface{}{map[string]interface{}{
+		"apiVersion": "delivery.ocm.software/v1alpha1", "kind": "Repository", "name": "wildwest-controller", "namespace": ns, "policy": "Propagate",
+	}}
+
+	// Repository, Component, Resource already exist with the desired spec
+	// (CreateOrUpdate → None); the Resource also carries a resolved status.
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			u := obj.(*unstructured.Unstructured)
+			u.SetResourceVersion("1")
+			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
+			_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{"type": "OCIRegistry", "baseUrl": "ghcr.io", "subPath": "platform-mesh"}, "spec", "repositorySpec")
+			return nil
+		}).
+		Once()
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			u := obj.(*unstructured.Unstructured)
+			u.SetResourceVersion("1")
+			_ = unstructured.SetNestedField(u.Object, "github.com/platform-mesh/provider-quickstart", "spec", "component")
+			_ = unstructured.SetNestedField(u.Object, "0.0.8", "spec", "semver")
+			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
+			_ = unstructured.SetNestedField(u.Object, "Deny", "spec", "downgradePolicy")
+			_ = unstructured.SetNestedField(u.Object, "wildwest-controller", "spec", "repositoryRef", "name")
+			_ = unstructured.SetNestedSlice(u.Object, repoRef, "spec", "ocmConfig")
+			return nil
+		}).
+		Once()
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+			u := obj.(*unstructured.Unstructured)
+			u.SetResourceVersion("1")
+			u.SetLabels(map[string]string{"artifact": "chart", "repo": "oci"})
+			_ = unstructured.SetNestedField(u.Object, "wildwest-controller", "spec", "componentRef", "name")
+			_ = unstructured.SetNestedField(u.Object, "controller-chart", "spec", "resource", "byReference", "resource", "name")
+			_ = unstructured.SetNestedSlice(u.Object, repoRef, "spec", "ocmConfig")
+			_ = unstructured.SetNestedField(u.Object, "oci://ghcr.io/platform-mesh/provider-quickstart/controller-chart:0.0.8", "status", "resource", "access", "imageReference")
+			_ = unstructured.SetNestedField(u.Object, "0.0.8", "status", "resource", "version")
+			return nil
+		}).
+		Once()
+	// OCIRepository + HelmRelease both absent → Get NotFound then Create.
+	s.clientMock.EXPECT().
+		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Times(2)
+	var createdKinds []string
+	var ociRepo *unstructured.Unstructured
+	s.clientMock.EXPECT().
+		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
+		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.CreateOption) error {
+			u := obj.(*unstructured.Unstructured).DeepCopy()
+			createdKinds = append(createdKinds, u.GetKind())
+			if u.GetKind() == "OCIRepository" {
+				ociRepo = u
+			}
+			return nil
+		}).
+		Times(2)
+
+	result, err := s.testObj.Process(ctx, inst)
+
+	// Both Flux objects Created → immediate requeue.
+	s.Require().NoError(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Contains(createdKinds, "OCIRepository")
+	s.Assert().Contains(createdKinds, "HelmRelease")
+	s.Require().NotNil(ociRepo, "OCIRepository should have been created from the resolved status")
+	url, _, _ := unstructured.NestedString(ociRepo.Object, "spec", "url")
+	s.Assert().Equal("oci://ghcr.io/platform-mesh/provider-quickstart/controller-chart", url)
+	tag, _, _ := unstructured.NestedString(ociRepo.Object, "spec", "ref", "tag")
+	s.Assert().Equal("0.0.8", tag)
+}
+
+func (s *DeployTestSuite) TestFinalize_OCM_DeletesOCMAndFluxObjects() {
+	ctx := s.newCtx()
+	inst := s.newManagedProviderOCM()
+
+	var deletedKinds []string
+	s.clientMock.EXPECT().
+		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
+		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+			deletedKinds = append(deletedKinds, obj.(*unstructured.Unstructured).GetKind())
+			return nil
+		}).
+		Times(5)
+
+	result, err := s.testObj.Finalize(ctx, inst)
+
+	s.Require().NoError(err)
+	s.Assert().True(result.IsStopWithRequeue())
+	s.Assert().Contains(deletedKinds, "HelmRelease")
+	s.Assert().Contains(deletedKinds, "OCIRepository")
+	s.Assert().Contains(deletedKinds, "Resource")
+	s.Assert().Contains(deletedKinds, "Component")
+	s.Assert().Contains(deletedKinds, "Repository")
+}

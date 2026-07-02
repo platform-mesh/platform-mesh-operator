@@ -172,7 +172,7 @@ func (s *DeploymentProcessTestSuite) newOperatorConfig() config.OperatorConfig {
 		},
 		Subroutines: config.SubroutinesConfig{
 			Deployment: config.DeploymentSubroutineConfig{
-				Enabled:    true,
+				Enabled:     true,
 				EnableIstio: false,
 			},
 		},
@@ -258,7 +258,6 @@ func (s *DeploymentProcessTestSuite) seedCertManagerCRDs(ctx context.Context, cl
 	s.Require().NoError(cl.Create(ctx, s.newEstablishedCRD("issuers.cert-manager.io")))
 	s.Require().NoError(cl.Create(ctx, s.newEstablishedCRD("certificates.cert-manager.io")))
 }
-
 
 func (s *DeploymentProcessTestSuite) Test_Process_FluxCD_HappyPath() {
 	ns := "platform-mesh-system"
