@@ -45,8 +45,8 @@ type WorkspaceTestSuite struct {
 	clientMock    *mocks.Client
 	kcpHelperMock *mocks.KcpHelper
 	kcpClientMock *mocks.Client
-	log    *logger.Logger
-	kcpCfg config.KCPConfig
+	log           *logger.Logger
+	kcpCfg        config.KCPConfig
 }
 
 func TestWorkspaceTestSuite(t *testing.T) {
