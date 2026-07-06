@@ -60,4 +60,9 @@ spec:
     schema: v260630-c61f326.providers.providers.platform-mesh.io
     storage:
       crd: {}
+  - group: providers.platform-mesh.io
+    name: providerpermissions
+    schema: v260703-0c370717.providerpermissions.providers.platform-mesh.io
+    storage:
+      crd: {}
 status: {}
