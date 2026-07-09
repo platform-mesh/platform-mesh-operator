@@ -30,6 +30,7 @@ jobs:
       imageTagName: ghcr.io/platform-mesh/platform-mesh-operator
 
   quality-gate:
+    name: quality-gate
     if: always()
     permissions: {}
     needs: [lint, test, docker-build]
@@ -37,16 +38,20 @@ jobs:
     timeout-minutes: 1
     steps:
       - name: Check results
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
         run: |
-          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+          if [[ "$LINT_RESULT" != "success" ]]; then
             echo "lint failed"
             exit 1
           fi
-          if [[ "${{ needs.test.result }}" != "success" ]]; then
+          if [[ "$TEST_RESULT" != "success" ]]; then
             echo "test failed"
             exit 1
           fi
-          if [[ "${{ needs.docker-build.result }}" != "success" ]]; then
+          if [[ "$DOCKER_BUILD_RESULT" != "success" ]]; then
             echo "docker-build failed"
             exit 1
           fi
