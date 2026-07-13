@@ -737,4 +737,43 @@ func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValue
 	}
 }
 
+// Test_mergeImageVersionsIntoHelmReleaseValues_localizesCoordinates proves the
+// air-gapped durability contract: when the ImageVersionStore carries the full localized
+// image location, the merge overrides the chart/profile ghcr.io defaults in the
+// HelmRelease's spec.values so the DeploymentSubroutine's ForceOwnership apply deploys
+// from the internal registry.
+func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValues_localizesCoordinates() {
+	store := NewImageVersionStore()
+	store.Set("platform-mesh-system", "keycloak", "image.tag", "1.2.3-localized")
+	store.Set("platform-mesh-system", "keycloak", "image.registry", "registry.internal.example.com")
+	store.Set("platform-mesh-system", "keycloak", "image.repository", "platform-mesh/keycloak")
+	store.Set("platform-mesh-system", "keycloak", "image.digest", "sha256:abc")
+
+	sub := &DeploymentSubroutine{imageVersionStore: store}
+
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "helm.toolkit.fluxcd.io/v2",
+		"kind":       "HelmRelease",
+		"metadata":   map[string]interface{}{"name": "keycloak", "namespace": "platform-mesh-system"},
+		"spec": map[string]interface{}{"values": map[string]interface{}{
+			"image": map[string]interface{}{
+				"registry":   "ghcr.io/platform-mesh",
+				"repository": "upstream-images/keycloak",
+				"tag":        "0.0.0",
+			},
+		}},
+	}}
+
+	sub.mergeImageVersionsIntoHelmReleaseValues(obj, "keycloak", "platform-mesh-system", s.log)
+
+	get := func(path ...string) string {
+		v, _, _ := unstructured.NestedString(obj.Object, path...)
+		return v
+	}
+	s.Equal("registry.internal.example.com", get("spec", "values", "image", "registry"))
+	s.Equal("platform-mesh/keycloak", get("spec", "values", "image", "repository"))
+	s.Equal("1.2.3-localized", get("spec", "values", "image", "tag"))
+	s.Equal("sha256:abc", get("spec", "values", "image", "digest"))
+}
+
 func boolPtr(b bool) *bool { return &b }
