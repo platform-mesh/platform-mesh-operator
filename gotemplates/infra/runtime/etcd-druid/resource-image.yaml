@@ -7,6 +7,9 @@ metadata:
     repo: oci
     for: {{ .etcdDruid.name }}
     path: image.tag
+    # etcd-druid's chart exposes only a single host-qualified image.repository
+    # + image.tag (no registry/digest), so fold the registry into the repository.
+    image-ref: combined
   name: {{ .etcdDruid.name }}-image
   namespace: {{ .releaseNamespace }}
 spec:
@@ -26,4 +29,8 @@ spec:
         - name: {{ .etcdDruid.name }}
       resource:
         name: {{ .etcdDruid.name }}
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
 {{- end }}

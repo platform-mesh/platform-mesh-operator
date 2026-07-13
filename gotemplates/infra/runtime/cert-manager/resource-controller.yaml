@@ -25,4 +25,9 @@ spec:
         - name: {{ .certManager.name }}
       resource:
         name: controller-image
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+    digest: resource.access.imageReference.toOCI().digest
 {{- end }}
