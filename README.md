@@ -659,6 +659,60 @@ The Resource subroutine (in `pkg/subroutines/resource/`) manages OCM Resource ob
 - For ArgoCD: updates Application objects with resolved OCI repository URLs from OCM Resources
 - Manages image version extraction and stores versions in the ImageVersionStore
 
+#### Behavior selection: `repo` / `artifact`
+
+Each OCM `Resource` declares what it represents via a `repo` and `artifact` value (read from annotations first, falling back to labels for backwards compatibility). The combination selects which update the subroutine performs:
+
+| `repo` | `artifact` | Behavior |
+|--------|-----------|----------|
+| `oci` | `chart` | Create/update an `OCIRepository` |
+| `git` | `chart` | Create/update a `GitRepository` |
+| `helm` | `chart` | Create/update a `HelmRepository` + the target `HelmRelease`'s `chartRef` |
+| `oci` or `helm` | `image` | Inject the image location into the target `HelmRelease`'s `spec.values` (see below) |
+
+For ArgoCD, `artifact: chart` updates the Application's `targetRevision`/`repoURL`, and `artifact: image` updates the Application's Helm values instead.
+
+#### Image localization
+
+For `artifact: image` Resources, the subroutine writes the image's registry/repository/tag/digest into the target `HelmRelease`'s Helm values, sourced from the OCM component version's access information — never from chart defaults. This keeps air-gapped deployments pinned to the internal registry instead of falling back to a chart's public-registry default.
+
+The OCM Resource must declare `spec.additionalStatusFields` with CEL expressions that resolve the image's OCI coordinates onto `status.additional.*`:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: image
+    repo: oci
+    for: cert-manager
+  annotations:
+    path: image.tag        # optional, defaults to "image.tag"
+spec:
+  # ...
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+    digest: resource.access.imageReference.toOCI().digest   # optional
+```
+
+When present, `registry`/`repository`/`digest` are written as siblings of the tag leaf (e.g. `image.registry`, `image.repository`, `image.digest` next to `image.tag`), and the tag itself is sourced from `status.additional.tag` when set, falling back to the resource version otherwise. Coordinates no longer present on a later reconcile are cleared, so a stale digest can never outlive a tag change.
+
+Not every chart accepts a split `registry`/`repository`/`digest` shape. Some expect a single host-qualified `repository` string instead — openfga, kcp-operator, init-agent, etcd-druid and opentelemetry-operator all do. Annotate those Resources with `image-ref: combined` to fold the registry into the repository (`registry/repository`) and omit `registry`/`digest` entirely; omit the `digest` CEL expression from `additionalStatusFields` in that case too.
+
+There are two variants, and the second is the dangerous one. A chart with a strict `values.schema.json` (openfga sets `additionalProperties: false`) rejects the extra fields outright, so the release fails and the mistake is obvious. A chart without a schema — kcp-operator and init-agent render `image.repository` verbatim and have no `registry` field — silently drops the registry instead. The repository then carries no host and resolves against Docker Hub rather than the intended registry, which surfaces only as a failed pull, or not at all if that name happens to exist there.
+
+Relevant annotations (all optional unless noted):
+
+| Annotation | Default | Purpose |
+|-----------|---------|---------|
+| `for` | Resource's own name; namespace from the profile's `deploymentNamespace`, else the Resource's own | Target `HelmRelease`/Application, as `name` or `namespace/name` |
+| `path` | `image.tag` | Dot-path under `spec.values` where the tag is written |
+| `version-path` | `status.resource.version` | Dot-path on the Resource to fall back to when no localized tag is present |
+| `image-ref` | _(split)_ | Set to `combined` for charts expecting a single host-qualified `repository` instead of separate `registry`/`repository` |
+| `unsuspend` | _(none)_ | Set to `true` to clear `spec.suspend` on the target `HelmRelease` |
+
 ## Provider Bootstrap
 
 Provider bootstrapping spans two controllers and two CRDs:
