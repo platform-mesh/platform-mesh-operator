@@ -96,10 +96,15 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	log.Info().Msg("Starting manager")
 
 	restCfg := ctrl.GetConfigOrDie()
+	runtimeClient, err := client.New(restCfg, client.Options{Scheme: subroutines.GetClientScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to create PlatformMesh client")
+		os.Exit(1)
+	}
 	if operatorCfg.RemoteRuntime.IsEnabled() {
 		setupLog.Info("Remote PlatformMesh reconciliation enabled, kubeconfig: " + operatorCfg.RemoteRuntime.Kubeconfig)
 		var err error
-		_, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
+		runtimeClient, restCfg, err = subroutines.GetClientAndRestConfig(operatorCfg.RemoteRuntime.Kubeconfig)
 		if err != nil {
 			setupLog.Error(err, "unable to create PlatformMesh client")
 			os.Exit(1)
@@ -201,7 +206,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		os.Exit(1)
 	}
 
-	go startProvidersOperator(ctx, clientInfra, mgr)
+	go startProvidersOperator(ctx, runtimeClient, mgr)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
