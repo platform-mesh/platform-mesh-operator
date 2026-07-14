@@ -300,7 +300,6 @@ data:
           syncWave: 1
           external: true
           enabled: true
-          helmRepo: true
           # -- Allow the configuration of additional ocm resources
           imageResources:
           - name: kcp-image
