@@ -277,6 +277,7 @@ data:
               repo: oci
               artifact: image
               for: init-agent
+              image-ref: combined
             absoluteReferencePath:
             - name: init-agent
           syncWave: 4
@@ -300,17 +301,14 @@ data:
           syncWave: 1
           external: true
           enabled: true
-          helmRepo: true
-          # -- Allow the configuration of additional ocm resources
           imageResources:
           - name: kcp-image
             annotations:
               repo: oci
               artifact: image
               for: kcp-operator
-              # kcp-operator's upstream chart (0.7.2) exposes only a single
-              # host-qualified image.repository + image.tag (no registry/digest),
-              # so fold the registry into the repository.
+              # the upstream chart exposes only a single host-qualified
+              # image.repository + image.tag, so fold the registry into it.
               image-ref: combined
           targetNamespace: kcp-operator
         keycloak-operator:
@@ -374,9 +372,8 @@ data:
               repo: oci
               artifact: image
               for: openfga
-              # openfga's chart values.schema.json only accepts image.repository +
-              # image.tag (rejects registry/digest), so fold the registry into a
-              # single host-qualified repository.
+              # openfga's values.schema.json accepts only image.repository +
+              # image.tag (rejects registry/digest), so fold the registry into it.
               image-ref: combined
           - name: openfga-postgresql-image
             resource: postgresql-image
