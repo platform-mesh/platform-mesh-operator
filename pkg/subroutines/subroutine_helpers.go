@@ -664,7 +664,12 @@ func ApplyDirStructure(
 		if err != nil {
 			return err
 		}
-		err = ApplyDirStructure(ctx, dir+"/"+wsDir, fmt.Sprintf("%s:%s", kcpPath, wsName), config, templateData, inst, kcpHelper)
+
+		wsPath := fmt.Sprintf("%s:%s", kcpPath, wsName)
+		if wsName == kcpPath {
+			wsPath = kcpPath
+		}
+		err = ApplyDirStructure(ctx, dir+"/"+wsDir, wsPath, config, templateData, inst, kcpHelper)
 		if err != nil {
 			return err
 		}
