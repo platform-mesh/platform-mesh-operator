@@ -662,6 +662,8 @@ func ApplyDirStructure(
 		}
 		wsPath := fmt.Sprintf("%s:%s", kcpPath, wsName)
 		if wsName == kcpPath {
+			// the directory targets the current workspace itself (e.g. "02-root"
+			// while already at "root"), so there is no child workspace to wait for.
 			wsPath = kcpPath
 		} else {
 			err = WaitForWorkspace(ctx, config, wsName, log, kcpHelper)
