@@ -335,21 +335,21 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 	cl := new(mocks.Client)
 	// Server-side apply (no Get needed)
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err := ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	err = ApplyManifestFromFile(context.TODO(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	err = ApplyManifestFromFile(context.TODO(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = ApplyManifestFromFile(context.TODO(), "../../manifests/kcp/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/02-root/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
@@ -360,7 +360,7 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 	operatorCfg := config.OperatorConfig{
 		KCP: config.OperatorConfig{}.KCP,
 	}
-	ctx := context.WithValue(context.TODO(), keys.ConfigCtxKey, operatorCfg)
+	ctx := context.WithValue(s.T().Context(), keys.ConfigCtxKey, operatorCfg)
 	err = ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 }

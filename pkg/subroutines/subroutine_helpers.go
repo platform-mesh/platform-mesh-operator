@@ -660,11 +660,19 @@ func ApplyDirStructure(
 			log.Warn().Err(err).Str("Directory", dir).Str("wsName", wsName).Msg("Failed to get workspace path, skipping")
 			continue
 		}
-		err = WaitForWorkspace(ctx, config, wsName, log, kcpHelper)
-		if err != nil {
-			return err
+		wsPath := fmt.Sprintf("%s:%s", kcpPath, wsName)
+		if wsName == kcpPath {
+			// the directory targets the current workspace itself (e.g. "02-root"
+			// while already at "root"), so there is no child workspace to wait for.
+			wsPath = kcpPath
+		} else {
+			err = WaitForWorkspace(ctx, config, wsName, log, kcpHelper)
+			if err != nil {
+				return err
+			}
 		}
-		err = ApplyDirStructure(ctx, dir+"/"+wsDir, fmt.Sprintf("%s:%s", kcpPath, wsName), config, templateData, inst, kcpHelper)
+
+		err = ApplyDirStructure(ctx, dir+"/"+wsDir, wsPath, config, templateData, inst, kcpHelper)
 		if err != nil {
 			return err
 		}
