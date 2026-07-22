@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -195,8 +196,8 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 		}
 	}
 	if (repo == "helm" && artifact == "image") || (repo == "oci" && artifact == "image") {
-		log.Debug().Msg("Update Helm Release with Image Tag")
-		result, err := r.updateHelmReleaseWithImageTag(ctx, inst, log)
+		log.Debug().Msg("Update Helm Release with image location")
+		result, err := r.updateHelmReleaseImage(ctx, inst, log)
 		if err != nil {
 			return result, err
 		}
@@ -207,7 +208,21 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	return subroutineslib.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutineslib.Result, error) {
+// updateHelmReleaseImage writes the image location of an image Resource into the
+// HelmRelease named by the "for" annotation. OCM localization: image locations must
+// be taken from the component version's access information, never from chart
+// defaults. When the Resource status carries the localized coordinates (populated
+// via additionalStatusFields), the full location — registry, repository, tag and,
+// when present, digest — is written next to the tag leaf of the configured path,
+// with the tag sourced from the access info. Without localized coordinates the tag
+// falls back to the resource version (version-path) and is written alone
+// (pre-localization behavior).
+//
+// The "image-ref: combined" annotation switches to charts whose image schema only
+// accepts a single host-qualified repository (e.g. openfga, whose values.schema.json
+// rejects registry/digest): the registry is folded into the repository
+// (registry/repository) and registry/digest are not written.
+func (r *ResourceSubroutine) updateHelmReleaseImage(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutineslib.Result, error) {
 	name, namespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), inst.GetNamespace())
 	updatePath := append([]string{"spec", "values"}, parsePath(getMetadataValue(inst, "path"), "image.tag")...)
 	versionPath := parsePath(getMetadataValue(inst, "version-path"), "status.resource.version")
@@ -215,6 +230,47 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 	version, found, _ := unstructured.NestedString(inst.Object, versionPath...)
 	if !found || version == "" {
 		return subroutineslib.OK(), fmt.Errorf("version not available at path %v", versionPath)
+	}
+
+	// The tag, like the other coordinates, comes from the component version's access
+	// information when localized (status.additional.*, populated via additionalStatusFields).
+	// Fall back to the resource version when no localized tag is present.
+	tag := version
+	if localizedTag, foundTag, _ := unstructured.NestedString(inst.Object, "status", "additional", "tag"); foundTag && localizedTag != "" {
+		tag = localizedTag
+	}
+	registry, foundReg, _ := unstructured.NestedString(inst.Object, "status", "additional", "registry")
+	repository, foundRepo, _ := unstructured.NestedString(inst.Object, "status", "additional", "repository")
+	hasCoords := foundReg && registry != "" && foundRepo && repository != ""
+
+	versionLeaf := updatePath[len(updatePath)-1]
+	coordLeaves := []string{"registry", "repository", "digest"}
+	// A configured path whose leaf is itself a coordinate name conflates the tag with
+	// that coordinate; inject no coordinates (the leaf holds the tag).
+	leafCollides := slices.Contains(coordLeaves, versionLeaf)
+	activeLeaves := make([]string, 0, len(coordLeaves))
+	for _, leaf := range coordLeaves {
+		if leaf != versionLeaf {
+			activeLeaves = append(activeLeaves, leaf)
+		}
+	}
+
+	coords := map[string]string{}
+	if hasCoords && leafCollides {
+		log.Warn().Str("leaf", versionLeaf).Msg("Configured path leaf collides with an image coordinate; skipping coordinate injection")
+	} else if hasCoords {
+		if getMetadataValue(inst, "image-ref") == "combined" {
+			// Charts whose image schema only accepts a single, host-qualified
+			// repository (e.g. openfga's values.schema.json rejects registry/digest):
+			// fold the registry into the repository and omit registry/digest.
+			coords["repository"] = registry + "/" + repository
+		} else {
+			coords["registry"] = registry
+			coords["repository"] = repository
+			if digest, foundDigest, _ := unstructured.NestedString(inst.Object, "status", "additional", "digest"); foundDigest && digest != "" {
+				coords["digest"] = digest
+			}
+		}
 	}
 
 	// GET the existing HelmRelease so we can do a merge patch instead of SSA.
@@ -226,8 +282,24 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutineslib.OK(), fmt.Errorf("HelmRelease %s/%s not found: %w", namespace, name, err)
 	}
 
-	if err := unstructured.SetNestedField(existing.Object, version, updatePath...); err != nil {
+	if err := unstructured.SetNestedField(existing.Object, tag, updatePath...); err != nil {
 		return subroutineslib.OK(), err
+	}
+
+	// Localization coordinates are written as siblings of the tag leaf. Clear any
+	// previously injected coordinate first: otherwise a digest written by an
+	// earlier reconcile could survive next to a freshly written tag and, since
+	// the digest takes precedence, the old image would be deployed despite a tag
+	// change. Skip the tag leaf itself so the tag write is preserved.
+	parentPath := updatePath[:len(updatePath)-1]
+	for _, leaf := range activeLeaves {
+		path := appendPath(parentPath, leaf)
+		unstructured.RemoveNestedField(existing.Object, path...)
+		if value, ok := coords[leaf]; ok {
+			if err := unstructured.SetNestedField(existing.Object, value, path...); err != nil {
+				return subroutineslib.OK(), err
+			}
+		}
 	}
 
 	if getMetadataValue(inst, "unsuspend") == "true" {
@@ -239,8 +311,21 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutineslib.OK(), err
 	}
 
-	helmValuesPath := strings.Join(updatePath[2:], ".")
-	r.storeImageVersion(namespace, name, helmValuesPath, version)
+	// Record the full localized location in the store so DeploymentSubroutine re-asserts
+	// it (not a chart/profile default) when it merges tracked versions back into the
+	// HelmRelease values on later reconciles. Coordinates no longer present are removed
+	// so a stale value is not re-asserted.
+	valuesPath := updatePath[2:]
+	parentValuesPath := valuesPath[:len(valuesPath)-1]
+	r.storeImageVersion(namespace, name, strings.Join(valuesPath, "."), tag)
+	for _, leaf := range activeLeaves {
+		storePath := strings.Join(appendPath(parentValuesPath, leaf), ".")
+		if value, ok := coords[leaf]; ok {
+			r.storeImageVersion(namespace, name, storePath, value)
+		} else {
+			r.removeImageVersion(namespace, name, storePath)
+		}
+	}
 	if getMetadataValue(inst, "unsuspend") == "true" {
 		r.storeUnsuspended(namespace, name)
 	}
@@ -421,6 +506,18 @@ func (r *ResourceSubroutine) storeUnsuspended(namespace, name string) {
 	if r.imageVersionStore != nil {
 		r.imageVersionStore.SetUnsuspended(namespace, name)
 	}
+}
+
+func (r *ResourceSubroutine) removeImageVersion(namespace, name, path string) {
+	if r.imageVersionStore != nil {
+		r.imageVersionStore.Remove(namespace, name, path)
+	}
+}
+
+// appendPath returns parent with leaf appended in a fresh slice, so callers can build
+// sibling paths without aliasing or mutating the parent's backing array.
+func appendPath(parent []string, leaf string) []string {
+	return append(append([]string{}, parent...), leaf)
 }
 
 func parseNamespacedName(forVal, defaultName, defaultNamespace string) (name, namespace string) {

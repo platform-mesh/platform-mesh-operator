@@ -1,0 +1,116 @@
+{{- if .opentelemetryOperator.enabled }}
+# opentelemetry-operator ships THREE images, all configured in its chart as a single
+# host-qualified `repository` + `tag` (no separate registry field) under a strict
+# values.schema.json — so every one uses `image-ref: combined` (registry folded into
+# repository, no digest).
+#
+# CONTRACT with the OCM constructor (helm-charts): the
+# `github.com/open-telemetry/opentelemetry-operator` component must declare these
+# `ociImage` resources (today it carries only the `chart` resource):
+#   - manager-image          -> ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator
+#   - collector-image        -> ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+#   - target-allocator-image -> ghcr.io/open-telemetry/opentelemetry-operator/target-allocator
+# Until those exist, these Resources stay unresolved (no injection) — same graceful
+# no-op as any not-yet-localized image.
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: image
+    repo: oci
+    for: {{ .opentelemetryOperator.name }}
+  annotations:
+    path: manager.image.tag
+    image-ref: combined
+  name: {{ .opentelemetryOperator.name }}-image
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+  componentRef:
+    name: {{ .ocm.component.name }}
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Repository
+      name: {{ .ocm.repo.name }}
+      namespace: {{ .releaseNamespace }}
+  resource:
+    byReference:
+      referencePath:
+      {{- range .ocm.referencePath }}
+        - name: {{ .name }}
+      {{- end }}
+        - name: {{ .opentelemetryOperator.ocmComponentName }}
+      resource:
+        name: manager-image
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: image
+    repo: oci
+    for: {{ .opentelemetryOperator.name }}
+  annotations:
+    path: manager.collectorImage.tag
+    image-ref: combined
+  name: {{ .opentelemetryOperator.name }}-collector-image
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+  componentRef:
+    name: {{ .ocm.component.name }}
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Repository
+      name: {{ .ocm.repo.name }}
+      namespace: {{ .releaseNamespace }}
+  resource:
+    byReference:
+      referencePath:
+      {{- range .ocm.referencePath }}
+        - name: {{ .name }}
+      {{- end }}
+        - name: {{ .opentelemetryOperator.ocmComponentName }}
+      resource:
+        name: collector-image
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  labels:
+    artifact: image
+    repo: oci
+    for: {{ .opentelemetryOperator.name }}
+  annotations:
+    path: manager.targetAllocatorImage.tag
+    image-ref: combined
+  name: {{ .opentelemetryOperator.name }}-target-allocator-image
+  namespace: {{ .helmReleaseNamespace }}
+spec:
+  componentRef:
+    name: {{ .ocm.component.name }}
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Repository
+      name: {{ .ocm.repo.name }}
+      namespace: {{ .releaseNamespace }}
+  resource:
+    byReference:
+      referencePath:
+      {{- range .ocm.referencePath }}
+        - name: {{ .name }}
+      {{- end }}
+        - name: {{ .opentelemetryOperator.ocmComponentName }}
+      resource:
+        name: target-allocator-image
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+{{- end }}
