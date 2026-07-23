@@ -557,16 +557,23 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 		name        string
 		pc          corev1alpha1.ProviderConnection
 		wantSlice   string
-		wantExport  string
+		wantExports []string
 		wantErr     bool
 		errContains string
 	}{
 		{
-			name: "apiExportName only",
+			name: "apiExportNames single",
 			pc: corev1alpha1.ProviderConnection{
-				APIExportName: ptr.To("core.platform-mesh.io"),
+				APIExportNames: []string{"core.platform-mesh.io"},
 			},
-			wantExport: "core.platform-mesh.io",
+			wantExports: []string{"core.platform-mesh.io"},
+		},
+		{
+			name: "apiExportNames multiple",
+			pc: corev1alpha1.ProviderConnection{
+				APIExportNames: []string{"core.platform-mesh.io", "extensions.platform-mesh.io"},
+			},
+			wantExports: []string{"core.platform-mesh.io", "extensions.platform-mesh.io"},
 		},
 		{
 			name: "endpointSliceName only",
@@ -576,15 +583,22 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			wantSlice: "core.platform-mesh.io",
 		},
 		{
-			name: "trim whitespace",
+			name: "trim whitespace in apiExportNames",
 			pc: corev1alpha1.ProviderConnection{
-				APIExportName: ptr.To("  my-export  "),
+				APIExportNames: []string{"  my-export  ", "  another  "},
 			},
-			wantExport: "my-export",
+			wantExports: []string{"my-export", "another"},
+		},
+		{
+			name: "filter empty strings in apiExportNames",
+			pc: corev1alpha1.ProviderConnection{
+				APIExportNames: []string{"valid", "", "  ", "also-valid"},
+			},
+			wantExports: []string{"valid", "also-valid"},
 		},
 		{
 			name:        "both set",
-			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("a"), APIExportName: ptr.To("b")},
+			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("a"), APIExportNames: []string{"b"}},
 			wantErr:     true,
 			errContains: "only one",
 		},
@@ -592,19 +606,19 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			name:        "neither set",
 			pc:          corev1alpha1.ProviderConnection{},
 			wantErr:     true,
-			errContains: "requires endpointSliceName or apiExportName",
+			errContains: "requires endpointSliceName or apiExportNames",
 		},
 		{
-			name:        "both whitespace",
-			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("  "), APIExportName: ptr.To("\t")},
+			name:        "endpointSlice whitespace and empty apiExportNames",
+			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("  "), APIExportNames: []string{"", "  "}},
 			wantErr:     true,
-			errContains: "requires endpointSliceName or apiExportName",
+			errContains: "requires endpointSliceName or apiExportNames",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotSlice, gotExport, err := parseScopedKubeconfigExportSource(tt.pc)
+			gotSlice, gotExports, err := parseScopedKubeconfigExportSource(tt.pc)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error")
@@ -617,8 +631,16 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if gotSlice != tt.wantSlice || gotExport != tt.wantExport {
-				t.Fatalf("got slice=%q export=%q want slice=%q export=%q", gotSlice, gotExport, tt.wantSlice, tt.wantExport)
+			if gotSlice != tt.wantSlice {
+				t.Fatalf("got slice=%q want slice=%q", gotSlice, tt.wantSlice)
+			}
+			if len(gotExports) != len(tt.wantExports) {
+				t.Fatalf("got exports=%v want exports=%v", gotExports, tt.wantExports)
+			}
+			for i, got := range gotExports {
+				if got != tt.wantExports[i] {
+					t.Fatalf("got exports[%d]=%q want=%q", i, got, tt.wantExports[i])
+				}
 			}
 		})
 	}

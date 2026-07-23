@@ -83,10 +83,10 @@ func (s *KindTestSuite) ensureScopedE2EProviderConnections(ctx context.Context) 
 			AdminAuth:         ptr.To(false),
 		},
 		{
-			Path:          e2eScopedKubeconfigProvider2Path,
-			Secret:        e2eScopedKubeconfigProvider2SecretName,
-			APIExportName: ptr.To(e2eKindScopedProviderExportName),
-			AdminAuth:     ptr.To(false),
+			Path:           e2eScopedKubeconfigProvider2Path,
+			Secret:         e2eScopedKubeconfigProvider2SecretName,
+			APIExportNames: []string{e2eKindScopedProviderExportName},
+			AdminAuth:      ptr.To(false),
 		},
 		{
 			Path:              "root:platform-mesh-system",
@@ -131,14 +131,25 @@ func (s *KindTestSuite) ensureScopedE2EProviderConnections(ctx context.Context) 
 }
 
 func providerConnectionEquivalent(a, b corev1alpha1.ProviderConnection) bool {
-	return a.Path == b.Path &&
-		a.Secret == b.Secret &&
-		a.External == b.External &&
-		ptr.Deref(a.EndpointSliceName, "") == ptr.Deref(b.EndpointSliceName, "") &&
-		ptr.Deref(a.APIExportName, "") == ptr.Deref(b.APIExportName, "") &&
-		ptr.Deref(a.RawPath, "") == ptr.Deref(b.RawPath, "") &&
-		ptr.Deref(a.Namespace, "") == ptr.Deref(b.Namespace, "") &&
-		ptr.Deref(a.AdminAuth, false) == ptr.Deref(b.AdminAuth, false)
+	if a.Path != b.Path ||
+		a.Secret != b.Secret ||
+		a.External != b.External ||
+		ptr.Deref(a.EndpointSliceName, "") != ptr.Deref(b.EndpointSliceName, "") ||
+		ptr.Deref(a.RawPath, "") != ptr.Deref(b.RawPath, "") ||
+		ptr.Deref(a.Namespace, "") != ptr.Deref(b.Namespace, "") ||
+		ptr.Deref(a.AdminAuth, false) != ptr.Deref(b.AdminAuth, false) {
+		return false
+	}
+	// Compare APIExportNames slices
+	if len(a.APIExportNames) != len(b.APIExportNames) {
+		return false
+	}
+	for i, name := range a.APIExportNames {
+		if name != b.APIExportNames[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Context) {
