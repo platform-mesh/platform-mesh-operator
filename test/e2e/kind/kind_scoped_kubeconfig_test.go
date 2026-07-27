@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -140,16 +141,7 @@ func providerConnectionEquivalent(a, b corev1alpha1.ProviderConnection) bool {
 		ptr.Deref(a.AdminAuth, false) != ptr.Deref(b.AdminAuth, false) {
 		return false
 	}
-	// Compare APIExportNames slices
-	if len(a.APIExportNames) != len(b.APIExportNames) {
-		return false
-	}
-	for i, name := range a.APIExportNames {
-		if name != b.APIExportNames[i] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(a.APIExportNames, b.APIExportNames)
 }
 
 func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Context) {
