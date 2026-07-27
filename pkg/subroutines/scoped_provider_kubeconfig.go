@@ -145,103 +145,31 @@ func hasUpdatePatchVerbs(verbs []string) bool {
 	return false
 }
 
-func ensureScopedProviderServiceAccountAndRBAC(ctx context.Context, kcpClient client.Client, policyRules []rbacv1.PolicyRule, providerSuffix string) (saName string, err error) {
-	if providerSuffix == "" {
-		return "", fmt.Errorf("provider suffix for scoped RBAC is empty")
-	}
-	saName = scopedSAPrefix + providerSuffix
-	crName := scopedClusterRolePrefix + providerSuffix
-	workspaceAccessCRBName := scopedWorkspaceAccessCRBPrefix + providerSuffix
-	saNamespace := defaultScopedSANamespace
-	if err := ensureScopedNamespaceExists(ctx, kcpClient, saNamespace); err != nil {
-		return "", fmt.Errorf("ensure namespace %s for scoped ServiceAccount: %w", saNamespace, err)
-	}
-
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: saNamespace,
-			Name:      saName,
-		},
-	}
-	if err := kcpClient.Create(ctx, sa); err != nil {
-		if !kerrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("create ServiceAccount %s: %w", saName, err)
-		}
-	}
-
-	cr := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: crName},
-	}
-	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, cr, func() error {
-		cr.Rules = policyRules
-		return nil
-	}); err != nil {
-		return "", fmt.Errorf("create or update ClusterRole %s: %w", crName, err)
-	}
-
-	crb := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: crName},
-	}
-	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, crb, func() error {
-		crb.RoleRef = rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     crName,
-		}
-		crb.Subjects = []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Namespace: saNamespace,
-				Name:      saName,
-			},
-		}
-		return nil
-	}); err != nil {
-		return "", fmt.Errorf("create or update ClusterRoleBinding %s: %w", crName, err)
-	}
-
-	workspaceAccessCRB := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: workspaceAccessCRBName},
-	}
-	if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, workspaceAccessCRB, func() error {
-		workspaceAccessCRB.RoleRef = rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     kcpWorkspaceAccessRoleName,
-		}
-		workspaceAccessCRB.Subjects = []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Namespace: saNamespace,
-				Name:      saName,
-			},
-		}
-		return nil
-	}); err != nil {
-		return "", fmt.Errorf("create or update ClusterRoleBinding %s for workspace access: %w", workspaceAccessCRBName, err)
-	}
-	return saName, nil
+// ScopedRBACSpec defines a single ClusterRole + ClusterRoleBinding to create.
+type ScopedRBACSpec struct {
+	// RoleSuffix is appended to the base ClusterRole name.
+	// Empty string means use the base name without suffix.
+	RoleSuffix string
+	// Rules are the PolicyRules for this ClusterRole.
+	Rules []rbacv1.PolicyRule
 }
 
-// ensureScopedProviderServiceAccountAndMultiRBAC creates:
+// ensureScopedProviderServiceAccountAndRBAC creates:
 // - ServiceAccount named platform-mesh-provider-{providerSuffix}
-// - ClusterRole per APIExport, named platform-mesh-provider-{providerSuffix}-{sanitizedExportName}
+// - ClusterRole per ScopedRBACSpec, named platform-mesh-provider-{providerSuffix}[-{spec.RoleSuffix}]
 // - ClusterRoleBinding per ClusterRole, binding to the same ServiceAccount
 // - Workspace access ClusterRoleBinding for the ServiceAccount
-func ensureScopedProviderServiceAccountAndMultiRBAC(
+func ensureScopedProviderServiceAccountAndRBAC(
 	ctx context.Context,
 	kcpClient client.Client,
-	kcpHelper KcpHelper,
-	cfg *rest.Config,
-	exportWorkspacePath string,
-	apiExportNames []string,
 	providerSuffix string,
+	rbacSpecs []ScopedRBACSpec,
 ) (saName string, err error) {
 	if providerSuffix == "" {
 		return "", fmt.Errorf("provider suffix for scoped RBAC is empty")
 	}
-	if len(apiExportNames) == 0 {
-		return "", fmt.Errorf("apiExportNames is empty")
+	if len(rbacSpecs) == 0 {
+		return "", fmt.Errorf("rbacSpecs is empty")
 	}
 
 	saNamespace := defaultScopedSANamespace
@@ -264,27 +192,17 @@ func ensureScopedProviderServiceAccountAndMultiRBAC(
 		}
 	}
 
-	// Create ClusterRole + ClusterRoleBinding per APIExport
-	for _, exportName := range apiExportNames {
-		export, err := resolveAPIExport(ctx, kcpHelper, cfg, exportName, exportWorkspacePath)
-		if err != nil {
-			return "", fmt.Errorf("resolve APIExport %s: %w", exportName, err)
+	for _, spec := range rbacSpecs {
+		crName := scopedClusterRolePrefix + providerSuffix
+		if spec.RoleSuffix != "" {
+			crName = crName + "-" + spec.RoleSuffix
 		}
-
-		rules, err := getPolicyRulesFromAPIExport(export)
-		if err != nil {
-			return "", fmt.Errorf("get policy rules from APIExport %s: %w", exportName, err)
-		}
-
-		// If combined name exceeds 253 chars, K8s will reject it - handle if needed later
-		sanitizedExport := strings.ReplaceAll(exportName, ".", "-")
-		crName := fmt.Sprintf("%s%s-%s", scopedClusterRolePrefix, providerSuffix, sanitizedExport)
 
 		cr := &rbacv1.ClusterRole{
 			ObjectMeta: metav1.ObjectMeta{Name: crName},
 		}
 		if _, err := controllerutil.CreateOrUpdate(ctx, kcpClient, cr, func() error {
-			cr.Rules = rules
+			cr.Rules = spec.Rules
 			return nil
 		}); err != nil {
 			return "", fmt.Errorf("create or update ClusterRole %s: %w", crName, err)
@@ -549,7 +467,6 @@ func writeScopedKubeconfigToSecret(
 	caData = AppendRootShardCAPEMIfMissing(ctx, k8sClient, &operatorCfg, caData)
 
 	if endpointSliceName != "" {
-		// endpointSliceName mode: single APIExport from slice
 		var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
 		if err := kcpWorkspaceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
 			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, pcPath, err)
@@ -591,12 +508,13 @@ func writeScopedKubeconfigToSecret(
 			return errors.Wrap(err, "build RBAC from APIExport")
 		}
 
-		saName, err = ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, rules, pc.Secret)
+		saName, err = ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, pc.Secret, []ScopedRBACSpec{
+			{RoleSuffix: "", Rules: rules},
+		})
 		if err != nil {
 			return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 		}
 	} else {
-		// apiExportNames mode: create ClusterRole per export, all bound to same SA
 		hostURL, err = createScopedKubeconfigURLForAPIExportName(operatorCfg, instance, pcPath, pc.External)
 		if err != nil {
 			return err
@@ -608,9 +526,26 @@ func writeScopedKubeconfigToSecret(
 			Str("hostURL", hostURL).
 			Msg("Using scoped kubeconfig workspace cluster URL with multiple APIExports")
 
-		saName, err = ensureScopedProviderServiceAccountAndMultiRBAC(ctx, kcpWorkspaceClient, kcpHelper, cfg, pcPath, apiExportNames, pc.Secret)
+		var rbacSpecs []ScopedRBACSpec
+		for _, exportName := range apiExportNames {
+			export, err := resolveAPIExport(ctx, kcpHelper, cfg, exportName, pcPath)
+			if err != nil {
+				return fmt.Errorf("resolve APIExport %s: %w", exportName, err)
+			}
+			rules, err := getPolicyRulesFromAPIExport(export)
+			if err != nil {
+				return fmt.Errorf("get policy rules from APIExport %s: %w", exportName, err)
+			}
+			sanitizedExport := strings.ReplaceAll(exportName, ".", "-")
+			rbacSpecs = append(rbacSpecs, ScopedRBACSpec{
+				RoleSuffix: sanitizedExport,
+				Rules:      rules,
+			})
+		}
+
+		saName, err = ensureScopedProviderServiceAccountAndRBAC(ctx, kcpWorkspaceClient, pc.Secret, rbacSpecs)
 		if err != nil {
-			return errors.Wrap(err, "ensure ServiceAccount and multi-RBAC")
+			return errors.Wrap(err, "ensure ServiceAccount and RBAC")
 		}
 	}
 
