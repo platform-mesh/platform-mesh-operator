@@ -136,7 +136,8 @@ type SecretReference struct {
 
 type ProviderConnection struct {
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
-	// APIExportNames is a list of APIExport object names in ProviderConnection.Path used to build RBAC for scoped kubeconfig when endpointSliceName is not set.
+	// APIExportNames lists APIExport names in the workspace specified by Path.
+	// Used to build RBAC for scoped kubeconfig when endpointSliceName is not set.
 	// Each APIExport generates its own ClusterRole, all bound to the same ServiceAccount.
 	// +optional
 	APIExportNames []string `json:"apiExportNames,omitempty"`
