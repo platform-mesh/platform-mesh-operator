@@ -583,20 +583,6 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 			wantSlice: "core.platform-mesh.io",
 		},
 		{
-			name: "trim whitespace in apiExportNames",
-			pc: corev1alpha1.ProviderConnection{
-				APIExportNames: []string{"  my-export  ", "  another  "},
-			},
-			wantExports: []string{"my-export", "another"},
-		},
-		{
-			name: "filter empty strings in apiExportNames",
-			pc: corev1alpha1.ProviderConnection{
-				APIExportNames: []string{"valid", "", "  ", "also-valid"},
-			},
-			wantExports: []string{"valid", "also-valid"},
-		},
-		{
 			name:        "both set",
 			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("a"), APIExportNames: []string{"b"}},
 			wantErr:     true,
@@ -605,12 +591,6 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 		{
 			name:        "neither set",
 			pc:          corev1alpha1.ProviderConnection{},
-			wantErr:     true,
-			errContains: "requires endpointSliceName or apiExportNames",
-		},
-		{
-			name:        "endpointSlice whitespace and empty apiExportNames",
-			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("  "), APIExportNames: []string{"", "  "}},
 			wantErr:     true,
 			errContains: "requires endpointSliceName or apiExportNames",
 		},

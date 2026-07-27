@@ -140,6 +140,7 @@ type ProviderConnection struct {
 	// Used to build RBAC for scoped kubeconfig when endpointSliceName is not set.
 	// Each APIExport generates its own ClusterRole, all bound to the same ServiceAccount.
 	// +optional
+	// +kubebuilder:validation:items:MinLength=1
 	APIExportNames []string `json:"apiExportNames,omitempty"`
 	Path           string   `json:"path,omitempty"`
 	RawPath        *string  `json:"rawPath,omitempty"`

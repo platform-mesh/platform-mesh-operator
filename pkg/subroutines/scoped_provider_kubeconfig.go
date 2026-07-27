@@ -368,17 +368,10 @@ func resolveAPIExportVirtualWorkspaceRawPath(ctx context.Context, kcpHelper KcpH
 	return virtualWorkspacePathFromSlice(&endpointSlice)
 }
 
-// parseScopedKubeconfigExportSource validates that exactly one of endpointSliceName or apiExportNames is set (after trim).
+// parseScopedKubeconfigExportSource validates that exactly one of endpointSliceName or apiExportNames is set.
 func parseScopedKubeconfigExportSource(pc corev1alpha1.ProviderConnection) (endpointSliceName string, apiExportNames []string, err error) {
-	endpointSliceName = strings.TrimSpace(ptr.Deref(pc.EndpointSliceName, ""))
-
-	// Filter and trim APIExportNames
-	for _, name := range pc.APIExportNames {
-		trimmed := strings.TrimSpace(name)
-		if trimmed != "" {
-			apiExportNames = append(apiExportNames, trimmed)
-		}
-	}
+	endpointSliceName = ptr.Deref(pc.EndpointSliceName, "")
+	apiExportNames = pc.APIExportNames
 
 	if endpointSliceName != "" && len(apiExportNames) > 0 {
 		return "", nil, fmt.Errorf("scoped kubeconfig: set only one of endpointSliceName or apiExportNames")
