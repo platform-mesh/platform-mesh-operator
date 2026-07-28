@@ -11,7 +11,7 @@ metadata:
   {{- else }}
   name: "{{ $service }}-image"
   {{- end }}
-  namespace: {{ $.deploymentNamespace }}
+  namespace: {{ $.releaseNamespace }}
   {{- with .labels }}
   labels:
     {{- toYaml . | nindent 4 }}
