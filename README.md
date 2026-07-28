@@ -414,17 +414,17 @@ When ArgoCD runs on a separate infra cluster, deployment CRs (Application / Helm
 ```yaml
 # profile.yaml
 infra:
-  deploymentNamespace: dxp-dev    # namespace on infra cluster where ArgoCD watches
+  deploymentNamespace: argocd-apps    # namespace on infra cluster where ArgoCD watches
   deploymentTechnology: argocd
 components:
-  deploymentNamespace: dxp-dev    # same — controls Application CR metadata.namespace
+  deploymentNamespace: argocd-apps    # same — controls Application CR metadata.namespace
   services:
     my-service:
       enabled: true
       targetNamespace: platform-mesh-system  # where workloads actually deploy
 ```
 
-Result: `metadata.namespace: dxp-dev` (where the CR lives), `spec.destination.namespace: platform-mesh-system` (where workloads deploy). If omitted, both default to the PlatformMesh CR namespace.
+Result: `metadata.namespace: argocd-apps` (where the CR lives), `spec.destination.namespace: platform-mesh-system` (where workloads deploy). If omitted, both default to the PlatformMesh CR namespace.
 
 **Runtime templates** (`gotemplates/infra/runtime/` and `gotemplates/components/runtime/`) additionally receive:
 
