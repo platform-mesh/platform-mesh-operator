@@ -381,7 +381,8 @@ gotemplates/
 | Variable | Source |
 |----------|--------|
 | `releaseNamespace` | PlatformMesh instance namespace |
-| `helmReleaseNamespace` | Same as releaseNamespace |
+| `deploymentNamespace` | Profile `infra.deploymentNamespace` (falls back to instance namespace) |
+| `helmReleaseNamespace` | Same as `deploymentNamespace` |
 | `deploymentTechnology` | Profile or templateVars (`fluxcd` / `argocd`) |
 | `kubeConfigEnabled` | `true` if `--remote-runtime-kubeconfig` is set |
 | `kubeConfigSecretName` | `--remote-runtime-infra-secret-name` |
@@ -397,6 +398,7 @@ gotemplates/
 | `values.services.<name>.enabled` | Per-service enabled flag |
 | `values.services.<name>.values` | Per-service Helm values |
 | `releaseNamespace` | PlatformMesh instance namespace |
+| `deploymentNamespace` | Profile `components.deploymentNamespace` (falls back to instance namespace) |
 | `kubeConfigEnabled` | Remote runtime flag |
 | `kubeConfigSecretName` / `kubeConfigSecretKey` | Remote runtime secret ref |
 | `deploymentTechnology` | `fluxcd` or `argocd` |
