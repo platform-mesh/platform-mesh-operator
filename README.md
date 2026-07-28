@@ -407,6 +407,25 @@ gotemplates/
 | `port` | From `spec.exposure.port` |
 | `baseDomainWithPort` | Combined domain:port (port omitted if 443) |
 
+##### deploymentNamespace (Two-Cluster Setup)
+
+When ArgoCD runs on a separate infra cluster, deployment CRs (Application / HelmRelease) must be created in a different namespace than where workloads deploy. Set `deploymentNamespace` in the profile to control where these CRs are placed:
+
+```yaml
+# profile.yaml
+infra:
+  deploymentNamespace: dxp-dev    # namespace on infra cluster where ArgoCD watches
+  deploymentTechnology: argocd
+components:
+  deploymentNamespace: dxp-dev    # same — controls Application CR metadata.namespace
+  services:
+    my-service:
+      enabled: true
+      targetNamespace: platform-mesh-system  # where workloads actually deploy
+```
+
+Result: `metadata.namespace: dxp-dev` (where the CR lives), `spec.destination.namespace: platform-mesh-system` (where workloads deploy). If omitted, both default to the PlatformMesh CR namespace.
+
 **Runtime templates** (`gotemplates/infra/runtime/` and `gotemplates/components/runtime/`) additionally receive:
 
 | Variable | Source |
