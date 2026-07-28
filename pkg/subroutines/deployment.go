@@ -374,10 +374,10 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
 	}
 
-	// Ensure helmReleaseNamespace is set: prefer deploymentNamespace if configured, else inst.Namespace
+	// Ensure helmReleaseNamespace is set: prefer deploymentNamespace, then existing helmReleaseNamespace, then inst.Namespace
 	if deployNs, ok := tmplVars["deploymentNamespace"].(string); ok && deployNs != "" {
 		tmplVars["helmReleaseNamespace"] = deployNs
-	} else {
+	} else if _, ok := tmplVars["helmReleaseNamespace"]; !ok {
 		tmplVars["helmReleaseNamespace"] = inst.Namespace
 	}
 
