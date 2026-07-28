@@ -5,7 +5,7 @@ apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
   name: "{{ $service }}-chart"
-  namespace: {{ $.releaseNamespace }}
+  namespace: {{ $.deploymentNamespace }}
   labels:
     artifact: chart
     {{- if $config.gitRepo }}

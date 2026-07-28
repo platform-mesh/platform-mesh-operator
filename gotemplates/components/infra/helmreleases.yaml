@@ -5,7 +5,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: {{ $service }}
-  namespace: {{ $.releaseNamespace }}
+  namespace: {{ $.deploymentNamespace }}
   labels:
     core.platform-mesh.io/operator-created: "true"
 spec:
@@ -38,7 +38,7 @@ spec:
   chartRef:
     kind: OCIRepository
     name: {{ $service }}
-    namespace: {{ $.releaseNamespace }}
+    namespace: {{ $.deploymentNamespace }}
   {{- end }}
   interval: 1m
   releaseName: {{ $service }}
