@@ -127,8 +127,8 @@ github.com/kcp-dev/multicluster-provider v0.7.1 h1:Adqvt+ECTgVizkam+QxzNi1mun1Ii
 github.com/kcp-dev/multicluster-provider v0.7.1/go.mod h1:JB+ntaOpqhRFDRd+O7AYM5QZvt8/I/Xeo7SrW7+77EQ=
 github.com/kcp-dev/sdk v0.31.2 h1:rkC17VLz3qudi2NPBGQ3Wca3Pf1cuhgFeYtvzOk2g/w=
 github.com/kcp-dev/sdk v0.31.2/go.mod h1:kpnItkVRkVuFgs8382zlrPgkvJdDZZiRTffQrFTPedY=
-github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3JH2co=
-github.com/klauspost/compress v1.18.1/go.mod h1:ZQFFVG+MdnR0P+l6wpXgIL4NTtwiKIdBnrBd8Nrxr+0=
+github.com/klauspost/compress v1.18.7 h1:aUyZsS4kH3QTKurYhAOwAHxllVPnOthb3vPfnF1Ehjw=
+github.com/klauspost/compress v1.18.7/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=

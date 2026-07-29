@@ -374,8 +374,10 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
 	}
 
-	// Ensure helmReleaseNamespace is set (from templateVars or use releaseNamespace)
-	if _, ok := tmplVars["helmReleaseNamespace"]; !ok {
+	// Ensure helmReleaseNamespace is set: prefer deploymentNamespace, then existing helmReleaseNamespace, then inst.Namespace
+	if deployNs, ok := tmplVars["deploymentNamespace"].(string); ok && deployNs != "" {
+		tmplVars["helmReleaseNamespace"] = deployNs
+	} else if _, ok := tmplVars["helmReleaseNamespace"]; !ok {
 		tmplVars["helmReleaseNamespace"] = inst.Namespace
 	}
 
@@ -498,7 +500,11 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 
 	// Add instance-specific fields
 	baseVars["releaseNamespace"] = inst.Namespace
-	baseVars["helmReleaseNamespace"] = inst.Namespace // Some templates use this
+	if deployNs, ok := baseVars["deploymentNamespace"].(string); ok && deployNs != "" {
+		baseVars["helmReleaseNamespace"] = deployNs
+	} else {
+		baseVars["helmReleaseNamespace"] = inst.Namespace
+	}
 	baseVars["kubeConfigEnabled"] = r.cfgOperator.RemoteRuntime.IsEnabled()
 	if r.cfgOperator.RemoteRuntime.IsEnabled() {
 		baseVars["kubeConfigSecretName"] = r.cfgOperator.RemoteRuntime.InfraSecretName
@@ -634,6 +640,12 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 	data := map[string]interface{}{
 		"values":           values,
 		"releaseNamespace": inst.Namespace,
+	}
+	// deploymentNamespace: where deployment CRs live (configurable via profile)
+	if deployNs, ok := values["deploymentNamespace"].(string); ok && deployNs != "" {
+		data["deploymentNamespace"] = deployNs
+	} else {
+		data["deploymentNamespace"] = inst.Namespace
 	}
 
 	// Add kubeConfig fields for remote PlatformMesh support

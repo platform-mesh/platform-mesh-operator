@@ -201,6 +201,18 @@ components:
   services: {}
 `
 
+const testProfileArgoCDWithDeploymentNamespace = `
+infra:
+  deploymentTechnology: argocd
+  deploymentNamespace: custom-deploy-ns
+  certManager:
+    enabled: true
+    name: cert-manager
+    targetNamespace: cert-manager
+components:
+  services: {}
+`
+
 func (s *DeploymentProcessTestSuite) newFluxCDReadyCertManager(namespace string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"})
@@ -474,4 +486,58 @@ func (s *DeploymentProcessTestSuite) Test_Process_RootShardNotReady() {
 
 	s.NoError(err)
 	s.False(result.IsContinue(), "expected StopWithRequeue when RootShard not found")
+}
+
+func (s *DeploymentProcessTestSuite) Test_Process_DeploymentNamespace() {
+	ns := "platform-mesh-system"
+	operatorCfg := s.newOperatorConfig()
+	ctx := s.newContext(operatorCfg)
+
+	inst := &corev1alpha1.PlatformMesh{
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
+		Spec: corev1alpha1.PlatformMeshSpec{
+			Exposure: &corev1alpha1.ExposureConfig{
+				BaseDomain: "localhost",
+				Port:       8443,
+				Protocol:   "https",
+			},
+		},
+	}
+
+	profileCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh-profile", Namespace: ns},
+		Data:       map[string]string{profileConfigMapKey: testProfileArgoCDWithDeploymentNamespace},
+	}
+
+	cl := fake.NewClientBuilder().
+		WithScheme(s.scheme).
+		WithObjects(inst, profileCM).
+		WithStatusSubresource(inst).
+		Build()
+
+	s.Require().NoError(cl.Create(ctx, s.newArgoCDReadyCertManager("custom-deploy-ns")))
+	s.Require().NoError(cl.Create(ctx, s.newReadyRootShard(ns)))
+	s.Require().NoError(cl.Create(ctx, s.newReadyFrontProxy(ns)))
+	s.seedCertManagerCRDs(ctx, cl)
+
+	sub := &DeploymentSubroutine{
+		clientRuntime:            cl,
+		clientInfra:              cl,
+		cfg:                      &pmconfig.CommonServiceConfig{IsLocal: true},
+		cfgOperator:              &operatorCfg,
+		gotemplatesInfraDir:      filepath.Join(s.tmpDir, "gotemplates/infra"),
+		gotemplatesComponentsDir: filepath.Join(s.tmpDir, "gotemplates/components"),
+		workspaceDirectory:       filepath.Join(s.tmpDir, "manifests/k8s"),
+	}
+
+	result, err := sub.Process(ctx, inst)
+
+	s.NoError(err)
+	s.True(result.IsContinue(), "expected OK/continue result, got stop")
+
+	// Verify the infra template rendered with helmReleaseNamespace = custom-deploy-ns
+	var cm corev1.ConfigMap
+	err = cl.Get(ctx, client.ObjectKey{Name: "cert-manager-argo-rendered", Namespace: "custom-deploy-ns"}, &cm)
+	s.NoError(err, "ConfigMap should exist in custom-deploy-ns (the deploymentNamespace)")
+	s.Equal("custom-deploy-ns", cm.Namespace)
 }
