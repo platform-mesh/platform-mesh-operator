@@ -381,7 +381,8 @@ gotemplates/
 | Variable | Source |
 |----------|--------|
 | `releaseNamespace` | PlatformMesh instance namespace |
-| `helmReleaseNamespace` | Same as releaseNamespace |
+| `deploymentNamespace` | Profile `infra.deploymentNamespace` (falls back to instance namespace) |
+| `helmReleaseNamespace` | Same as `deploymentNamespace` |
 | `deploymentTechnology` | Profile or templateVars (`fluxcd` / `argocd`) |
 | `kubeConfigEnabled` | `true` if `--remote-runtime-kubeconfig` is set |
 | `kubeConfigSecretName` | `--remote-runtime-infra-secret-name` |
@@ -397,6 +398,7 @@ gotemplates/
 | `values.services.<name>.enabled` | Per-service enabled flag |
 | `values.services.<name>.values` | Per-service Helm values |
 | `releaseNamespace` | PlatformMesh instance namespace |
+| `deploymentNamespace` | Profile `components.deploymentNamespace` (falls back to instance namespace) |
 | `kubeConfigEnabled` | Remote runtime flag |
 | `kubeConfigSecretName` / `kubeConfigSecretKey` | Remote runtime secret ref |
 | `deploymentTechnology` | `fluxcd` or `argocd` |
@@ -404,6 +406,25 @@ gotemplates/
 | `baseDomain` | From `spec.exposure.baseDomain` |
 | `port` | From `spec.exposure.port` |
 | `baseDomainWithPort` | Combined domain:port (port omitted if 443) |
+
+##### deploymentNamespace (Two-Cluster Setup)
+
+When ArgoCD runs on a separate infra cluster, deployment CRs (Application / HelmRelease) must be created in a different namespace than where workloads deploy. Set `deploymentNamespace` in the profile to control where these CRs are placed:
+
+```yaml
+# profile.yaml
+infra:
+  deploymentNamespace: argocd-apps    # namespace on infra cluster where ArgoCD watches
+  deploymentTechnology: argocd
+components:
+  deploymentNamespace: argocd-apps    # same — controls Application CR metadata.namespace
+  services:
+    my-service:
+      enabled: true
+      targetNamespace: platform-mesh-system  # where workloads actually deploy
+```
+
+Result: `metadata.namespace: argocd-apps` (where the CR lives), `spec.destination.namespace: platform-mesh-system` (where workloads deploy). If omitted, both default to the PlatformMesh CR namespace.
 
 **Runtime templates** (`gotemplates/infra/runtime/` and `gotemplates/components/runtime/`) additionally receive:
 

@@ -5,7 +5,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: {{ $service}}
-  namespace: {{ $.releaseNamespace }}
+  namespace: {{ $.deploymentNamespace }}
   labels:
     core.platform-mesh.io/operator-created: "true"
   annotations:
