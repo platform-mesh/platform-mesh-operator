@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
@@ -278,6 +279,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*corev1.ConfigMap); ok {
+						return errors.New("not found")
+					}
 					unstr := obj.(*unstructured.Unstructured)
 					unstr.SetName(key.Name)
 					unstr.SetNamespace(key.Namespace)
@@ -462,13 +466,16 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return errors.New("not found")
+			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
 			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
 			return nil
 		},
-	).Times(1)
+	)
 	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
@@ -552,13 +559,16 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return errors.New("not found")
+			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
 			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
 			return nil
 		},
-	).Times(1)
+	)
 	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
@@ -603,7 +613,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error")).Times(1)
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
 
 	result, err := subroutine.Process(ctx, inst)
 	s.NotNil(err)
@@ -645,13 +655,16 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return errors.New("not found")
+			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
 			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
 			return nil
 		},
-	).Times(1)
+	)
 	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("update error")).Times(1)
 
 	result, err := subroutine.Process(ctx, inst)
@@ -724,6 +737,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return errors.New("not found")
+			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
@@ -1113,4 +1129,136 @@ func (s *ResourceTestSuite) Test_SetRuntimeClient() {
 	sub := NewResourceSubroutine(s.clientMock, nil, nil)
 	sub.SetRuntimeClient(clientMock)
 	s.Equal(clientMock, sub.clientRuntime)
+}
+
+func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_InfraDeploymentNamespace() {
+	ctx := context.TODO()
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+		return key.Name == "platform-mesh-profile" && key.Namespace == "platform-mesh-system"
+	}), mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: dxp-dev\n  deploymentTechnology: argocd\n"}
+			return nil
+		},
+	)
+
+	log := logger.LoadLoggerFromContext(ctx)
+	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Equal("dxp-dev", ns)
+}
+
+func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeploymentNamespace() {
+	ctx := context.TODO()
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+		return key.Name == "platform-mesh-profile" && key.Namespace == "platform-mesh-system"
+	}), mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{"profile.yaml": "components:\n  deploymentNamespace: dxp-int\n"}
+			return nil
+		},
+	)
+
+	log := logger.LoadLoggerFromContext(ctx)
+	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Equal("dxp-int", ns)
+}
+
+func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_Fallback() {
+	ctx := context.TODO()
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("not found"))
+
+	log := logger.LoadLoggerFromContext(ctx)
+	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Equal("platform-mesh-system", ns)
+}
+
+func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_NoDeploymentNamespace() {
+	ctx := context.TODO()
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+		return key.Name == "platform-mesh-profile" && key.Namespace == "platform-mesh-system"
+	}), mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			cm := obj.(*corev1.ConfigMap)
+			cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
+			return nil
+		},
+	)
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+		return key.Name == "platform-mesh-system-profile" && key.Namespace == "platform-mesh-system"
+	}), mock.Anything, mock.Anything).Return(errors.New("not found"))
+
+	log := logger.LoadLoggerFromContext(ctx)
+	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Equal("platform-mesh-system", ns)
+}
+
+func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "keycloak-chart",
+				"namespace": "platform-mesh-system",
+				"annotations": map[string]interface{}{
+					"artifact": "chart",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "25.2.3",
+					"access": map[string]interface{}{
+						"type":           "helmChart",
+						"helmRepository": "https://charts.bitnami.com/bitnami",
+					},
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	sub := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
+				cm := obj.(*corev1.ConfigMap)
+				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: dxp-dev\n  deploymentTechnology: argocd\n"}
+				return nil
+			}
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			_ = unstructured.SetNestedField(unstr.Object, "https://old-repo.com", "spec", "source", "repoURL")
+			_ = unstructured.SetNestedField(unstr.Object, "1.0.0", "spec", "source", "targetRevision")
+			return nil
+		},
+	)
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		unstr := obj.(*unstructured.Unstructured)
+		return unstr.GetNamespace() == "dxp-dev" && unstr.GetName() == "keycloak"
+	}), mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	result, err := sub.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
 }
