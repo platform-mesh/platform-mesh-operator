@@ -22,7 +22,10 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
-const requeueShort = 5 * time.Second
+const (
+	requeueShort       = 5 * time.Second
+	profileConfigMapKey = "profile.yaml"
+)
 
 var profileConfigMapNames = []string{"platform-mesh-profile", "platform-mesh-system-profile"}
 
@@ -673,7 +676,7 @@ func (r *ResourceSubroutine) getAppNamespaceFromProfile(ctx context.Context, res
 			continue
 		}
 
-		profileYAML, ok := configMap.Data["profile.yaml"]
+		profileYAML, ok := configMap.Data[profileConfigMapKey]
 		if !ok {
 			continue
 		}
@@ -743,11 +746,11 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx cont
 			continue
 		}
 
-		log.Info().Str("configMap", cmName).Str("namespace", namespace).Msg("Found ConfigMap, reading profile.yaml")
+		log.Info().Str("configMap", cmName).Str("namespace", namespace).Msg("Found ConfigMap, reading profile")
 
-		profileYAML, ok := configMap.Data["profile.yaml"]
+		profileYAML, ok := configMap.Data[profileConfigMapKey]
 		if !ok {
-			log.Warn().Str("configMap", cmName).Msg("ConfigMap found but profile.yaml key missing")
+			log.Warn().Str("configMap", cmName).Msg("ConfigMap found but profile key missing")
 			continue
 		}
 
