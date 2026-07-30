@@ -1144,14 +1144,14 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_InfraDeploymentNames
 	}), mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			cm := obj.(*corev1.ConfigMap)
-			cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: dxp-dev\n  deploymentTechnology: argocd\n"}
+			cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: my-apps\n  deploymentTechnology: argocd\n"}
 			return nil
 		},
 	)
 
 	log := logger.LoadLoggerFromContext(ctx)
 	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
-	s.Equal("dxp-dev", ns)
+	s.Equal("my-apps", ns)
 }
 
 func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeploymentNamespace() {
@@ -1164,14 +1164,14 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeployment
 	}), mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			cm := obj.(*corev1.ConfigMap)
-			cm.Data = map[string]string{"profile.yaml": "components:\n  deploymentNamespace: dxp-int\n"}
+			cm.Data = map[string]string{"profile.yaml": "components:\n  deploymentNamespace: my-apps-int\n"}
 			return nil
 		},
 	)
 
 	log := logger.LoadLoggerFromContext(ctx)
 	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
-	s.Equal("dxp-int", ns)
+	s.Equal("my-apps-int", ns)
 }
 
 func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_Fallback() {
@@ -1245,7 +1245,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
 				cm := obj.(*corev1.ConfigMap)
-				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: dxp-dev\n  deploymentTechnology: argocd\n"}
+				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: my-apps\n  deploymentTechnology: argocd\n"}
 				return nil
 			}
 			unstr := obj.(*unstructured.Unstructured)
@@ -1258,7 +1258,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace
 	)
 	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
-		return unstr.GetNamespace() == "dxp-dev" && unstr.GetName() == "keycloak"
+		return unstr.GetNamespace() == "my-apps" && unstr.GetName() == "keycloak"
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	result, err := sub.Process(ctx, inst)
