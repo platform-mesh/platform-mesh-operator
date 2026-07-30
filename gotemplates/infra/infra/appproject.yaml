@@ -19,6 +19,9 @@ spec:
       server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
   sourceNamespaces:
     - {{ .releaseNamespace }}
+{{- if and .helmReleaseNamespace (ne .helmReleaseNamespace .releaseNamespace) }}
+    - {{ .helmReleaseNamespace }}
+{{- end }}
   clusterResourceWhitelist:
     - group: '*'
       kind: '*'
