@@ -346,6 +346,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(errors.New("not found")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			gitRepo := obj.(*unstructured.Unstructured)
@@ -406,6 +407,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(errors.New("not found")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 
 	result, err := s.subroutine.Process(ctx, inst)
@@ -823,6 +825,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(errors.New("not found")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 
 	result, err := s.subroutine.Process(ctx, inst)

@@ -24,6 +24,8 @@ import (
 
 const requeueShort = 5 * time.Second
 
+var profileConfigMapNames = []string{"platform-mesh-profile", "platform-mesh-system-profile"}
+
 var ociRepoGvk = schema.GroupVersionKind{
 	Group:   "source.toolkit.fluxcd.io",
 	Version: "v1",
@@ -535,7 +537,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmRepoGvk)
 	obj.SetName(trimPMSuffixes(inst.GetName()))
-	obj.SetNamespace(inst.GetNamespace())
+	obj.SetNamespace(r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log))
 	_ = unstructured.SetNestedField(obj.Object, url, "spec", "url")
 	_ = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
 	_ = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
@@ -583,7 +585,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(ociRepoGvk)
 	obj.SetName(trimPMSuffixes(inst.GetName()))
-	obj.SetNamespace(inst.GetNamespace())
+	obj.SetNamespace(r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log))
 
 	// Set desired fields
 	if err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag"); err != nil {
@@ -635,7 +637,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 
 	obj.SetGroupVersionKind(gitRepoGvk)
 	obj.SetName(trimPMSuffixes(inst.GetName()))
-	obj.SetNamespace(inst.GetNamespace())
+	obj.SetNamespace(r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log))
 
 	// Set desired fields
 	if err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit"); err != nil {
@@ -663,7 +665,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 // If the profile sets a deploymentNamespace (infra or components section), use that.
 // Otherwise fall back to the Resource CR's own namespace.
 func (r *ResourceSubroutine) getAppNamespaceFromProfile(ctx context.Context, resourceNamespace string, log *logger.Logger) string {
-	configMapNames := []string{"platform-mesh-profile", "platform-mesh-system-profile"}
+	configMapNames := profileConfigMapNames
 
 	for _, cmName := range configMapNames {
 		configMap := &corev1.ConfigMap{}
@@ -732,7 +734,7 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Cont
 }
 
 func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
-	configMapNames := []string{"platform-mesh-profile", "platform-mesh-system-profile"}
+	configMapNames := profileConfigMapNames
 
 	for _, cmName := range configMapNames {
 		configMap := &corev1.ConfigMap{}
