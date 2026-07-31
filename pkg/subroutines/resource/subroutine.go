@@ -10,6 +10,7 @@ import (
 	subroutineslib "github.com/platform-mesh/subroutines"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -22,7 +23,12 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
-const requeueShort = 5 * time.Second
+const (
+	requeueShort       = 5 * time.Second
+	profileConfigMapKey = "profile.yaml"
+)
+
+var profileConfigMapNames = []string{"platform-mesh-profile", "platform-mesh-system-profile"}
 
 var ociRepoGvk = schema.GroupVersionKind{
 	Group:   "source.toolkit.fluxcd.io",
@@ -208,7 +214,11 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 }
 
 func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutineslib.Result, error) {
-	name, namespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), inst.GetNamespace())
+	defaultNamespace, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
+	name, namespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), defaultNamespace)
 	updatePath := append([]string{"spec", "values"}, parsePath(getMetadataValue(inst, "path"), "image.tag")...)
 	versionPath := parsePath(getMetadataValue(inst, "version-path"), "status.resource.version")
 
@@ -255,12 +265,16 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	}
 	log.Debug().Str("repoURL", repoURL).Str("targetRevision", targetRevision).Str("type", chartType).Msg("Resolved ArgoCD source")
 
+	appNamespace, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
 	appName := trimPMSuffixes(inst.GetName())
 	existingApp := &unstructured.Unstructured{}
 	existingApp.SetGroupVersionKind(argocdApplicationGvk)
-	if err := r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: inst.GetNamespace()}, existingApp); err != nil {
-		log.Info().Err(err).Msg("Application not found, waiting for DeploymentSubroutine to create it")
-		return subroutineslib.OK(), fmt.Errorf("application %s/%s not found", inst.GetNamespace(), appName)
+	if err := r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp); err != nil {
+		log.Info().Err(err).Str("namespace", appNamespace).Msg("Application not found, waiting for DeploymentSubroutine to create it")
+		return subroutineslib.OK(), fmt.Errorf("application %s/%s not found", appNamespace, appName)
 	}
 
 	currentRevision, _, _ := unstructured.NestedString(existingApp.Object, "spec", "source", "targetRevision")
@@ -272,7 +286,7 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	patchObj := &unstructured.Unstructured{}
 	patchObj.SetGroupVersionKind(argocdApplicationGvk)
 	patchObj.SetName(appName)
-	patchObj.SetNamespace(inst.GetNamespace())
+	patchObj.SetNamespace(appNamespace)
 	if err := unstructured.SetNestedField(patchObj.Object, targetRevision, "spec", "source", "targetRevision"); err != nil {
 		return subroutineslib.OK(), err
 	}
@@ -365,7 +379,11 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutineslib.Result, error) {
-	appName, appNamespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), inst.GetNamespace())
+	defaultNamespace, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
+	appName, appNamespace := parseNamespacedName(getMetadataValue(inst, "for"), inst.GetName(), defaultNamespace)
 	updatePath := parsePath(getMetadataValue(inst, "path"), "image.tag")
 	pathStr := strings.Join(updatePath, ".")
 
@@ -497,7 +515,10 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	}
 
 	name := trimPMSuffixes(inst.GetName())
-	namespace := inst.GetNamespace()
+	namespace, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
 
 	// GET the existing HelmRelease so we can do a merge update instead of SSA,
 	// which would require a full valid spec (chart.spec.chart, chart.spec.sourceRef, etc.).
@@ -532,7 +553,11 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(helmRepoGvk)
 	obj.SetName(trimPMSuffixes(inst.GetName()))
-	obj.SetNamespace(inst.GetNamespace())
+	ns, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
+	obj.SetNamespace(ns)
 	_ = unstructured.SetNestedField(obj.Object, url, "spec", "url")
 	_ = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
 	_ = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
@@ -580,7 +605,11 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(ociRepoGvk)
 	obj.SetName(trimPMSuffixes(inst.GetName()))
-	obj.SetNamespace(inst.GetNamespace())
+	ns, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
+	obj.SetNamespace(ns)
 
 	// Set desired fields
 	if err := unstructured.SetNestedField(obj.Object, version, "spec", "ref", "tag"); err != nil {
@@ -632,7 +661,11 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 
 	obj.SetGroupVersionKind(gitRepoGvk)
 	obj.SetName(trimPMSuffixes(inst.GetName()))
-	obj.SetNamespace(inst.GetNamespace())
+	ns, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
+	if err != nil {
+		return subroutineslib.OK(), err
+	}
+	obj.SetNamespace(ns)
 
 	// Set desired fields
 	if err := unstructured.SetNestedField(obj.Object, commit, "spec", "ref", "commit"); err != nil {
@@ -654,6 +687,49 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 		return subroutineslib.OK(), err
 	}
 	return subroutineslib.OK(), nil
+}
+
+// getAppNamespaceFromProfile returns the namespace where Application CRs are deployed.
+// If the profile sets a deploymentNamespace (infra or components section), use that.
+// Otherwise fall back to the Resource CR's own namespace.
+func (r *ResourceSubroutine) getAppNamespaceFromProfile(ctx context.Context, resourceNamespace string, log *logger.Logger) (string, error) {
+	configMapNames := profileConfigMapNames
+
+	for _, cmName := range configMapNames {
+		configMap := &corev1.ConfigMap{}
+		if err := r.clientRuntime.Get(ctx, types.NamespacedName{Name: cmName, Namespace: resourceNamespace}, configMap); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return "", fmt.Errorf("failed to read profile ConfigMap %s/%s: %w", resourceNamespace, cmName, err)
+		}
+
+		profileYAML, ok := configMap.Data[profileConfigMapKey]
+		if !ok {
+			continue
+		}
+
+		var profile map[string]interface{}
+		if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
+			continue
+		}
+
+		if infra, ok := profile["infra"].(map[string]interface{}); ok {
+			if ns, ok := infra["deploymentNamespace"].(string); ok && ns != "" {
+				log.Debug().Str("appNamespace", ns).Str("source", "infra.deploymentNamespace").Msg("Resolved app namespace from profile")
+				return ns, nil
+			}
+		}
+
+		if components, ok := profile["components"].(map[string]interface{}); ok {
+			if ns, ok := components["deploymentNamespace"].(string); ok && ns != "" {
+				log.Debug().Str("appNamespace", ns).Str("source", "components.deploymentNamespace").Msg("Resolved app namespace from profile")
+				return ns, nil
+			}
+		}
+	}
+
+	return resourceNamespace, nil
 }
 
 func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
@@ -689,20 +765,23 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Cont
 }
 
 func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
-	configMapNames := []string{"platform-mesh-profile", "platform-mesh-system-profile"}
+	configMapNames := profileConfigMapNames
 
 	for _, cmName := range configMapNames {
 		configMap := &corev1.ConfigMap{}
 		if err := r.clientRuntime.Get(ctx, types.NamespacedName{Name: cmName, Namespace: namespace}, configMap); err != nil {
-			log.Debug().Err(err).Str("configMap", cmName).Str("namespace", namespace).Msg("ConfigMap not found, trying next")
-			continue
+			if apierrors.IsNotFound(err) {
+				log.Debug().Str("configMap", cmName).Str("namespace", namespace).Msg("Profile ConfigMap not found, trying next")
+				continue
+			}
+			return "", fmt.Errorf("failed to read profile ConfigMap %s/%s: %w", namespace, cmName, err)
 		}
 
-		log.Info().Str("configMap", cmName).Str("namespace", namespace).Msg("Found ConfigMap, reading profile.yaml")
+		log.Info().Str("configMap", cmName).Str("namespace", namespace).Msg("Found ConfigMap, reading profile")
 
-		profileYAML, ok := configMap.Data["profile.yaml"]
+		profileYAML, ok := configMap.Data[profileConfigMapKey]
 		if !ok {
-			log.Warn().Str("configMap", cmName).Msg("ConfigMap found but profile.yaml key missing")
+			log.Warn().Str("configMap", cmName).Msg("ConfigMap found but profile key missing")
 			continue
 		}
 
