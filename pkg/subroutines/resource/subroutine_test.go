@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -280,7 +282,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 					if _, ok := obj.(*corev1.ConfigMap); ok {
-						return errors.New("not found")
+						return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 					}
 					unstr := obj.(*unstructured.Unstructured)
 					unstr.SetName(key.Name)
@@ -346,7 +348,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(errors.New("not found")).Maybe()
+	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 			gitRepo := obj.(*unstructured.Unstructured)
@@ -407,7 +409,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(errors.New("not found")).Maybe()
+	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 
 	result, err := s.subroutine.Process(ctx, inst)
@@ -469,7 +471,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
-				return errors.New("not found")
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
@@ -562,7 +564,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
-				return errors.New("not found")
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
@@ -658,7 +660,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
-				return errors.New("not found")
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
@@ -740,7 +742,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
-				return errors.New("not found")
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
@@ -825,7 +827,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(errors.New("not found")).Maybe()
+	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("client error"))
 
 	result, err := s.subroutine.Process(ctx, inst)
@@ -1150,7 +1152,8 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_InfraDeploymentNames
 	)
 
 	log := logger.LoadLoggerFromContext(ctx)
-	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	ns, err := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Require().NoError(err)
 	s.Equal("my-apps", ns)
 }
 
@@ -1170,7 +1173,8 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeployment
 	)
 
 	log := logger.LoadLoggerFromContext(ctx)
-	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	ns, err := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Require().NoError(err)
 	s.Equal("my-apps-int", ns)
 }
 
@@ -1179,10 +1183,11 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_Fallback() {
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("not found"))
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "platform-mesh-profile"))
 
 	log := logger.LoadLoggerFromContext(ctx)
-	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	ns, err := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Require().NoError(err)
 	s.Equal("platform-mesh-system", ns)
 }
 
@@ -1202,10 +1207,11 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_NoDeploymentNamespac
 	)
 	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
 		return key.Name == "platform-mesh-system-profile" && key.Namespace == "platform-mesh-system"
-	}), mock.Anything, mock.Anything).Return(errors.New("not found"))
+	}), mock.Anything, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "platform-mesh-system-profile"))
 
 	log := logger.LoadLoggerFromContext(ctx)
-	ns := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	ns, err := sub.getAppNamespaceFromProfile(ctx, "platform-mesh-system", log)
+	s.Require().NoError(err)
 	s.Equal("platform-mesh-system", ns)
 }
 
