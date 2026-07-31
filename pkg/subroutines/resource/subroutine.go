@@ -10,6 +10,7 @@ import (
 	subroutineslib "github.com/platform-mesh/subroutines"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -673,6 +674,9 @@ func (r *ResourceSubroutine) getAppNamespaceFromProfile(ctx context.Context, res
 	for _, cmName := range configMapNames {
 		configMap := &corev1.ConfigMap{}
 		if err := r.clientRuntime.Get(ctx, types.NamespacedName{Name: cmName, Namespace: resourceNamespace}, configMap); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Warn().Err(err).Str("configMap", cmName).Str("namespace", resourceNamespace).Msg("Unexpected error reading profile ConfigMap")
+			}
 			continue
 		}
 
@@ -742,7 +746,11 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx cont
 	for _, cmName := range configMapNames {
 		configMap := &corev1.ConfigMap{}
 		if err := r.clientRuntime.Get(ctx, types.NamespacedName{Name: cmName, Namespace: namespace}, configMap); err != nil {
-			log.Debug().Err(err).Str("configMap", cmName).Str("namespace", namespace).Msg("ConfigMap not found, trying next")
+			if apierrors.IsNotFound(err) {
+				log.Debug().Str("configMap", cmName).Str("namespace", namespace).Msg("Profile ConfigMap not found, trying next")
+			} else {
+				log.Warn().Err(err).Str("configMap", cmName).Str("namespace", namespace).Msg("Unexpected error reading profile ConfigMap")
+			}
 			continue
 		}
 
