@@ -43,11 +43,29 @@ spec:
                                   "namespace": null,
                                   "ui": {
                                       "listView": {
-                                          "deletable": true,
                                           "fields": [
                                               {
                                                   "label": "Name",
                                                   "property": "metadata.name"
+                                              },
+                                              {
+                                                  "property": "metadata.name",
+                                                  "uiSettings": {
+                                                      "align": "end",
+                                                      "displayAs": "button",
+                                                      "columnWidth": "90px",
+                                                      "buttonSettings": {
+                                                          "icon": "decline",
+                                                          "design": "Transparent",
+                                                          "action": "delete-resource",
+                                                          "tooltip": "Delete"
+                                                      }
+                                                  },
+                                                  "group": {
+                                                      "name": "actions",
+                                                      "label": "",
+                                                      "multiline": false
+                                                  }
                                               }
                                           ]
                                       },
