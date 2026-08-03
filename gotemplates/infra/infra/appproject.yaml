@@ -18,9 +18,10 @@ spec:
     - namespace: etcd-druid-system
       server: {{ .destinationServer | default "https://kubernetes.default.svc" }}
   sourceNamespaces:
-    - {{ .releaseNamespace }}
-{{- if and .helmReleaseNamespace (ne .helmReleaseNamespace .releaseNamespace) }}
+{{- if .helmReleaseNamespace }}
     - {{ .helmReleaseNamespace }}
+{{- else }}
+    - {{ .releaseNamespace }}
 {{- end }}
   clusterResourceWhitelist:
     - group: '*'
