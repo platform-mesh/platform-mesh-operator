@@ -1,11 +1,34 @@
 package subroutines
 
 import (
+	"path/filepath"
 	"testing"
 
+	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// renderGotemplateDocs renders a gotemplates/ file through the operator's own
+// renderTemplateFile and returns every YAML document as a generic map.
+func renderGotemplateDocs(t *testing.T, relPath string, data map[string]interface{}) []map[string]interface{} {
+	t.Helper()
+	path := filepath.Join("..", "..", "gotemplates", filepath.FromSlash(relPath))
+
+	cfg := logger.DefaultConfig()
+	cfg.NoJSON = true
+	log, err := logger.New(cfg)
+	require.NoError(t, err)
+
+	objs, err := (&DeploymentSubroutine{}).renderTemplateFile(path, data, log)
+	require.NoError(t, err)
+
+	out := make([]map[string]interface{}, len(objs))
+	for i, obj := range objs {
+		out[i] = obj.Object
+	}
+	return out
+}
 
 func Test_OcmImageResourcesTemplate(t *testing.T) {
 	data := map[string]interface{}{
