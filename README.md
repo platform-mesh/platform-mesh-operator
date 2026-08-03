@@ -378,11 +378,11 @@ gotemplates/
 
 **Infra templates** (`gotemplates/infra/infra/`) receive the profile's `infra` section merged with:
 
-| Variable | Source |
-|----------|--------|
-| `releaseNamespace` | PlatformMesh instance namespace |
-| `deploymentNamespace` | Profile `infra.deploymentNamespace` (falls back to instance namespace) |
-| `helmReleaseNamespace` | Same as `deploymentNamespace` |
+| Variable | Source | Target cluster |
+|----------|--------|----------------|
+| `releaseNamespace` | PlatformMesh instance namespace (e.g., `platform-mesh-system`) | Runtime — namespace where OCM Resource CRs are created |
+| `deploymentNamespace` | Profile `infra.deploymentNamespace` (falls back to instance namespace) | Infra |
+| `helmReleaseNamespace` | Same as `deploymentNamespace` | Infra — namespace where ArgoCD/Flux apps are created |
 | `deploymentTechnology` | Profile or templateVars (`fluxcd` / `argocd`) |
 | `kubeConfigEnabled` | `true` if `--remote-runtime-kubeconfig` is set |
 | `kubeConfigSecretName` | `--remote-runtime-infra-secret-name` |
@@ -426,7 +426,7 @@ components:
 
 Result: `metadata.namespace: argocd-apps` (where the CR lives), `spec.destination.namespace: platform-mesh-system` (where workloads deploy). If omitted, both default to the PlatformMesh CR namespace.
 
-**Runtime templates** (`gotemplates/infra/runtime/` and `gotemplates/components/runtime/`) additionally receive:
+**Runtime templates** (`gotemplates/infra/runtime/` and `gotemplates/components/runtime/`) are applied to the **runtime cluster**. Use `releaseNamespace` for `metadata.namespace` of resources created here (not `helmReleaseNamespace`, which targets the infra cluster). Additionally receive:
 
 | Variable | Source |
 |----------|--------|
