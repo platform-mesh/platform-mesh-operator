@@ -1623,6 +1623,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 			result, err := subroutine.Process(ctx, inst)
 			s.Nil(err)
 			s.NotNil(result)
+			// Without this the case also passes when the Update is never reached,
+			// so a regression that skips the injection would go unnoticed.
+			clientMock.AssertExpectations(s.T())
 		})
 	}
 }
@@ -1836,10 +1839,21 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_GetError() {
 	subroutine := NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get error"))
+	// The profile ConfigMap must resolve, otherwise getAppNamespaceFromProfile fails
+	// first and Process never reaches updateHelmReleaseImage — the case this asserts.
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
+			}
+			return errors.New("get error")
+		},
+	)
 
 	result, err := subroutine.Process(ctx, inst)
-	s.NotNil(err)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "HelmRelease default/test-resource not found")
+	s.Contains(err.Error(), "get error")
 	s.NotNil(result)
 }
 
