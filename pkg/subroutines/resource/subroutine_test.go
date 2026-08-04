@@ -1271,3 +1271,674 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace
 	s.Nil(err)
 	s.NotNil(result)
 }
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
+	tests := []struct {
+		name                  string
+		repo                  string
+		artifact              string
+		forAnnotation         string
+		pathAnnotation        string
+		versionPathAnnotation string
+		resourceName          string
+		resourceNs            string
+		version               string
+		versionPath           []string
+		expectedName          string
+		expectedNs            string
+		expectedPath          []string
+		expectedVersion       string
+		additionalRegistry    string
+		additionalRepository  string
+		additionalDigest      string
+		additionalTag         string
+		existingCoords        map[string]string
+		expectedRegistry      string
+		expectedRepository    string
+		expectedDigest        string
+	}{
+		{
+			name:                  "helm image without annotations",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "1.2.3",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "1.2.3",
+		},
+		{
+			name:                  "oci image without annotations",
+			repo:                  "oci",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "2.0.0",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "2.0.0",
+		},
+		{
+			name:                  "helm image with for annotation - name only",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "target-release",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "1.2.3",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "target-release",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "1.2.3",
+		},
+		{
+			name:                  "helm image with for annotation - namespace and name",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "target-namespace/target-release",
+			pathAnnotation:        "",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "1.2.3",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "target-release",
+			expectedNs:            "target-namespace",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "1.2.3",
+		},
+		{
+			name:                  "oci image with custom path annotation",
+			repo:                  "oci",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "container.imageTag",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "2.0.0",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "container", "imageTag"},
+			expectedVersion:       "2.0.0",
+		},
+		{
+			name:                  "helm image with both for and path annotations",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "other-namespace/other-release",
+			pathAnnotation:        "app.version",
+			versionPathAnnotation: "",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "3.0.0",
+			versionPath:           []string{"status", "resource", "version"},
+			expectedName:          "other-release",
+			expectedNs:            "other-namespace",
+			expectedPath:          []string{"spec", "values", "app", "version"},
+			expectedVersion:       "3.0.0",
+		},
+		{
+			name:                  "helm image with custom version-path annotation",
+			repo:                  "helm",
+			artifact:              "image",
+			forAnnotation:         "",
+			pathAnnotation:        "",
+			versionPathAnnotation: "spec.imageVersion",
+			resourceName:          "test-resource",
+			resourceNs:            "default",
+			version:               "4.5.6",
+			versionPath:           []string{"spec", "imageVersion"},
+			expectedName:          "test-resource",
+			expectedNs:            "default",
+			expectedPath:          []string{"spec", "values", "image", "tag"},
+			expectedVersion:       "4.5.6",
+		},
+		{
+			name:                 "localized image - injects registry, repository and tag",
+			repo:                 "oci",
+			artifact:             "image",
+			resourceName:         "test-resource",
+			resourceNs:           "default",
+			version:              "1.2.3",
+			versionPath:          []string{"status", "resource", "version"},
+			additionalRegistry:   "oci-registry-docker-registry.registry.svc.cluster.local",
+			additionalRepository: "platform-mesh/account-operator",
+			expectedName:         "test-resource",
+			expectedNs:           "default",
+			expectedPath:         []string{"spec", "values", "image", "tag"},
+			expectedVersion:      "1.2.3",
+			expectedRegistry:     "oci-registry-docker-registry.registry.svc.cluster.local",
+			expectedRepository:   "platform-mesh/account-operator",
+		},
+		{
+			name:                 "localized image with digest - injects digest as well",
+			repo:                 "oci",
+			artifact:             "image",
+			resourceName:         "test-resource",
+			resourceNs:           "default",
+			version:              "1.2.3",
+			versionPath:          []string{"status", "resource", "version"},
+			additionalRegistry:   "oci-registry-docker-registry.registry.svc.cluster.local",
+			additionalRepository: "platform-mesh/account-operator",
+			additionalDigest:     "sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
+			expectedName:         "test-resource",
+			expectedNs:           "default",
+			expectedPath:         []string{"spec", "values", "image", "tag"},
+			expectedVersion:      "1.2.3",
+			expectedRegistry:     "oci-registry-docker-registry.registry.svc.cluster.local",
+			expectedRepository:   "platform-mesh/account-operator",
+			expectedDigest:       "sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
+		},
+		{
+			name:            "no localized coordinates - falls back to tag-only injection",
+			repo:            "oci",
+			artifact:        "image",
+			resourceName:    "test-resource",
+			resourceNs:      "default",
+			version:         "1.2.3",
+			versionPath:     []string{"status", "resource", "version"},
+			expectedName:    "test-resource",
+			expectedNs:      "default",
+			expectedPath:    []string{"spec", "values", "image", "tag"},
+			expectedVersion: "1.2.3",
+		},
+		{
+			// The localized access tag (status.additional.tag) takes precedence over
+			// the resource version when writing the tag leaf.
+			name:                 "localized image - access tag overrides resource version",
+			repo:                 "oci",
+			artifact:             "image",
+			resourceName:         "test-resource",
+			resourceNs:           "default",
+			version:              "1.2.3",
+			versionPath:          []string{"status", "resource", "version"},
+			additionalRegistry:   "oci-registry-docker-registry.registry.svc.cluster.local",
+			additionalRepository: "platform-mesh/account-operator",
+			additionalTag:        "1.2.3-localized",
+			expectedName:         "test-resource",
+			expectedNs:           "default",
+			expectedPath:         []string{"spec", "values", "image", "tag"},
+			expectedVersion:      "1.2.3-localized",
+			expectedRegistry:     "oci-registry-docker-registry.registry.svc.cluster.local",
+			expectedRepository:   "platform-mesh/account-operator",
+		},
+		{
+			// Regression: a digest written by a previous reconcile must not survive
+			// when the resource no longer carries coordinates, otherwise the stale
+			// digest (which takes precedence over the tag) would pin the old image.
+			name:            "stale coordinates cleared on tag-only fallback",
+			repo:            "oci",
+			artifact:        "image",
+			resourceName:    "test-resource",
+			resourceNs:      "default",
+			version:         "2.0.0",
+			versionPath:     []string{"status", "resource", "version"},
+			existingCoords:  map[string]string{"registry": "stale-reg", "repository": "stale/repo", "digest": "sha256:stale"},
+			expectedName:    "test-resource",
+			expectedNs:      "default",
+			expectedPath:    []string{"spec", "values", "image", "tag"},
+			expectedVersion: "2.0.0",
+		},
+		{
+			// Regression: fresh registry/repository without a digest must clear a
+			// previously injected digest so tag + stale digest can never coexist.
+			name:                 "stale digest cleared when new coordinates omit digest",
+			repo:                 "oci",
+			artifact:             "image",
+			resourceName:         "test-resource",
+			resourceNs:           "default",
+			version:              "2.0.0",
+			versionPath:          []string{"status", "resource", "version"},
+			additionalRegistry:   "oci-registry-docker-registry.registry.svc.cluster.local",
+			additionalRepository: "platform-mesh/account-operator",
+			existingCoords:       map[string]string{"digest": "sha256:stale"},
+			expectedName:         "test-resource",
+			expectedNs:           "default",
+			expectedPath:         []string{"spec", "values", "image", "tag"},
+			expectedVersion:      "2.0.0",
+			expectedRegistry:     "oci-registry-docker-registry.registry.svc.cluster.local",
+			expectedRepository:   "platform-mesh/account-operator",
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			ctx := context.TODO()
+
+			annotations := map[string]interface{}{
+				"artifact": tt.artifact,
+				"repo":     tt.repo,
+			}
+			if tt.forAnnotation != "" {
+				annotations["for"] = tt.forAnnotation
+			}
+			if tt.pathAnnotation != "" {
+				annotations["path"] = tt.pathAnnotation
+			}
+			if tt.versionPathAnnotation != "" {
+				annotations["version-path"] = tt.versionPathAnnotation
+			}
+
+			inst := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "delivery.ocm.software/v1alpha1",
+					"kind":       "Resource",
+					"metadata": map[string]interface{}{
+						"name":        tt.resourceName,
+						"namespace":   tt.resourceNs,
+						"annotations": annotations,
+					},
+					"status": map[string]interface{}{
+						"resource": map[string]interface{}{
+							"version": tt.version,
+						},
+					},
+					"spec": map[string]interface{}{},
+				},
+			}
+
+			if err := unstructured.SetNestedField(inst.Object, tt.version, tt.versionPath...); err != nil {
+				s.Require().NoError(err)
+			}
+
+			if tt.additionalRegistry != "" {
+				s.Require().NoError(unstructured.SetNestedField(inst.Object, tt.additionalRegistry, "status", "additional", "registry"))
+			}
+			if tt.additionalRepository != "" {
+				s.Require().NoError(unstructured.SetNestedField(inst.Object, tt.additionalRepository, "status", "additional", "repository"))
+			}
+			if tt.additionalDigest != "" {
+				s.Require().NoError(unstructured.SetNestedField(inst.Object, tt.additionalDigest, "status", "additional", "digest"))
+			}
+			if tt.additionalTag != "" {
+				s.Require().NoError(unstructured.SetNestedField(inst.Object, tt.additionalTag, "status", "additional", "tag"))
+			}
+
+			clientMock := new(mocks.Client)
+			subroutine := NewResourceSubroutine(clientMock, nil, nil)
+
+			clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*corev1.ConfigMap); ok {
+						return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
+					}
+					unstr := obj.(*unstructured.Unstructured)
+					unstr.SetName(key.Name)
+					unstr.SetNamespace(key.Namespace)
+					unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+					parentPath := tt.expectedPath[:len(tt.expectedPath)-1]
+					for leaf, value := range tt.existingCoords {
+						s.Require().NoError(unstructured.SetNestedField(unstr.Object, value, appendPath(parentPath, leaf)...))
+					}
+					return nil
+				},
+			)
+			clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+				helmRelease, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					return false
+				}
+				if helmRelease.GetName() != tt.expectedName {
+					return false
+				}
+				if helmRelease.GetNamespace() != tt.expectedNs {
+					return false
+				}
+				actualVersion, found, err := unstructured.NestedString(helmRelease.Object, tt.expectedPath...)
+				if err != nil || !found || actualVersion != tt.expectedVersion {
+					return false
+				}
+
+				// A coordinate must equal its expected value, or be absent when none is expected.
+				parentPath := tt.expectedPath[:len(tt.expectedPath)-1]
+				checkCoord := func(leaf, expected string) bool {
+					actual, found, _ := unstructured.NestedString(helmRelease.Object, appendPath(parentPath, leaf)...)
+					if expected == "" {
+						return !found
+					}
+					return found && actual == expected
+				}
+				return checkCoord("registry", tt.expectedRegistry) &&
+					checkCoord("repository", tt.expectedRepository) &&
+					checkCoord("digest", tt.expectedDigest)
+			}), mock.Anything).Return(nil)
+
+			result, err := subroutine.Process(ctx, inst)
+			s.Nil(err)
+			s.NotNil(result)
+			// Without this the case also passes when the Update is never reached,
+			// so a regression that skips the injection would go unnoticed.
+			clientMock.AssertExpectations(s.T())
+		})
+	}
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresResolvedTag() {
+	ctx := context.TODO()
+	store := subroutines.NewImageVersionStore()
+
+	inst := imageResource("test-resource",
+		map[string]interface{}{"artifact": "image", "repo": "oci"},
+		"1.2.3",
+		map[string]interface{}{
+			"registry":   "oci-registry-docker-registry.registry.svc.cluster.local",
+			"repository": "platform-mesh/account-operator",
+			"tag":        "1.2.3-localized",
+			"digest":     "sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
+		})
+
+	clientMock := new(mocks.Client)
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	expectEmptyHelmReleaseGet(clientMock)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	subroutine := NewResourceSubroutine(clientMock, nil, store)
+	_, err := subroutine.Process(ctx, inst)
+	s.Require().NoError(err)
+
+	stored := storeToMap(store, "default", "test-resource")
+	s.Equal(map[string]string{
+		"image.tag":        "1.2.3-localized",
+		"image.registry":   "oci-registry-docker-registry.registry.svc.cluster.local",
+		"image.repository": "platform-mesh/account-operator",
+		"image.digest":     "sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
+	}, stored)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_RemovesStaleCoordinatesFromStore() {
+	ctx := context.TODO()
+	store := subroutines.NewImageVersionStore()
+	store.Set("default", "test-resource", "image.registry", "stale-registry")
+	store.Set("default", "test-resource", "image.repository", "stale/repo")
+	store.Set("default", "test-resource", "image.digest", "sha256:stale")
+
+	inst := imageResource("test-resource",
+		map[string]interface{}{"artifact": "image", "repo": "oci"},
+		"2.0.0", nil)
+
+	clientMock := new(mocks.Client)
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	expectEmptyHelmReleaseGet(clientMock)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	subroutine := NewResourceSubroutine(clientMock, nil, store)
+	_, err := subroutine.Process(ctx, inst)
+	s.Require().NoError(err)
+
+	stored := storeToMap(store, "default", "test-resource")
+	s.Equal(map[string]string{"image.tag": "2.0.0"}, stored)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresCoordinatesAtCustomPath() {
+	ctx := context.TODO()
+	store := subroutines.NewImageVersionStore()
+
+	inst := imageResource("test-resource",
+		map[string]interface{}{"artifact": "image", "repo": "oci", "path": "webhook.image.tag"},
+		"1.2.3",
+		map[string]interface{}{
+			"registry":   "registry.internal",
+			"repository": "platform-mesh/webhook",
+		})
+
+	clientMock := new(mocks.Client)
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	expectEmptyHelmReleaseGet(clientMock)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	subroutine := NewResourceSubroutine(clientMock, nil, store)
+	_, err := subroutine.Process(ctx, inst)
+	s.Require().NoError(err)
+
+	stored := storeToMap(store, "default", "test-resource")
+	s.Equal(map[string]string{
+		"webhook.image.tag":        "1.2.3",
+		"webhook.image.registry":   "registry.internal",
+		"webhook.image.repository": "platform-mesh/webhook",
+	}, stored)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_PathLeafCollision() {
+	ctx := context.TODO()
+
+	inst := imageResource("test-resource",
+		map[string]interface{}{"artifact": "image", "repo": "oci", "path": "image.registry"},
+		"1.2.3",
+		map[string]interface{}{
+			"registry":   "oci-registry-docker-registry.registry.svc.cluster.local",
+			"repository": "platform-mesh/account-operator",
+		})
+
+	clientMock := new(mocks.Client)
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	expectEmptyHelmReleaseGet(clientMock)
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		helmRelease, ok := obj.(*unstructured.Unstructured)
+		if !ok {
+			return false
+		}
+		// The configured leaf (image.registry) holds the tag value.
+		actual, found, _ := unstructured.NestedString(helmRelease.Object, "spec", "values", "image", "registry")
+		if !found || actual != "1.2.3" {
+			return false
+		}
+		// No coordinates injected as siblings.
+		if _, foundRepo, _ := unstructured.NestedString(helmRelease.Object, "spec", "values", "image", "repository"); foundRepo {
+			return false
+		}
+		if _, foundDigest, _ := unstructured.NestedString(helmRelease.Object, "spec", "values", "image", "digest"); foundDigest {
+			return false
+		}
+		return true
+	}), mock.Anything).Return(nil)
+
+	subroutine := NewResourceSubroutine(clientMock, nil, nil)
+	result, err := subroutine.Process(ctx, inst)
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_CombinedRefStyle() {
+	ctx := context.TODO()
+	store := subroutines.NewImageVersionStore()
+
+	inst := imageResource("openfga-image",
+		map[string]interface{}{
+			"artifact":  "image",
+			"repo":      "oci",
+			"for":       "openfga",
+			"image-ref": "combined",
+		},
+		"1.11.2",
+		map[string]interface{}{
+			"registry":   "zot.local/platform-mesh",
+			"repository": "openfga/openfga",
+			"tag":        "1.11.2",
+			"digest":     "sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
+		})
+
+	clientMock := new(mocks.Client)
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	expectEmptyHelmReleaseGet(clientMock)
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		hr, ok := obj.(*unstructured.Unstructured)
+		if !ok {
+			return false
+		}
+		repo, foundRepo, _ := unstructured.NestedString(hr.Object, "spec", "values", "image", "repository")
+		if !foundRepo || repo != "zot.local/platform-mesh/openfga/openfga" {
+			return false
+		}
+		tag, foundTag, _ := unstructured.NestedString(hr.Object, "spec", "values", "image", "tag")
+		if !foundTag || tag != "1.11.2" {
+			return false
+		}
+		// registry and digest must NOT be written (chart schema rejects them).
+		if _, foundReg, _ := unstructured.NestedString(hr.Object, "spec", "values", "image", "registry"); foundReg {
+			return false
+		}
+		if _, foundDigest, _ := unstructured.NestedString(hr.Object, "spec", "values", "image", "digest"); foundDigest {
+			return false
+		}
+		return true
+	}), mock.Anything).Return(nil)
+
+	subroutine := NewResourceSubroutine(clientMock, nil, store)
+	_, err := subroutine.Process(ctx, inst)
+	s.Require().NoError(err)
+
+	stored := storeToMap(store, "default", "openfga")
+	s.Equal(map[string]string{
+		"image.tag":        "1.11.2",
+		"image.repository": "zot.local/platform-mesh/openfga/openfga",
+	}, stored)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_GetError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	subroutine := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	// The profile ConfigMap must resolve, otherwise getAppNamespaceFromProfile fails
+	// first and Process never reaches updateHelmReleaseImage — the case this asserts.
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
+			}
+			return errors.New("get error")
+		},
+	)
+
+	result, err := subroutine.Process(ctx, inst)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "HelmRelease default/test-resource not found")
+	s.Contains(err.Error(), "get error")
+	s.NotNil(result)
+}
+
+func (s *ResourceTestSuite) Test_updateHelmReleaseImage_UpdateError() {
+	ctx := context.TODO()
+
+	inst := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":      "test-resource",
+				"namespace": "default",
+				"annotations": map[string]interface{}{
+					"artifact": "image",
+					"repo":     "helm",
+				},
+			},
+			"status": map[string]interface{}{
+				"resource": map[string]interface{}{
+					"version": "1.2.3",
+				},
+			},
+			"spec": map[string]interface{}{},
+		},
+	}
+
+	clientMock := new(mocks.Client)
+	subroutine := NewResourceSubroutine(clientMock, nil, nil)
+
+	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	expectEmptyHelmReleaseGet(clientMock)
+	clientMock.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("update error"))
+
+	result, err := subroutine.Process(ctx, inst)
+	s.NotNil(err)
+	s.NotNil(result)
+}
+
+// expectEmptyHelmReleaseGet sets up the client mock to return a HelmRelease with an
+// empty spec.values, so updateHelmReleaseImage has a clean object to inject into.
+func expectEmptyHelmReleaseGet(clientMock *mocks.Client) {
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ConfigMap); ok {
+				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
+			}
+			unstr := obj.(*unstructured.Unstructured)
+			unstr.SetName(key.Name)
+			unstr.SetNamespace(key.Namespace)
+			unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+			return nil
+		},
+	)
+}
+
+// storeToMap collects an ImageVersionStore's entries for an app into a path->version map.
+func storeToMap(store *subroutines.ImageVersionStore, namespace, name string) map[string]string {
+	stored := map[string]string{}
+	for _, iv := range store.Get(namespace, name) {
+		stored[iv.Path] = iv.Version
+	}
+	return stored
+}
+
+// imageResource builds the minimal Resource the image-injection tests reconcile:
+// status.resource.version plus, when given, coordinates under status.additional.
+func imageResource(name string, annotations map[string]interface{}, version string, additional map[string]interface{}) *unstructured.Unstructured {
+	status := map[string]interface{}{
+		"resource": map[string]interface{}{"version": version},
+	}
+	if additional != nil {
+		status["additional"] = additional
+	}
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "delivery.ocm.software/v1alpha1",
+			"kind":       "Resource",
+			"metadata": map[string]interface{}{
+				"name":        name,
+				"namespace":   "default",
+				"annotations": annotations,
+			},
+			"status": status,
+			"spec":   map[string]interface{}{},
+		},
+	}
+}

@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,7 +25,7 @@ import (
 )
 
 const (
-	requeueShort       = 5 * time.Second
+	requeueShort        = 5 * time.Second
 	profileConfigMapKey = "profile.yaml"
 )
 
@@ -201,8 +202,8 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 		}
 	}
 	if (repo == "helm" && artifact == "image") || (repo == "oci" && artifact == "image") {
-		log.Debug().Msg("Update Helm Release with Image Tag")
-		result, err := r.updateHelmReleaseWithImageTag(ctx, inst, log)
+		log.Debug().Msg("Update Helm Release with image location")
+		result, err := r.updateHelmReleaseImage(ctx, inst, log)
 		if err != nil {
 			return result, err
 		}
@@ -213,7 +214,11 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	return subroutineslib.OK(), nil
 }
 
-func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutineslib.Result, error) {
+// updateHelmReleaseImage writes an image Resource's location into the HelmRelease named
+// by the "for" annotation: registry, repository and digest are written as siblings of the
+// configured path's tag leaf. Without localized coordinates in status.additional the tag
+// falls back to the resource version and is written alone.
+func (r *ResourceSubroutine) updateHelmReleaseImage(ctx context.Context, inst *unstructured.Unstructured, log *logger.Logger) (subroutineslib.Result, error) {
 	defaultNamespace, err := r.getAppNamespaceFromProfile(ctx, inst.GetNamespace(), log)
 	if err != nil {
 		return subroutineslib.OK(), err
@@ -227,6 +232,42 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutineslib.OK(), fmt.Errorf("version not available at path %v", versionPath)
 	}
 
+	tag := version
+	if localizedTag, foundTag, _ := unstructured.NestedString(inst.Object, "status", "additional", "tag"); foundTag && localizedTag != "" {
+		tag = localizedTag
+	}
+	registry, foundReg, _ := unstructured.NestedString(inst.Object, "status", "additional", "registry")
+	repository, foundRepo, _ := unstructured.NestedString(inst.Object, "status", "additional", "repository")
+	hasCoords := foundReg && registry != "" && foundRepo && repository != ""
+
+	versionLeaf := updatePath[len(updatePath)-1]
+	coordLeaves := []string{"registry", "repository", "digest"}
+	// A path leaf that is itself a coordinate name holds the tag, so inject nothing.
+	leafCollides := slices.Contains(coordLeaves, versionLeaf)
+	activeLeaves := make([]string, 0, len(coordLeaves))
+	for _, leaf := range coordLeaves {
+		if leaf != versionLeaf {
+			activeLeaves = append(activeLeaves, leaf)
+		}
+	}
+
+	coords := map[string]string{}
+	if hasCoords && leafCollides {
+		log.Warn().Str("leaf", versionLeaf).Msg("Configured path leaf collides with an image coordinate; skipping coordinate injection")
+	} else if hasCoords {
+		if getMetadataValue(inst, "image-ref") == "combined" {
+			// Charts accepting only a single host-qualified repository (openfga's
+			// values.schema.json rejects registry/digest outright).
+			coords["repository"] = registry + "/" + repository
+		} else {
+			coords["registry"] = registry
+			coords["repository"] = repository
+			if digest, foundDigest, _ := unstructured.NestedString(inst.Object, "status", "additional", "digest"); foundDigest && digest != "" {
+				coords["digest"] = digest
+			}
+		}
+	}
+
 	// GET the existing HelmRelease so we can do a merge patch instead of SSA.
 	// SSA with ForceOwnership would require the full valid spec (chart/chartRef, interval) in the patch,
 	// but we only want to update a nested values field without replacing the whole object.
@@ -236,8 +277,21 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutineslib.OK(), fmt.Errorf("HelmRelease %s/%s not found: %w", namespace, name, err)
 	}
 
-	if err := unstructured.SetNestedField(existing.Object, version, updatePath...); err != nil {
+	if err := unstructured.SetNestedField(existing.Object, tag, updatePath...); err != nil {
 		return subroutineslib.OK(), err
+	}
+
+	// Clear before writing: a digest from an earlier reconcile takes precedence over the
+	// tag, so leaving it would deploy the old image despite a tag change.
+	parentPath := updatePath[:len(updatePath)-1]
+	for _, leaf := range activeLeaves {
+		path := appendPath(parentPath, leaf)
+		unstructured.RemoveNestedField(existing.Object, path...)
+		if value, ok := coords[leaf]; ok {
+			if err := unstructured.SetNestedField(existing.Object, value, path...); err != nil {
+				return subroutineslib.OK(), err
+			}
+		}
 	}
 
 	if getMetadataValue(inst, "unsuspend") == "true" {
@@ -249,8 +303,17 @@ func (r *ResourceSubroutine) updateHelmReleaseWithImageTag(ctx context.Context, 
 		return subroutineslib.OK(), err
 	}
 
-	helmValuesPath := strings.Join(updatePath[2:], ".")
-	r.storeImageVersion(namespace, name, helmValuesPath, version)
+	valuesPath := updatePath[2:]
+	parentValuesPath := valuesPath[:len(valuesPath)-1]
+	r.storeImageVersion(namespace, name, strings.Join(valuesPath, "."), tag)
+	for _, leaf := range activeLeaves {
+		storePath := strings.Join(appendPath(parentValuesPath, leaf), ".")
+		if value, ok := coords[leaf]; ok {
+			r.storeImageVersion(namespace, name, storePath, value)
+		} else {
+			r.removeImageVersion(namespace, name, storePath)
+		}
+	}
 	if getMetadataValue(inst, "unsuspend") == "true" {
 		r.storeUnsuspended(namespace, name)
 	}
@@ -439,6 +502,17 @@ func (r *ResourceSubroutine) storeUnsuspended(namespace, name string) {
 	if r.imageVersionStore != nil {
 		r.imageVersionStore.SetUnsuspended(namespace, name)
 	}
+}
+
+func (r *ResourceSubroutine) removeImageVersion(namespace, name, path string) {
+	if r.imageVersionStore != nil {
+		r.imageVersionStore.Remove(namespace, name, path)
+	}
+}
+
+// appendPath appends leaf to a copy of parent, so sibling paths never alias its array.
+func appendPath(parent []string, leaf string) []string {
+	return append(append([]string{}, parent...), leaf)
 }
 
 func parseNamespacedName(forVal, defaultName, defaultNamespace string) (name, namespace string) {
