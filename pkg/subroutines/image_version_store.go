@@ -71,6 +71,25 @@ func (s *ImageVersionStore) Get(namespace, appName string) []ImageVersion {
 	return result
 }
 
+// Remove drops the entry for path so DeploymentSubroutine stops re-asserting a coordinate
+// that is no longer part of the image's location. Removing a missing path is a no-op.
+func (s *ImageVersionStore) Remove(namespace, appName, path string) {
+	key := namespace + "/" + appName
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries := s.versions[key]
+	for i, e := range entries {
+		if e.Path == path {
+			s.versions[key] = append(entries[:i], entries[i+1:]...)
+			if len(s.versions[key]) == 0 {
+				delete(s.versions, key)
+			}
+			return
+		}
+	}
+}
+
 // SetUnsuspended marks a HelmRelease as having been unsuspended by ResourceSubroutine.
 // DeploymentSubroutine checks this before applying a HelmRelease with suspend: true in its
 // rendered template, and overrides it to false so SSA does not re-suspend the release.
