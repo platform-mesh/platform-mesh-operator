@@ -7,7 +7,7 @@ metadata:
     repo: oci
     for: cert-manager
   name: {{ .certManager.name }}-controller-image
-  namespace: {{ .helmReleaseNamespace }}
+  namespace: {{ .releaseNamespace }}
 spec:
   componentRef:
     name: {{ .ocm.component.name }}

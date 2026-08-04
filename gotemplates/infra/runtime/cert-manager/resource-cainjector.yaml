@@ -9,7 +9,7 @@ metadata:
   annotations:
     path: cainjector.image.tag
   name: {{ .certManager.name }}-cainjector-image
-  namespace: {{ .helmReleaseNamespace }}
+  namespace: {{ .releaseNamespace }}
 spec:
   componentRef:
     name: {{ .ocm.component.name }}
