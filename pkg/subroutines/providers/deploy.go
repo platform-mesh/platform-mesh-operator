@@ -100,6 +100,13 @@ func ocmDeploymentName(ocm *providersv1alpha1.OCMComponentSpec) string {
 // splitRegistry splits an OCM/OCI registry root (e.g. "ghcr.io/platform-mesh") into the
 // host (baseUrl) and the remaining sub-path for a delivery.ocm.software Repository.
 func splitRegistry(registry string) (baseURL, subPath string) {
+	const schemeSeparator = "://"
+	schemeIdx := strings.Index(registry, "://")
+	if schemeIdx >= 0 {
+		registryWithoutScheme := registry[schemeIdx+len(schemeSeparator):]
+		host, path, _ := strings.Cut(registryWithoutScheme, "/")
+		return registry[:schemeIdx+len(schemeSeparator)] + host, path
+	}
 	baseURL, subPath, _ = strings.Cut(registry, "/")
 	return baseURL, subPath
 }
@@ -334,8 +341,13 @@ func parseOCMValues(ocm *providersv1alpha1.OCMComponentSpec) (map[string]interfa
 // ocmResolvedOCIURL turns an OCM-resolved imageReference (and version) into a clean
 // oci://host/repository URL suitable for a Flux OCIRepository spec.url. Mirrors the
 // resolution done by the PlatformMesh ResourceSubroutine.
+// Plain-HTTP registries store http:// in the imageReference; we normalise to oci://
+// regardless because Flux always uses that scheme (plain-HTTP is enabled via spec.insecure).
 func ocmResolvedOCIURL(imageRef, version string) (string, error) {
-	url := "oci://" + strings.TrimPrefix(imageRef, "oci://")
+	if i := strings.Index(imageRef, "://"); i >= 0 {
+		imageRef = imageRef[i+3:]
+	}
+	url := "oci://" + imageRef
 	url = strings.TrimSuffix(url, ":"+version)
 	spec, err := ocm.ParseRef(url)
 	if err != nil {
@@ -487,7 +499,10 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to unmarshal values for %s", name)
 	}
 
-	return r.reconcileResolvedOCIChart(ctx, namespace, name, ociURL, version, ocmSpec.Insecure, values, runtimeKubeconfigSecretName)
+	// Treat the resolved artifact as insecure if the user set insecure: true OR if the
+	// OCM controller stored an http:// imageReference (plain-HTTP registry).
+	insecure := ocmSpec.Insecure || strings.HasPrefix(imageRef, "http://")
+	return r.reconcileResolvedOCIChart(ctx, namespace, name, ociURL, version, insecure, values, runtimeKubeconfigSecretName)
 }
 
 // deployFluxHelmRepo deploys a chart from a classic HTTP(S) Helm repository via a

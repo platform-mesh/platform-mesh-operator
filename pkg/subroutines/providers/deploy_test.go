@@ -636,6 +636,7 @@ func (s *DeployTestSuite) TestOCMResolvedOCIURL() {
 		{"tag form", "oci://ghcr.io/platform-mesh/charts/wildwest:1.2.3", "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
 		{"no scheme", "ghcr.io/platform-mesh/charts/wildwest:1.2.3", "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
 		{"digest form", "oci://ghcr.io/platform-mesh/charts/wildwest@" + digest, "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
+		{"http scheme with digest", "http://kind-registry:5000/org/chart:1.2.3@" + digest, "1.2.3", "oci://kind-registry:5000/org/chart"},
 	}
 	for _, tc := range cases {
 		got, err := ocmResolvedOCIURL(tc.imageRef, tc.version)
@@ -669,6 +670,15 @@ func (s *DeployTestSuite) TestSplitRegistry() {
 	s.Equal("platform-mesh/provider-quickstart/charts", sub)
 	base, sub = splitRegistry("ghcr.io")
 	s.Equal("ghcr.io", base)
+	s.Equal("", sub)
+	base, sub = splitRegistry("http://kind-registry:5000/ghcr.io/platform-mesh/provider-quickstart/wildwest-operator")
+	s.Equal("http://kind-registry:5000", base)
+	s.Equal("ghcr.io/platform-mesh/provider-quickstart/wildwest-operator", sub)
+	base, sub = splitRegistry("http://")
+	s.Equal("http://", base)
+	s.Equal("", sub)
+	base, sub = splitRegistry("http:///")
+	s.Equal("http://", base)
 	s.Equal("", sub)
 }
 

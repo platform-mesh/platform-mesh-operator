@@ -423,7 +423,9 @@ func (r *ResourceSubroutine) resolveArgoCDSource(inst *unstructured.Unstructured
 }
 
 func extractOCIRepoURL(imageRef string) (string, error) {
-	imageRef = strings.TrimPrefix(imageRef, "oci://")
+	if i := strings.Index(imageRef, "://"); i >= 0 {
+		imageRef = imageRef[i+3:]
+	}
 	baseURL := strings.Split(imageRef, ":")[0]
 	lastSlash := strings.LastIndex(baseURL, "/")
 	if lastSlash == -1 {
@@ -661,8 +663,9 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 		return subroutineslib.OK(), err
 	}
 
-	url = strings.TrimPrefix(url, "oci://")
-
+	if i := strings.Index(url, "://"); i >= 0 {
+		url = url[i+3:]
+	}
 	url = "oci://" + url
 	url = strings.TrimSuffix(url, ":"+version)
 
