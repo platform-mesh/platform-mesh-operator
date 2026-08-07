@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
@@ -20,6 +21,31 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 )
+
+type permissionClaimsManifest struct {
+	APIVersion string `yaml:"apiVersion"`
+	Spec       struct {
+		PermissionClaims []permissionClaim `yaml:"permissionClaims"`
+	} `yaml:"spec"`
+}
+
+type permissionClaim struct {
+	Resource        string   `yaml:"resource"`
+	Verbs           []string `yaml:"verbs"`
+	All             bool     `yaml:"all"`
+	Selector        selector `yaml:"selector"`
+	DefaultSelector selector `yaml:"defaultSelector"`
+}
+
+type selector struct {
+	MatchAll         bool              `yaml:"matchAll"`
+	MatchExpressions []matchExpression `yaml:"matchExpressions"`
+}
+
+type matchExpression struct {
+	Key      string `yaml:"key"`
+	Operator string `yaml:"operator"`
+}
 
 type HelperTestSuite struct {
 	suite.Suite
@@ -63,6 +89,61 @@ func TestAppendPEMCertsDedupe(t *testing.T) {
 
 	got2 := appendPEMCertsDedupe(append([]byte(nil), got...), pemA)
 	require.Equal(t, wantN, countPEMCertificateBlocks(t, got2), "appending same bundle again should not duplicate")
+}
+
+func TestIDPSecretPermissionClaims(t *testing.T) {
+	t.Parallel()
+
+	readManifest := func(t *testing.T, path string) permissionClaimsManifest {
+		t.Helper()
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		rendered, err := ReplaceTemplate(map[string]any{
+			"apiExportRootTenancyKcpIoIdentityHash": "test-hash",
+		}, raw)
+		require.NoError(t, err)
+
+		var manifest permissionClaimsManifest
+		require.NoError(t, yaml.Unmarshal(rendered, &manifest))
+		return manifest
+	}
+
+	findSecretClaim := func(manifest permissionClaimsManifest) *permissionClaim {
+		for i := range manifest.Spec.PermissionClaims {
+			if manifest.Spec.PermissionClaims[i].Resource == "secrets" {
+				return &manifest.Spec.PermissionClaims[i]
+			}
+		}
+		return nil
+	}
+
+	assertIDPSelector := func(t *testing.T, got selector) {
+		t.Helper()
+		require.False(t, got.MatchAll)
+		require.ElementsMatch(t, []matchExpression{
+			{Key: "core.platform-mesh.io/idp-name", Operator: "Exists"},
+			{Key: "core.platform-mesh.io/client-name", Operator: "Exists"},
+		}, got.MatchExpressions)
+	}
+
+	coreExport := readManifest(t, "../../manifests/kcp/01-platform-mesh-system/apiexport-core.platform-mesh.io.yaml")
+	require.Equal(t, "apis.kcp.io/v1alpha2", coreExport.APIVersion)
+	coreExportSecret := findSecretClaim(coreExport)
+	require.NotNil(t, coreExportSecret)
+	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, coreExportSecret.Verbs)
+	assertIDPSelector(t, coreExportSecret.DefaultSelector)
+
+	coreBinding := readManifest(t, "../../manifests/kcp/01-platform-mesh-system/apibinding-core.platform-mesh.io.yaml")
+	coreBindingSecret := findSecretClaim(coreBinding)
+	require.NotNil(t, coreBindingSecret)
+	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, coreBindingSecret.Verbs)
+	assertIDPSelector(t, coreBindingSecret.Selector)
+
+	systemExport := readManifest(t, "../../manifests/kcp/01-platform-mesh-system/apiexport-system.platform-mesh.io.yaml")
+	require.Nil(t, findSecretClaim(systemExport))
+
+	systemBinding := readManifest(t, "../../manifests/kcp/01-platform-mesh-system/apibinding-system.platform-mesh.io.yaml")
+	require.Nil(t, findSecretClaim(systemBinding))
 }
 
 func (s *HelperTestSuite) TestGetWorkspaceName() {

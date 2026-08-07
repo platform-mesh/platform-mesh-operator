@@ -51,9 +51,16 @@ spec:
   - resource: secrets
     group: ""
     selector:
-      matchAll: true
+      matchExpressions:
+        - key: core.platform-mesh.io/idp-name
+          operator: Exists
+        - key: core.platform-mesh.io/client-name
+          operator: Exists
     verbs:
-      - '*'
+      - get
+      - create
+      - update
+      - delete
     state: Accepted
   reference:
     export:

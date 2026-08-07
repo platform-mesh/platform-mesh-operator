@@ -32,8 +32,4 @@ spec:
       group: core.kcp.io
       all: true
       identityHash: ""
-    - resource: secrets
-      group: ""
-      all: true
-      identityHash: ""
 status: {}
