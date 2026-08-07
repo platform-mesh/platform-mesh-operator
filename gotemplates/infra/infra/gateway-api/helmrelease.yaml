@@ -1,6 +1,6 @@
 {{- if and .gatewayApi.enabled (ne .deploymentTechnology "argocd") }}
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
   name: {{ .gatewayApi.name }}
   namespace: {{ .helmReleaseNamespace }}
@@ -13,11 +13,19 @@ spec:
       name: {{ .kubeConfigSecretName }}
       key: {{ .kubeConfigSecretKey }}
 {{- end }}
-  force: false
-  interval: {{ .gatewayApi.kustomization.interval }}
-  path: {{ .gatewayApi.kustomization.path }}
-  prune: true
-  sourceRef:
-    kind: GitRepository
+  chartRef:
+    kind: OCIRepository
     name: {{ .gatewayApi.name }}
+    namespace: {{ .helmReleaseNamespace }}
+  dependsOn: []
+  interval: {{ .gatewayApi.interval }}
+  releaseName: {{ .gatewayApi.name }}
+  targetNamespace: {{ .gatewayApi.targetNamespace }}
+  timeout: 15m
+  install:
+    remediation:
+      retries: -1
+  upgrade:
+    remediation:
+      retries: 3
 {{- end }}
