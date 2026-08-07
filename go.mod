@@ -2,9 +2,9 @@ module github.com/platform-mesh/platform-mesh-operator
 
 go 1.26.1
 
-replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.11.0
+replace ocm.software/open-component-model/kubernetes/controller => github.com/open-component-model/open-component-model/kubernetes/controller v0.12.0
 
-replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.2
+replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.6.5
 
 replace (
 	k8s.io/api => k8s.io/api v0.35.4
@@ -17,7 +17,7 @@ require (
 	github.com/creasty/defaults v1.8.0
 	github.com/fluxcd/helm-controller/api v1.5.5
 	github.com/fluxcd/source-controller/api v1.8.5
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/kcp-dev/kcp/sdk v0.28.3
 	github.com/kcp-dev/multicluster-provider v0.7.1
 	github.com/kcp-dev/sdk v0.31.2
@@ -88,7 +88,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kcp-dev/apimachinery/v2 v2.31.2 // indirect
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect

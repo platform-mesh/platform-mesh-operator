@@ -121,6 +121,13 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 				return subroutines.OK(), applyErr
 			}
 			log.Info().Msg("Enabled 'Terminal controller manager' feature")
+		case "feature-enable-provider-permissions":
+			_, applyErr := r.applyKcpManifests(ctx, inst, operatorCfg, "/feature-enable-provider-permissions")
+			if applyErr != nil {
+				log.Error().Err(applyErr).Msg("Failed to apply provider-permissions manifests")
+				return subroutines.OK(), applyErr
+			}
+			log.Info().Msg("Enabled 'Provider permissions' feature")
 		case "feature-disable-email-verification":
 			log.Info().Msg("Enabled 'disable-email-verification' feature")
 		default:

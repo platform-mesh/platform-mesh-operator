@@ -136,16 +136,19 @@ type SecretReference struct {
 
 type ProviderConnection struct {
 	EndpointSliceName *string `json:"endpointSliceName,omitempty"`
-	// APIExportName is the APIExport object name in ProviderConnection.Path used to build RBAC for scoped kubeconfig when endpointSliceName is not set (server URL is the workspace cluster URL for Path).
+	// APIExportNames lists APIExport names in the workspace specified by Path.
+	// Used to build RBAC for scoped kubeconfig when endpointSliceName is not set.
+	// Each APIExport generates its own ClusterRole, all bound to the same ServiceAccount.
 	// +optional
-	APIExportName *string `json:"apiExportName,omitempty"`
-	Path          string  `json:"path,omitempty"`
-	RawPath       *string `json:"rawPath,omitempty"`
-	Secret        string  `json:"secret"`
-	External      bool    `json:"external,omitempty"`
-	Namespace     *string `json:"namespace,omitempty"`
-	// AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig (ServiceAccount token and RBAC from the APIExport).
-	// Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportName (workspace server for Path).
+	// +kubebuilder:validation:items:MinLength=1
+	APIExportNames []string `json:"apiExportNames,omitempty"`
+	Path           string   `json:"path,omitempty"`
+	RawPath        *string  `json:"rawPath,omitempty"`
+	Secret         string   `json:"secret"`
+	External       bool     `json:"external,omitempty"`
+	Namespace      *string  `json:"namespace,omitempty"`
+	// AdminAuth when true opts into cluster-admin certificate material. When false or omitted, the operator writes a scoped kubeconfig (ServiceAccount token and RBAC from the APIExports).
+	// Scoped mode requires exactly one of endpointSliceName (virtual workspace server from slice) or apiExportNames (workspace server for Path).
 	// +optional
 	AdminAuth *bool `json:"adminAuth,omitempty"`
 }

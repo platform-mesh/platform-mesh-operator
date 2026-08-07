@@ -85,6 +85,53 @@ func (s *ImageVersionStoreTestSuite) TestSet_MultipleApps() {
 	s.Equal("v3.0.0", result3[0].Version)
 }
 
+func (s *ImageVersionStoreTestSuite) TestRemove_ExistingPath() {
+	store := NewImageVersionStore()
+
+	store.Set("default", "my-app", "image.tag", "v1.0.0")
+	store.Set("default", "my-app", "image.registry", "registry.internal")
+	store.Remove("default", "my-app", "image.registry")
+
+	result := store.Get("default", "my-app")
+	s.Require().Len(result, 1)
+	s.Equal("image.tag", result[0].Path)
+	s.Equal("v1.0.0", result[0].Version)
+}
+
+func (s *ImageVersionStoreTestSuite) TestRemove_LastEntryDeletesKey() {
+	store := NewImageVersionStore()
+
+	store.Set("default", "my-app", "image.tag", "v1.0.0")
+	store.Remove("default", "my-app", "image.tag")
+
+	s.Nil(store.Get("default", "my-app"))
+	s.Empty(store.versions)
+}
+
+func (s *ImageVersionStoreTestSuite) TestRemove_NonexistentPath_NoOp() {
+	store := NewImageVersionStore()
+
+	store.Set("default", "my-app", "image.tag", "v1.0.0")
+	store.Remove("default", "my-app", "image.registry")
+
+	result := store.Get("default", "my-app")
+	s.Require().Len(result, 1)
+	s.Equal("image.tag", result[0].Path)
+}
+
+func (s *ImageVersionStoreTestSuite) TestRemove_OnlyAffectsMatchingApp() {
+	store := NewImageVersionStore()
+
+	store.Set("ns", "app1", "image.registry", "registry.internal")
+	store.Set("ns", "app2", "image.registry", "registry.internal")
+	store.Remove("ns", "app1", "image.registry")
+
+	s.Nil(store.Get("ns", "app1"))
+	result := store.Get("ns", "app2")
+	s.Require().Len(result, 1)
+	s.Equal("image.registry", result[0].Path)
+}
+
 func (s *ImageVersionStoreTestSuite) TestGet_Empty() {
 	store := NewImageVersionStore()
 

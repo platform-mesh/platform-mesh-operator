@@ -1,0 +1,75 @@
+apiVersion: apis.kcp.io/v1alpha2
+kind: APIBinding
+metadata:
+  name: providers.platform-mesh.io
+spec:
+  reference:
+    export:
+      name: providers.platform-mesh.io
+      path: root:platform-mesh-system
+  permissionClaims:
+  - group: ""
+    resource: namespaces
+    selector:
+      matchAll: true
+    state: Accepted
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  - group: ""
+    resource: serviceaccounts
+    selector:
+      matchAll: true
+    state: Accepted
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  - group: ""
+    resource: secrets
+    selector:
+      matchAll: true
+    state: Accepted
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  - group: rbac.authorization.k8s.io
+    resource: roles
+    selector:
+      matchAll: true
+    state: Accepted
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  - group: rbac.authorization.k8s.io
+    resource: rolebindings
+    selector:
+      matchAll: true
+    state: Accepted
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete

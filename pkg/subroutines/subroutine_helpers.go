@@ -804,9 +804,9 @@ func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, i
 		return "", fmt.Errorf("failed to get profile ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
 	}
 
-	profileYAML, ok := configMap.Data["profile.yaml"]
+	profileYAML, ok := configMap.Data[profileConfigMapKey]
 	if !ok {
-		return "", fmt.Errorf("profile ConfigMap %s/%s does not contain key 'profile.yaml'", configMapNamespace, configMapName)
+		return "", fmt.Errorf("profile ConfigMap %s/%s does not contain key %s", configMapNamespace, configMapName, profileConfigMapKey)
 	}
 
 	var profile map[string]interface{}
