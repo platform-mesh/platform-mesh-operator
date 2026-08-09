@@ -241,7 +241,6 @@ data:
             cors:
               enabled: true
             gatewayApi:
-              kustomization: true
               enabled: true
             hostAliases:
               enabled: true
