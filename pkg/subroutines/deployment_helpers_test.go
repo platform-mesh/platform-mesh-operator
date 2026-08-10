@@ -326,43 +326,48 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_nindent() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_or() {
 	funcMap := templateFuncMap()
-	orFunc := funcMap["or"].(func(interface{}, interface{}) interface{})
+	orFunc := funcMap["or"].(func(...interface{}) interface{})
 
 	tests := []struct {
 		name     string
-		a        interface{}
-		b        interface{}
+		args     []interface{}
 		expected interface{}
 	}{
 		{
 			name:     "first non-zero",
-			a:        "first",
-			b:        "second",
+			args:     []interface{}{"first", "second"},
 			expected: "first",
 		},
 		{
 			name:     "first zero, second non-zero",
-			a:        "",
-			b:        "second",
+			args:     []interface{}{"", "second"},
 			expected: "second",
 		},
 		{
 			name:     "both zero",
-			a:        "",
-			b:        "",
-			expected: "",
+			args:     []interface{}{"", ""},
+			expected: nil,
 		},
 		{
 			name:     "first nil",
-			a:        nil,
-			b:        "second",
+			args:     []interface{}{nil, "second"},
 			expected: "second",
+		},
+		{
+			name:     "three args, first non-zero",
+			args:     []interface{}{"first", "second", "third"},
+			expected: "first",
+		},
+		{
+			name:     "three args, first two zero",
+			args:     []interface{}{"", "", "third"},
+			expected: "third",
 		},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := orFunc(tt.a, tt.b)
+			result := orFunc(tt.args...)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -370,43 +375,48 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_or() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_and() {
 	funcMap := templateFuncMap()
-	andFunc := funcMap["and"].(func(interface{}, interface{}) bool)
+	andFunc := funcMap["and"].(func(...interface{}) bool)
 
 	tests := []struct {
 		name     string
-		a        interface{}
-		b        interface{}
+		args     []interface{}
 		expected bool
 	}{
 		{
 			name:     "both non-zero",
-			a:        "first",
-			b:        "second",
+			args:     []interface{}{"first", "second"},
 			expected: true,
 		},
 		{
 			name:     "first zero",
-			a:        "",
-			b:        "second",
+			args:     []interface{}{"", "second"},
 			expected: false,
 		},
 		{
 			name:     "second zero",
-			a:        "first",
-			b:        "",
+			args:     []interface{}{"first", ""},
 			expected: false,
 		},
 		{
 			name:     "both zero",
-			a:        "",
-			b:        "",
+			args:     []interface{}{"", ""},
+			expected: false,
+		},
+		{
+			name:     "three non-zero",
+			args:     []interface{}{"first", "second", "third"},
+			expected: true,
+		},
+		{
+			name:     "three with one zero",
+			args:     []interface{}{"first", "", "third"},
 			expected: false,
 		},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := andFunc(tt.a, tt.b)
+			result := andFunc(tt.args...)
 			s.Equal(tt.expected, result)
 		})
 	}

@@ -1,4 +1,4 @@
-{{- if and (and .gatewayApi.enabled (ne .deploymentTechnology "argocd")) (not .gatewayApi.kustomization) }}
+{{- if and .gatewayApi.enabled (ne .deploymentTechnology "argocd") (not .gatewayApi.kustomization) }}
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

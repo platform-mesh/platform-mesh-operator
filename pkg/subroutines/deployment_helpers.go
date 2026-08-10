@@ -253,14 +253,21 @@ func templateFuncMap() template.FuncMap {
 			}
 			return result
 		},
-		"or": func(a, b interface{}) interface{} {
-			if !isZeroValue(a) {
-				return a
+		"or": func(args ...interface{}) interface{} {
+			for _, a := range args {
+				if !isZeroValue(a) {
+					return a
+				}
 			}
-			return b
+			return nil
 		},
-		"and": func(a, b interface{}) bool {
-			return !isZeroValue(a) && !isZeroValue(b)
+		"and": func(args ...interface{}) bool {
+			for _, a := range args {
+				if isZeroValue(a) {
+					return false
+				}
+			}
+			return true
 		},
 		"not": func(v interface{}) bool {
 			return isZeroValue(v)
