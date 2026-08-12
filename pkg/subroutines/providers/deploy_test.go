@@ -630,19 +630,6 @@ func (s *DeployTestSuite) TestFinalize_HelmRepo_DeletesHelmRepository() {
 
 // --- ocm (OCM descriptor resolution) tests ---
 
-func (s *DeployTestSuite) TestOCMResolvedOCIURL() {
-	const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	cases := []struct{ name, imageRef, version, want string }{
-		{"tag form", "oci://ghcr.io/platform-mesh/charts/wildwest:1.2.3", "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
-		{"no scheme", "ghcr.io/platform-mesh/charts/wildwest:1.2.3", "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
-		{"digest form", "oci://ghcr.io/platform-mesh/charts/wildwest@" + digest, "1.2.3", "oci://ghcr.io/platform-mesh/charts/wildwest"},
-	}
-	for _, tc := range cases {
-		got, err := ocmResolvedOCIURL(tc.imageRef, tc.version)
-		s.Require().NoError(err, tc.name)
-		s.Assert().Equal(tc.want, got, tc.name)
-	}
-}
 
 func (s *DeployTestSuite) TestOCMDeploymentName() {
 	s.Equal("explicit", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
@@ -660,17 +647,6 @@ func (s *DeployTestSuite) TestOCMDeploymentName() {
 	}))
 }
 
-func (s *DeployTestSuite) TestSplitRegistry() {
-	base, sub := splitRegistry("ghcr.io/platform-mesh")
-	s.Equal("ghcr.io", base)
-	s.Equal("platform-mesh", sub)
-	base, sub = splitRegistry("ghcr.io/platform-mesh/provider-quickstart/charts")
-	s.Equal("ghcr.io", base)
-	s.Equal("platform-mesh/provider-quickstart/charts", sub)
-	base, sub = splitRegistry("ghcr.io")
-	s.Equal("ghcr.io", base)
-	s.Equal("", sub)
-}
 
 // newManagedProviderOCM returns a ManagedProvider with a single self-contained ocm
 // RuntimeDeployment; the deployment name is explicit ("wildwest-controller") and the

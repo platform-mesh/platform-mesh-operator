@@ -9,7 +9,7 @@ metadata:
   annotations:
     path: webhook.image.tag
   name: {{ .certManager.name }}-webhook-image
-  namespace: {{ .helmReleaseNamespace }}
+  namespace: {{ .releaseNamespace }}
 spec:
   componentRef:
     name: {{ .ocm.component.name }}
@@ -27,4 +27,9 @@ spec:
         - name: {{ .certManager.name }}
       resource:
         name: webhook-image
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+    digest: resource.access.imageReference.toOCI().digest
 {{- end }}

@@ -6,7 +6,7 @@ metadata:
     artifact: chart
     repo: oci
   name: {{ .traefik.name }}
-  namespace: {{ .helmReleaseNamespace }}
+  namespace: {{ .releaseNamespace }}
 spec:
   componentRef:
     name: {{ .ocm.component.name }}
