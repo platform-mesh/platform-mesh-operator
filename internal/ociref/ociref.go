@@ -18,7 +18,6 @@ package ociref
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
@@ -36,18 +35,13 @@ func StripScheme(ref string) string {
 // SplitRegistry splits an OCM/OCI registry root (e.g. "ghcr.io/platform-mesh") into the
 // host (baseURL) and the remaining sub-path for a delivery.ocm.software Repository.
 func SplitRegistry(registry string) (baseURL, subPath string) {
-	p, _ := url.Parse(registry)
+	registryWithoutScheme := StripScheme(registry)
+	scheme, _ := strings.CutSuffix(registry, registryWithoutScheme)
+	baseURL, subPath, _ = strings.Cut(registryWithoutScheme, "/")
 
-	// got a URL like "http://host/path:tag"
-	if p.Scheme != "" {
-		subPath = strings.TrimLeft(p.Path, "/")
-		baseURL = p.Scheme + "://" + p.Host
-	} else {
-		// without a scheme, Go cannot split host and path,
-		// so we must do it ourselves
-		baseURL, subPath, _ = strings.Cut(p.Path, "/")
+	if scheme != "" {
+		baseURL = scheme + baseURL
 	}
-
 	return
 }
 
