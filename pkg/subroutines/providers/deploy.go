@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -100,15 +101,19 @@ func ocmDeploymentName(ocm *providersv1alpha1.OCMComponentSpec) string {
 // splitRegistry splits an OCM/OCI registry root (e.g. "ghcr.io/platform-mesh") into the
 // host (baseUrl) and the remaining sub-path for a delivery.ocm.software Repository.
 func splitRegistry(registry string) (baseURL, subPath string) {
-	const schemeSeparator = "://"
-	schemeIdx := strings.Index(registry, "://")
-	if schemeIdx >= 0 {
-		registryWithoutScheme := registry[schemeIdx+len(schemeSeparator):]
-		host, path, _ := strings.Cut(registryWithoutScheme, "/")
-		return registry[:schemeIdx+len(schemeSeparator)] + host, path
+	p, _ := url.Parse(registry)
+
+	// got a URL like "http://host/path:tag"
+	if p.Scheme != "" {
+		subPath = strings.TrimLeft(p.Path, "/")
+		baseURL = p.Scheme + "://" + p.Host
+	} else {
+		// without a scheme, Go cannot split host and path,
+		// so we must do it ourselves
+		baseURL, subPath, _ = strings.Cut(p.Path, "/")
 	}
-	baseURL, subPath, _ = strings.Cut(registry, "/")
-	return baseURL, subPath
+
+	return
 }
 
 // fluxSourceGVK returns the Flux source object kind for a component's source type.
