@@ -4,7 +4,11 @@ kind: Resource
 metadata:
   labels:
     artifact: chart
+    {{- if .gatewayApi.kustomization }}
     repo: git
+    {{- else }}
+    repo: oci
+    {{- end }}
   name: {{ .gatewayApi.name }}
   namespace: {{ .releaseNamespace }}
 spec:
