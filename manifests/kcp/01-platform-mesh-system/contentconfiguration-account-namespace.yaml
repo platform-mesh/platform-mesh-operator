@@ -47,14 +47,25 @@ spec:
                                               {
                                                   "label": "Name",
                                                   "property": "metadata.name"
-                                              }
-                                          ]
-                                      },
-                                      "detailView": {
-                                          "fields": [
+                                              },
                                               {
-                                                  "label": "Name",
-                                                  "property": "metadata.name"
+                                                  "property": "metadata.name",
+                                                  "uiSettings": {
+                                                      "align": "end",
+                                                      "displayAs": "button",
+                                                      "columnWidth": "90px",
+                                                      "buttonSettings": {
+                                                          "icon": "decline",
+                                                          "design": "Transparent",
+                                                          "action": "delete-resource",
+                                                          "tooltip": "Delete"
+                                                      }
+                                                  },
+                                                  "group": {
+                                                      "name": "actions",
+                                                      "label": "",
+                                                      "multiline": false
+                                                  }
                                               }
                                           ]
                                       },
@@ -69,40 +80,8 @@ spec:
                                       }
                                   }
                               }
-                          },
-                          "children": [
-                            {
-                                "pathSegment": ":namespaceId",
-                                "hideFromNav": true,
-                                "keepSelectedForChildren": false,
-                                "defineEntity": {
-                                    "id": "namespace",
-                                    "contextKey": "namespaceId"
-                                },
-                                "context": {
-                                    "namespaceId": ":namespaceId",
-                                    "resourceId": ":namespaceId"
-                                }
-                            }
-                          ]
-                      },
-                      {
-                        "entityType": "main.core_platform-mesh_io_account.namespace",
-                        "pathSegment": "dashboard",
-                        "label": "Dashboard",
-                        "order": 100,
-                        "url": "/assets/platform-mesh-portal-ui-wc.js#generic-detail-view",
-                        "webcomponent": {
-                          "selfRegistered": true
-                        },
-                        "defineEntity": {
-                            "id": "dashboard"
-                        },
-                        "compound": {
-                            "children": []
-                        }
+                          }
                       }
-
                   ]
               }
           }
