@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
+	"github.com/platform-mesh/platform-mesh-operator/internal/ociref"
 )
 
 const (
@@ -95,13 +95,6 @@ func ocmDeploymentName(ocm *providersv1alpha1.OCMComponentSpec) string {
 		return ocm.ReferencePath[n-1].Name
 	}
 	return chartResourceName(ocm.Component)
-}
-
-// splitRegistry splits an OCM/OCI registry root (e.g. "ghcr.io/platform-mesh") into the
-// host (baseUrl) and the remaining sub-path for a delivery.ocm.software Repository.
-func splitRegistry(registry string) (baseURL, subPath string) {
-	baseURL, subPath, _ = strings.Cut(registry, "/")
-	return baseURL, subPath
 }
 
 // fluxSourceGVK returns the Flux source object kind for a component's source type.
@@ -331,19 +324,6 @@ func parseOCMValues(ocm *providersv1alpha1.OCMComponentSpec) (map[string]interfa
 	return values, nil
 }
 
-// ocmResolvedOCIURL turns an OCM-resolved imageReference (and version) into a clean
-// oci://host/repository URL suitable for a Flux OCIRepository spec.url. Mirrors the
-// resolution done by the PlatformMesh ResourceSubroutine.
-func ocmResolvedOCIURL(imageRef, version string) (string, error) {
-	url := "oci://" + strings.TrimPrefix(imageRef, "oci://")
-	url = strings.TrimSuffix(url, ":"+version)
-	spec, err := ocm.ParseRef(url)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s://%s/%s", spec.Scheme, spec.Host, spec.Repository), nil
-}
-
 // ocmConfigRepositoryRef returns the inline ocmConfig entry that points OCM objects at
 // the generated Repository.
 func ocmConfigRepositoryRef(name, namespace string) []interface{} {
@@ -380,7 +360,7 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 	}
 
 	// 1. Repository — the OCI registry holding the component.
-	baseURL, subPath := splitRegistry(ocmSpec.Registry)
+	baseURL, subPath := ociref.SplitRegistry(ocmSpec.Registry)
 	repository := &unstructured.Unstructured{}
 	repository.SetGroupVersionKind(deployOCMRepositoryGVK)
 	repository.SetName(name)
@@ -477,7 +457,7 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 		return subroutines.StopWithRequeue(deployRequeueDuration, fmt.Sprintf("waiting for OCM Resource %s status", name)), nil
 	}
 
-	ociURL, err := ocmResolvedOCIURL(imageRef, version)
+	ociURL, err := ociref.NormalizeOCIURL(imageRef, version)
 	if err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to parse resolved imageReference for %s", name)
 	}
@@ -487,7 +467,10 @@ func (r *DeploySubroutine) deployOCMComponent(ctx context.Context, namespace, na
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to unmarshal values for %s", name)
 	}
 
-	return r.reconcileResolvedOCIChart(ctx, namespace, name, ociURL, version, ocmSpec.Insecure, values, runtimeKubeconfigSecretName)
+	// Treat the resolved artifact as insecure if the user set insecure: true OR if the
+	// OCM controller stored an http:// imageReference (plain-HTTP registry).
+	insecure := ocmSpec.Insecure || strings.HasPrefix(imageRef, "http://")
+	return r.reconcileResolvedOCIChart(ctx, namespace, name, ociURL, version, insecure, values, runtimeKubeconfigSecretName)
 }
 
 // deployFluxHelmRepo deploys a chart from a classic HTTP(S) Helm repository via a
