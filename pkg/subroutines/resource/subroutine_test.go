@@ -1056,32 +1056,6 @@ func (s *ResourceTestSuite) Test_resolveArgoCDSource_GitNoRef() {
 	s.Contains(err.Error(), "no ref, version, or commit found")
 }
 
-func Test_extractOCIRepoURL(t *testing.T) {
-	tests := []struct {
-		input   string
-		want    string
-		wantErr bool
-	}{
-		{"oci://registry.example.com/charts/mychart:1.0.0@sha256:abc", "registry.example.com/charts", false},
-		{"registry.example.com/org/charts/app:v2.0", "registry.example.com/org/charts", false},
-		{"noslash", "", true},
-	}
-	for _, tt := range tests {
-		got, err := extractOCIRepoURL(tt.input)
-		if tt.wantErr {
-			if err == nil {
-				t.Errorf("extractOCIRepoURL(%q) expected error", tt.input)
-			}
-		} else {
-			if err != nil {
-				t.Fatalf("extractOCIRepoURL(%q) error: %v", tt.input, err)
-			}
-			if got != tt.want {
-				t.Errorf("extractOCIRepoURL(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		}
-	}
-}
 
 func Test_firstNonEmpty(t *testing.T) {
 	if got := firstNonEmpty("", "", "c"); got != "c" {

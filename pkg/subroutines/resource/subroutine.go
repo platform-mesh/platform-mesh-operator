@@ -20,7 +20,7 @@ import (
 	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
 	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
+	"github.com/platform-mesh/platform-mesh-operator/internal/ociref"
 	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
@@ -410,7 +410,7 @@ func (r *ResourceSubroutine) resolveArgoCDSource(inst *unstructured.Unstructured
 		return "", "", "", fmt.Errorf("no helmRepository, repoUrl, or imageReference found")
 	}
 
-	repoURL, err = extractOCIRepoURL(imageRef)
+	repoURL, err = ociref.ExtractRepoURL(imageRef)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -422,15 +422,6 @@ func (r *ResourceSubroutine) resolveArgoCDSource(inst *unstructured.Unstructured
 	return repoURL, version, "oci", nil
 }
 
-func extractOCIRepoURL(imageRef string) (string, error) {
-	imageRef = strings.TrimPrefix(imageRef, "oci://")
-	baseURL := strings.Split(imageRef, ":")[0]
-	lastSlash := strings.LastIndex(baseURL, "/")
-	if lastSlash == -1 {
-		return "", fmt.Errorf("invalid imageReference format: %s", imageRef)
-	}
-	return baseURL[:lastSlash], nil
-}
 
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
@@ -661,18 +652,11 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 		return subroutineslib.OK(), err
 	}
 
-	url = strings.TrimPrefix(url, "oci://")
-
-	url = "oci://" + url
-	url = strings.TrimSuffix(url, ":"+version)
-
-	spec, err := ocm.ParseRef(url)
+	url, err = ociref.NormalizeOCIURL(url, version)
 	if err != nil {
 		log.Error().Err(err).Str("url", url).Msg("Failed to parse Resource url")
 		return subroutineslib.OK(), err
 	}
-
-	url = fmt.Sprintf("%s://%s/%s", spec.Scheme, spec.Host, spec.Repository)
 
 	// Update or create oci repo
 	log.Info().Msg("Processing OCI Chart Resource")
